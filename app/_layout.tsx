@@ -3,22 +3,21 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 
+import { MedReminderNotifications } from '@/components/MedReminderNotifications';
 import { useColorScheme } from '@/components/useColorScheme';
+import Colors from '@/constants/Colors';
+import { SubscriptionProvider } from '@/context/SubscriptionContext';
+import { getDb } from '@/lib/database';
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
+  initialRouteName: 'index',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -26,34 +25,101 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
+  const [dbReady, setDbReady] = useState(false);
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
+    getDb()
+      .then(() => setDbReady(true))
+      .catch((e) => {
+        console.error('[NorthPaw] Database init failed', e);
+        setDbReady(true);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (loaded && dbReady) {
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [loaded, dbReady]);
 
-  if (!loaded) {
+  if (!loaded || !dbReady) {
     return null;
   }
 
   return <RootLayoutNav />;
 }
 
+const NavThemeLight = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: Colors.light.tint,
+    background: Colors.light.background,
+    card: Colors.light.surface,
+    text: Colors.light.text,
+    border: Colors.light.border,
+  },
+};
+
+const NavThemeDark = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    primary: Colors.dark.tint,
+    background: Colors.dark.background,
+    card: Colors.dark.surface,
+    text: Colors.dark.text,
+    border: Colors.dark.border,
+  },
+};
+
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
+    <ThemeProvider value={colorScheme === 'dark' ? NavThemeDark : NavThemeLight}>
+      <SubscriptionProvider>
+        <MedReminderNotifications />
+        <Stack>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="card/[id]"
+            options={{ title: 'Field card', headerBackTitle: 'Back' }}
+          />
+          <Stack.Screen
+            name="checklist/[id]"
+            options={{ title: 'Checklist', headerBackTitle: 'Back' }}
+          />
+          <Stack.Screen
+            name="outing/[id]"
+            options={{ title: 'Outing log', headerBackTitle: 'Back' }}
+          />
+          <Stack.Screen name="pack/[id]" options={{ title: 'Pack', headerBackTitle: 'Back' }} />
+          <Stack.Screen
+            name="paywall"
+            options={{
+              title: 'NorthPaw Pro',
+              presentation: 'modal',
+              headerBackTitle: 'Close',
+              headerLargeTitleEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="dog-profile"
+            options={{ title: 'Your dog', headerBackTitle: 'Back' }}
+          />
+          <Stack.Screen
+            name="reminders"
+            options={{ title: 'Care reminders', headerBackTitle: 'Back' }}
+          />
+        </Stack>
+      </SubscriptionProvider>
     </ThemeProvider>
   );
 }

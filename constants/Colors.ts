@@ -1,19 +1,35 @@
-const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
+const forest = '#1B4332';
+const moss = '#2D6A4F';
+const sage = '#40916C';
+const cream = '#F1FAEE';
+const ink = '#0D1B14';
+
+const tintColorLight = moss;
+const tintColorDark = sage;
 
 export default {
   light: {
-    text: '#000',
-    background: '#fff',
+    text: ink,
+    textSecondary: '#3d5349',
+    background: cream,
+    surface: '#ffffff',
+    border: '#d8e2dc',
     tint: tintColorLight,
-    tabIconDefault: '#ccc',
+    tabIconDefault: '#95a99d',
     tabIconSelected: tintColorLight,
+    accent: forest,
+    danger: '#9b2226',
   },
   dark: {
-    text: '#fff',
-    background: '#000',
+    text: cream,
+    textSecondary: '#b7c4bc',
+    background: ink,
+    surface: '#13261c',
+    border: '#2a3d32',
     tint: tintColorDark,
-    tabIconDefault: '#ccc',
+    tabIconDefault: '#6b7a72',
     tabIconSelected: tintColorDark,
+    accent: sage,
+    danger: '#e07a5f',
   },
 };

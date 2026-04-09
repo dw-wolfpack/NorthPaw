@@ -1,0 +1,795 @@
+{
+  "version": "1.2.1",
+  "packs": [
+    {
+      "id": "trail-basics",
+      "title": "Everyday + trail basics",
+      "description": "Year-round judgment, neighborhood heat, cars, other dogs, and trail habits. Works when you are not hiking.",
+      "tier": "free",
+      "regionNote": "General guidance; not veterinary or legal advice. Verify local rules yourself."
+    },
+    {
+      "id": "dog-tricks",
+      "title": "Tricks & skills",
+      "description": "Teach cues in short sessions: targeting, spins, settle, paw, and clean mechanics. For serious behavior problems, use a professional.",
+      "tier": "free",
+      "regionNote": "Educational only. For aggression, fear, or bite risk, consult a qualified trainer or behavior consultant."
+    },
+    {
+      "id": "norcal-seasons",
+      "title": "NorCal seasonal notes",
+      "description": "Fog layers, inland heat gaps, winter mud, and coastal humidity patterns.",
+      "tier": "premium",
+      "regionNote": "Framed for Northern California microclimates; not exhaustive."
+    }
+  ],
+  "cards": [
+    {
+      "id": "heat-stress-signals",
+      "packId": "trail-basics",
+      "title": "Heat stress: what to watch for",
+      "subtitle": "Earlier is better, turn back before collapse risk.",
+      "body": [
+        "Excessive panting that does not ease with a short rest in shade.",
+        "Bright red gums, thick saliva, or reluctance to move.",
+        "Wobbling, vomiting, or diarrhea on the trail.",
+        "Your dog lies down and will not pick up pace again after water.",
+        "When in doubt, shorten the outing, cool gradually (not ice shock), and contact a veterinarian if signs persist or worsen."
+      ],
+      "tags": ["heat", "safety", "dogs"],
+      "disclaimer": "Educational only. For health concerns, call your veterinarian."
+    },
+    {
+      "id": "water-on-trail",
+      "packId": "trail-basics",
+      "title": "How much water to carry",
+      "subtitle": "A simple planning frame, not a formula.",
+      "body": [
+        "Start with what you used last time on a similar route, temperature, and elevation gain.",
+        "Hot days and sun exposure increase needs; add capacity before you need it.",
+        "Carry a collapsible bowl or train your dog to drink from a bottle stream you control.",
+        "Creeks are unreliable; treat seasonal water as a bonus, not the plan.",
+        "If your dog is slowing, panting harder than usual, or seeking shade, that is often a hydration or heat signal."
+      ],
+      "tags": ["water", "planning"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "paw-booties-wax",
+      "packId": "trail-basics",
+      "title": "Paw care: heat, ice, and grit",
+      "subtitle": "Protect feet before problems show up.",
+      "body": [
+        "Hot pavement and rock radiate heat; early morning or shaded routes reduce risk.",
+        "Snow crust and ice balls between pads are common; check paws at transitions.",
+        "Booties help on abrasive volcanic rock or long gravel; practice at home first.",
+        "Trim fur between pads carefully to reduce ice buildup; avoid cutting skin.",
+        "After the hike, rinse paws if deicers or harsh dust were present."
+      ],
+      "tags": ["paws", "gear", "winter", "summer"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "recall-leash-frame",
+      "packId": "trail-basics",
+      "title": "Recall and leash: a mindset frame",
+      "subtitle": "Leash laws vary; your dog does not read signs.",
+      "body": [
+        "Strong recall is a skill, not a vibe, proof it with distance, distraction, and fatigue.",
+        "If your dog is new, reactive, or wildlife is active, default to leash even where off-leash is common.",
+        "Yield to others: step off trail, shorten leash, and give space when passing.",
+        "Carry high-value treats and practice stops mid-hike so ‘come’ works when it matters.",
+        "When uncertain, choose the option that reduces conflict with people, wildlife, and other dogs.",
+        "Always check official land-manager rules for the trail you are on."
+      ],
+      "tags": ["training", "leash", "etiquette"],
+      "disclaimer": "Not legal advice. Follow posted regulations."
+    },
+    {
+      "id": "wildlife-buffer",
+      "packId": "trail-basics",
+      "title": "Wildlife buffer basics",
+      "subtitle": "Distance protects everyone.",
+      "body": [
+        "If you see predators or large ungulates, create space calmly, no chasing for photos.",
+        "Pick up small dogs if a coyote is curious and you are in range; move away confidently.",
+        "Rattlesnakes: give width, keep dog controlled, and learn your regional protocol with your vet.",
+        "Rodenticides and bait stations near trailheads can poison dogs, scan edges and keep dogs close.",
+        "Report aggressive wildlife encounters per local guidance."
+      ],
+      "tags": ["wildlife", "safety"],
+      "disclaimer": "Educational only. Regional laws and risks differ."
+    },
+    {
+      "id": "first-aid-kit-dog",
+      "packId": "trail-basics",
+      "title": "Trail first-aid: small kit ideas",
+      "subtitle": "Carry what you know how to use.",
+      "body": [
+        "Vet wrap, gauze, tweezers, saline rinse, tick tool (if ticks are local), antiseptic wipes.",
+        "A backup leash and a muzzle that allows panting if your dog is injured and scared.",
+        "Phone offline maps and the number for the nearest emergency vet along your route.",
+        "Benadryl or other meds only if your veterinarian already gave you dosing guidance.",
+        "Serious bleeding, non-weight-bearing lameness, heat collapse suspected → get professional help."
+      ],
+      "tags": ["first-aid", "gear"],
+      "disclaimer": "Not medical advice."
+    },
+    {
+      "id": "turn-back-rules",
+      "packId": "trail-basics",
+      "title": "Simple turn-back rules",
+      "subtitle": "Ego loses to weather.",
+      "body": [
+        "If conditions are worse than you planned, shorten the loop early, miles are optional.",
+        "If your dog’s attitude shifts (lagging, stress sniffing, constant stopping), listen.",
+        "If water is running low relative to remaining sun exposure, retreat.",
+        "Lightning, smoke, or rapid temperature swing: prioritize exit over summits.",
+        "A good day is one where you both come home capable of doing it again soon."
+      ],
+      "tags": ["judgment", "planning"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "post-hike-check",
+      "packId": "trail-basics",
+      "title": "60-second post-hike check",
+      "subtitle": "Ticks, burrs, pads, and attitude.",
+      "body": [
+        "Scan ears, armpits, groin, and between toes for ticks and foxtails (regional).",
+        "Feel each pad for cuts, look for swelling, note limp that shows up after rest.",
+        "Offer water and a meal after cooling, not during heavy panting.",
+        "Note anything unusual in your trail log so next time you spot trends.",
+        "If something worries you, photograph it and message your vet clinic for triage."
+      ],
+      "tags": ["recovery", "health"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "elevation-and-dog",
+      "packId": "trail-basics",
+      "title": "Elevation gain: pacing",
+      "subtitle": "Steep is different for four legs.",
+      "body": [
+        "More vertical means more heat load and joint load; add breaks on south-facing segments.",
+        "Descents can be harder on shoulders and pads than climbs, control speed.",
+        "If your dog is new to big days, build volume across weeks, not one huge jump.",
+        "Carry calories appropriate to effort if your vet recommends snacks mid-hike.",
+        "Altitude sickness in dogs is uncommon but possible, lethargy, cough, or distress merit stopping."
+      ],
+      "tags": ["elevation", "fitness"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "night-and-visibility",
+      "packId": "trail-basics",
+      "title": "Low light and visibility",
+      "subtitle": "Be boring to drivers and predictable on trail.",
+      "body": [
+        "Reflective leash tabs, collar lights, or small blinkers help at dusk trailheads.",
+        "If you road-walk to the trail, assume cars do not see you.",
+        "Headlamps: angle down so you do not blind other hikers or dogs.",
+        "Coyote and cat activity often rises at dawn and dusk, adjust control accordingly."
+      ],
+      "tags": ["visibility", "planning"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "neighborhood-heat-walks",
+      "packId": "trail-basics",
+      "title": "Hot neighborhood walks",
+      "subtitle": "Asphalt and timing, not only “mountain heat.”",
+      "body": [
+        "Pavement and dark asphalt heat up faster than grass; early walks and shaded routes beat midday loops when it is warm.",
+        "If you cannot hold the back of your hand on pavement comfortably for several seconds, assume it is rough on paws, shorten, use booties, or reroute to cooler ground.",
+        "Flat walks still stack heat: carry water, stop in shade, and watch pant quality, not only distance.",
+        "Short-nosed breeds, seniors, and heavy-coated dogs often hit limits sooner, bias shorter and earlier.",
+        "If your dog plants, lags, or panting ramps up without settling, treat it as a heat signal, head home and cool gradually."
+      ],
+      "tags": ["urban", "heat", "daily"],
+      "disclaimer": "Educational only. Urgent or severe signs call your veterinarian."
+    },
+    {
+      "id": "car-travel-basics",
+      "packId": "trail-basics",
+      "title": "Dog + car: trip framing",
+      "subtitle": "Errands, road days, and why “quick” is still a plan.",
+      "body": [
+        "Parked vehicles heat dangerously fast on warm days, treat leaving a dog in a sun-baked car as a last resort, not a default.",
+        "Errands: dog-home vs dog-along is a real decision, combine trips, use curbside pickup, or tag-team with another adult when heat is in play.",
+        "Moving vehicles: loose dogs in cabins are projectiles; crates and crash-tested restraints are different tools, research what matches your vehicle and dog with qualified guidance.",
+        "Road trips: water, potty, and stretch rhythms beat marathon driving; stress is still workload for your dog.",
+        "Truck bed travel where legal still demands restraint, weather cover, and pad protection, wind and road debris are hazards, not accessories."
+      ],
+      "tags": ["car", "travel", "safety"],
+      "disclaimer": "Educational only. Follow local laws and manufacturer guidance."
+    },
+    {
+      "id": "leashed-dog-encounter",
+      "packId": "trail-basics",
+      "title": "Another dog is coming (you are on leash)",
+      "subtitle": "Space first. Calm exits beat heroics.",
+      "body": [
+        "If you cannot read the oncoming dog or handler, bias space, cross the street, loop wide, or pause behind a parked car instead of tight passes.",
+        "Short leash, minimal slack, no forced greetings; most scuffles start from surprise proximity.",
+        "Ask before sniff hellos; not every leashed dog wants contact, and “friendly” is a claim, not a guarantee.",
+        "If you need separation and the other walker is drifting in, be boring and clear: “We need space”, then move decisively.",
+        "If contact turns into a fight, protect people first, then separate without grabbing collars blindly; trade info calmly afterward and involve your vet for bite assessment."
+      ],
+      "tags": ["encounters", "leash", "daily"],
+      "disclaimer": "Educational only. For serious reactivity, work with a qualified professional."
+    },
+    {
+      "id": "coastal-fog-morning",
+      "packId": "norcal-seasons",
+      "title": "Coastal fog vs inland heat",
+      "subtitle": "The same day can feel like two seasons.",
+      "body": [
+        "Marine layer can keep coast cool while 20 miles inland is aggressively hot by noon.",
+        "If you stage near the coast and drive inland, pack for the hotter forecast, not the parking lot temperature.",
+        "Fog moisture can chill dogs that are wet and stopped, bring a light layer for long breaks on windy ridges.",
+        "Visibility drops on roads, leash near trailheads and parking lots.",
+        "Check multiple forecast points along your route, not only your home zip code."
+      ],
+      "tags": ["weather", "norcal", "microclimates"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "fire-smoke-season",
+      "packId": "norcal-seasons",
+      "title": "Smoke and air quality days",
+      "subtitle": "Rest days are training too.",
+      "body": [
+        "Dogs filter particulates less efficiently than humans assume; prioritize AQI and official advisories.",
+        "If you smell smoke or see haze, shorten intensity and choose lower valleys if air is cleaner there.",
+        "Brachycephalic breeds and older dogs are higher risk, bias to canceling hard efforts.",
+        "Watch for eye irritation, cough, or unusual fatigue after outings.",
+        "Sometimes the win is a sniff walk on a cleaner day instead of grinding miles."
+      ],
+      "tags": ["smoke", "health", "norcal"],
+      "disclaimer": "Educational only. Follow public health guidance."
+    },
+    {
+      "id": "winter-mud-foot",
+      "packId": "norcal-seasons",
+      "title": "Winter mud and trail ethics",
+      "subtitle": "Don’t widen the trail trying to dodge puddles.",
+      "body": [
+        "Deep mud can stress tendons and hide holes, slow down and pick firm lines.",
+        "If a trail is sodden, consider an alternate route to reduce erosion.",
+        "Rinse paws after mud that might hide sharp grit or oak irritants (regional).",
+        "Hypother risk is usually about combo of wet + wind + stop time, manage breaks.",
+        "If the land manager posts seasonal closures, treat them as non-optional."
+      ],
+      "tags": ["winter", "ethics", "trails"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "spring-ticks-grass",
+      "packId": "norcal-seasons",
+      "title": "Grass season and stickers",
+      "subtitle": "Regional nuisances change month to month.",
+      "body": [
+        "Long grass corridors can mean ticks or burrs depending on area, post-hike checks matter.",
+        "Short coats are easier to inspect; long coats may need combing at trailhead.",
+        "Booties can help on cheatgrass-heavy stretches if your dog tolerates them.",
+        "If your vet recommends preventatives, timing matters, ask during seasonal transitions.",
+        "Eye squinting or pawing at face after a hike can mean seed or irritation, escalate quickly."
+      ],
+      "tags": ["spring", "health", "norcal"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "tahoe-granite-paws",
+      "packId": "norcal-seasons",
+      "title": "Granite and abrasive rock",
+      "subtitle": "Sierra-style footing quirks.",
+      "body": [
+        "Rough granite can wear pads on long days, condition gradually and consider booties for sharp sections.",
+        "Water crossings can make rock slick, test footing before committing your dog.",
+        "Snow cups on paws return in shoulder season, carry trim tool you know how to use safely.",
+        "Midday sun on light rock radiates heat, adjust start time before peak temperatures.",
+        "Carry enough water, shade is patchy on exposed ridges."
+      ],
+      "tags": ["sierra", "paws", "summer"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "redwood-humidity-cooling",
+      "packId": "norcal-seasons",
+      "title": "Canopy cool, still planning hot",
+      "subtitle": "Shade is not the same as safety on long climbs.",
+      "body": [
+        "Closed canopy feels cooler but humidity can reduce evaporative cooling from panting.",
+        "Still carry water for both of you; assume exit segments may be sunny.",
+        "Slippery duff and roots are common, shorten leash on steep stairs.",
+        "Cold creeks feel great; sudden big chills for wet small dogs can be rough, dry and move.",
+        "Poison oak proximity matters for dogs that brush coat, learn local lookalikes."
+      ],
+      "tags": ["redwoods", "humidity", "norcal"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "bay-inland-delta-breeze",
+      "packId": "norcal-seasons",
+      "title": "Delta breeze timing",
+      "subtitle": "Afternoon windows shift risk.",
+      "body": [
+        "In parts of the Bay Area, late afternoon wind can help, or it can sandblast a ridgeline.",
+        "Plan water stops before the hottest segment, not after you are already behind.",
+        "If you commute to the trail, your dog may be warmer in the car than on foot, never leave dogs in parked vehicles.",
+        "Evening outings can be great; carry lights and watch for changing wildlife behavior.",
+        "Heat radiates from urban pavement near trailheads, minimize standing on hot asphalt."
+      ],
+      "tags": ["bay-area", "heat", "planning"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-session-basics",
+      "packId": "dog-tricks",
+      "title": "How tricks sessions work",
+      "subtitle": "Reward what you like, make the right choice easy.",
+      "body": [
+        "Train when your dog is rested enough to think, not right after wild play unless you are practicing calm-down.",
+        "Use tiny, rapid treats and a clear marker (word ‘yes’ or a click) the instant the behavior happens.",
+        "One main skill per session keeps you both from drifting; five good minutes beat thirty confused ones.",
+        "If your dog checks out, make it easier (smaller motion, closer target, better treats), do not drill through frustration.",
+        "Fade food lures into hand signals and verbal cues only after the motion is reliable."
+      ],
+      "tags": ["tricks", "training", "enrichment"],
+      "disclaimer": "Educational only. Not a replacement for professional help with fear or aggression."
+    },
+    {
+      "id": "trick-hand-target",
+      "packId": "dog-tricks",
+      "title": "Hand target (touch)",
+      "subtitle": "Nose to palm, portable superpower.",
+      "body": [
+        "Present an open palm an inch from your dog’s nose; when the nose bumps, mark and treat.",
+        "Reset by pulling hand behind your back, then offer again like a fresh rep.",
+        "Add one inch of distance only after five crisp touches in a row at the current distance.",
+        "Name it (‘touch’) once the motion is snappy; say the word just before the hand appears.",
+        "Use it to move your dog around you, onto curbs, away from dropped food, or into heel position."
+      ],
+      "tags": ["tricks", "training"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-spin-twirl",
+      "packId": "dog-tricks",
+      "title": "Spin / twirl",
+      "subtitle": "Tight circles, two directions if you can.",
+      "body": [
+        "Lure nose with treat in a small circle beside the dog’s shoulder; mark when the front feet finish the turn.",
+        "Keep circles big enough that your dog is not twisting the spine harshly; slippery floors need caution.",
+        "Teach one direction to fluency before mirroring; name them differently (‘spin’ vs ‘twist’) if you use both.",
+        "Stop if your dog shows stiffness, hopping, or reluctance; some bodies do not love repeated tight spins.",
+        "Alternate with forward walking or tricks that lengthen the spine so sessions stay balanced."
+      ],
+      "tags": ["tricks", "enrichment"],
+      "disclaimer": "Educational only. Pause if you see discomfort or joint concerns; ask your vet for seniors."
+    },
+    {
+      "id": "trick-settle-mat",
+      "packId": "dog-tricks",
+      "title": "Mat or bed (‘place’)",
+      "subtitle": "Go to a spot, lie down, chill.",
+      "body": [
+        "Drop a mat; mark any paw on it at first, then only full four-on or a down if that is your goal.",
+        "Deliver treats on the mat so the bed predicts good things happen there, not only at your pocket.",
+        "Add a release cue (‘okay’) before you invite them off so ‘place’ means stay until freed.",
+        "Increase duration one second at a time; if they break, make the goal easier next rep.",
+        "Carry a thin travel mat for patios, gates, or vet lobbies once the pattern is solid at home."
+      ],
+      "tags": ["tricks", "daily", "training"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-paw-shake",
+      "packId": "dog-tricks",
+      "title": "Paw / shake",
+      "subtitle": "Voluntary lift, not a grabbed foot.",
+      "body": [
+        "Hide a treat in a closed fist low; when your dog paws at it, mark and treat the paw lift.",
+        "Open criteria slowly: wait for a gentle paw instead of scraping or mouthing.",
+        "Add your outstretched hand cue only after the behavior is offered without the fist bait every time.",
+        "Reset between reps so you are not drilling the same frantic pawing.",
+        "If your dog is shy about paws, build trust with slow handling games outside this trick first."
+      ],
+      "tags": ["tricks", "training"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-leave-it",
+      "packId": "dog-tricks",
+      "title": "Leave it (starter frame)",
+      "subtitle": "Impulse control before street food or wildlife.",
+      "body": [
+        "Start with a boring treat in your closed hand; mark when your dog stops fussing at it for a breath.",
+        "Reward from the other hand so ‘leave that’ does not mean ‘steal it on release’.",
+        "Progress to treat on floor under your foot, then exposed with you ready to cover if they dive.",
+        "Add distance and real-world temptations only after high success indoors on a leash.",
+        "‘Leave it’ is a cue, not a moral lecture; make the alternative (check in with you) reliably better."
+      ],
+      "tags": ["tricks", "training", "safety"],
+      "disclaimer": "Educational only. Real-world poison or traps still need distance and management."
+    },
+    {
+      "id": "trick-fade-lure",
+      "packId": "dog-tricks",
+      "title": "Fading the food lure",
+      "subtitle": "So cues work without a magnet in your fingers.",
+      "body": [
+        "After ten crisp reps with treat at the dog’s nose, try the same motion with an empty hand then feed from pocket.",
+        "If the dog freezes, insert one more lured rep, then try empty-hand again at easier angle.",
+        "Put the food away between reps so the pattern is behavior → marker → reward, not treat visible 100% of the time.",
+        "Name the cue only after the empty-hand signal works most tries.",
+        "Keep jackpot treats for new locations or harder distractions, not every rep forever."
+      ],
+      "tags": ["tricks", "training"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-sit",
+      "packId": "dog-tricks",
+      "title": "Sit",
+      "subtitle": "Default “park the dog” behavior.",
+      "body": [
+        "Lure nose up and slightly back so the haunches drop; mark the moment butt hits floor, then treat at chest height.",
+        "If they pop back up, feed only while seated; standing gets silence, sitting gets the reward sequence.",
+        "Add the word ‘sit’ only when they sit five times in a row from your hand signal alone.",
+        "Practice on different surfaces and after mild excitement, not only in the quiet kitchen.",
+        "For giant or stiff dogs, lower criteria or ask your vet about joint comfort before lots of repeated sits."
+      ],
+      "tags": ["tricks", "training"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-down",
+      "packId": "dog-tricks",
+      "title": "Down / lie",
+      "subtitle": "Elbows on the ground, body long.",
+      "body": [
+        "From sit, lure nose straight down to the floor between the paws, then forward along the ground like an L.",
+        "If they crawl, lure under a low hand or knee to block the scoot until elbows settle.",
+        "Mark the flat moment; deliver treat on the floor between the paws so down stays geometrically true.",
+        "Release with ‘okay’ before you invite them up so ‘down’ means stay down until freed.",
+        "Some dogs hate belly exposure; build on carpet first and never force the position."
+      ],
+      "tags": ["tricks", "training"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-stay-starter",
+      "packId": "dog-tricks",
+      "title": "Stay (starter)",
+      "subtitle": "Duration without drifting toward the cookie.",
+      "body": [
+        "Choose sit or down; step back half a step; return and feed in position before they break.",
+        "Return to the dog to pay the treat early; don’t call them to you until duration is boring at one step.",
+        "Add a clear release cue; if they leave before it, quietly reset without a jackpot.",
+        "Grow time in seconds, not minutes; three-second stays that hold beat thirty-second guesses.",
+        "Real world: add leash and doorway distance only after solid calm reps at home."
+      ],
+      "tags": ["tricks", "training", "safety"],
+      "disclaimer": "Educational only. ‘Stay’ near traffic or cliffs still needs physical barriers and leashes."
+    },
+    {
+      "id": "trick-middle-legs",
+      "packId": "dog-tricks",
+      "title": "Middle (between legs)",
+      "subtitle": "Standing hideout and crowd buffer.",
+      "body": [
+        "Stand with feet shoulder-width; lure the dog forward through from behind until they are centered.",
+        "Mark when shoulders align with yours; feed in position so staying between pays.",
+        "Add one slow step forward only after they can hold still for a few seconds.",
+        "Widen stance for long dogs; this should feel roomy, not trapped.",
+        "Skip if your dog freezes or panics in tight spaces; build confidence with mat work first."
+      ],
+      "tags": ["tricks", "enrichment"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-play-bow",
+      "packId": "dog-tricks",
+      "title": "Play bow",
+      "subtitle": "Front down, butt up — great stretch cue.",
+      "body": [
+        "From standing, lure nose down to the floor between the front paws while the rear stays as high as comfortable.",
+        "Mark the elongated shape before the dog flops to a full down.",
+        "Keep sessions on non-slip flooring; bow on ice is a hard no.",
+        "Name it (‘bow’ or ‘take a bow’) once the shape is predictable from an empty-hand lure.",
+        "Pairs well as a reset between high-arousal tricks so the dog learns to drop front end without quitting the game."
+      ],
+      "tags": ["tricks", "enrichment"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-back-up",
+      "packId": "dog-tricks",
+      "title": "Back up",
+      "subtitle": "Reverse steps on cue.",
+      "body": [
+        "Face your dog; take a slow step toward them; mark any rearward shuffle before the chest bonks you.",
+        "Reward with toss behind them or feed at your shin so backward motion stays the game.",
+        "Fade the forward lean into a palm-toward-chest signal or verbal ‘back’ once steps are fluent.",
+        "Clear the path so they do not trip on curbs, walls, or other dogs.",
+        "Elder dogs or those with hind-end weakness: keep reps few and surfaces friendly; ask your vet if unsure."
+      ],
+      "tags": ["tricks", "training"],
+      "disclaimer": "Educational only."
+    },
+    {
+      "id": "trick-peekaboo",
+      "packId": "dog-tricks",
+      "title": "Peekaboo (through legs, front)",
+      "subtitle": "Dog sits facing you under your straddle.",
+      "body": [
+        "Stand with feet apart; lure the dog to thread forward until their head rises between your legs and they face you.",
+        "Mark when the head is centered and they offer attention upward; treat from above between your knees.",
+        "Widen your stance if the dog feels crowded; mind slick floors and bag straps.",
+        "Add duration only after they happily hold the slot without pawing your legs.",
+        "If jumping replaces sitting, reset to fewer steps and reward calmer approach only."
+      ],
+      "tags": ["tricks", "enrichment"],
+      "disclaimer": "Educational only."
+    }
+  ],
+  "checklists": [
+    {
+      "id": "pre-trail-60s",
+      "packId": "trail-basics",
+      "title": "60-second trail readiness",
+      "description": "Quick screen before you clip the leash.",
+      "items": [
+        {
+          "id": "c1",
+          "label": "I checked the forecast at the trail elevation, not just at home.",
+          "hint": "Inland vs coastal can differ sharply."
+        },
+        {
+          "id": "c2",
+          "label": "I have enough water for the full outing plus a margin.",
+          "hint": "Treat natural water as extra, not guaranteed."
+        },
+        {
+          "id": "c3",
+          "label": "Paws and fitness match today’s surface and vert.",
+          "hint": "New rock or big vert needs pacing."
+        },
+        {
+          "id": "c4",
+          "label": "Recall/leash plan matches wildlife season and trail busyness.",
+          "hint": "When unsure, leash."
+        },
+        {
+          "id": "c5",
+          "label": "I know today’s turn-back triggers (heat, water, attitude).",
+          "hint": "Name them out loud once."
+        }
+      ]
+    },
+    {
+      "id": "hot-day-compact",
+      "packId": "trail-basics",
+      "title": "Hot day compact check",
+      "description": "When the numbers look spicy.",
+      "items": [
+        {
+          "id": "h1",
+          "label": "Earlier start or shadier route selected.",
+          "hint": "Sun angle beats vibes."
+        },
+        {
+          "id": "h2",
+          "label": "Planned rest shade every 20–40 minutes depending on effort.",
+          "hint": "Stop before frantic panting."
+        },
+        {
+          "id": "h3",
+          "label": "I can shorten the route without drama.",
+          "hint": "Ego is the hazard."
+        },
+        {
+          "id": "h4",
+          "label": "Post-hike cool-down space at home or car is sorted.",
+          "hint": "Not trapped in a hot vehicle."
+        }
+      ]
+    },
+    {
+      "id": "snow-transition",
+      "packId": "norcal-seasons",
+      "title": "Snow line transition",
+      "description": "Shoulder season realities.",
+      "items": [
+        {
+          "id": "s1",
+          "label": "I checked recent trip reports for depth and mell-out timing.",
+          "hint": "Slush pulls energy fast."
+        },
+        {
+          "id": "s2",
+          "label": "Pad care: ice balls trimmed or booties ready.",
+          "hint": "Practice at home first."
+        },
+        {
+          "id": "s3",
+          "label": "Extra calories and breaks accounted for.",
+          "hint": "Cold work costs fuel."
+        },
+        {
+          "id": "s4",
+          "label": "If Postholing for me, it is rough for my dog, reassess.",
+          "hint": "Turn back is valid."
+        }
+      ]
+    },
+    {
+      "id": "after-hike-log",
+      "packId": "trail-basics",
+      "title": "After-hike quick log prompts",
+      "description": "Build memory without turning it into homework.",
+      "items": [
+        {
+          "id": "l1",
+          "label": "Anything new with paws, limp, or stool within 24h?",
+          "hint": "Trends matter."
+        },
+        {
+          "id": "l2",
+          "label": "Water consumed vs usual, more or less?",
+          "hint": "Calibration for next time."
+        },
+        {
+          "id": "l3",
+          "label": "Heat or mood stress moments, where on the route?",
+          "hint": "Change timing or shade next visit."
+        }
+      ]
+    },
+    {
+      "id": "trick-session-10",
+      "packId": "dog-tricks",
+      "title": "10-minute trick session",
+      "description": "Short, happy reps. End before anyone gets fried.",
+      "items": [
+        {
+          "id": "t1",
+          "label": "Quiet space, dog fed enough to think but not stuffed.",
+          "hint": "Micro treats ready."
+        },
+        {
+          "id": "t2",
+          "label": "Pick one trick or one step of a trick only.",
+          "hint": "No playlist brain."
+        },
+        {
+          "id": "t3",
+          "label": "Marker timing: bridge the exact moment, then deliver treat.",
+          "hint": "Speed beats eloquence."
+        },
+        {
+          "id": "t4",
+          "label": "8–15 clean reps or stop sooner if focus fades.",
+          "hint": "Quit on a win."
+        },
+        {
+          "id": "t5",
+          "label": "Note what to tighten next time (distance, distraction, cue).",
+          "hint": "Progress is boring on purpose."
+        }
+      ]
+    }
+  ],
+  "hazardCalendar": [
+    {
+      "month": 1,
+      "title": "January, mud and early dark",
+      "bullets": [
+        "Short daylight → lights and visibility planning.",
+        "Saturated trails → erosion ethics; pick firm surfaces.",
+        "Cold wet combos → manage stop time and insulation after water crossings."
+      ]
+    },
+    {
+      "month": 2,
+      "title": "February, winter holds, sneaky heat inland",
+      "bullets": [
+        "Inland valley preview days can spike, read multi-point forecasts.",
+        "Ticks may wake early in mild winters, keep check habit.",
+        "Snow trips → carry paw/ball ice management tools you have practiced with."
+      ]
+    },
+    {
+      "month": 3,
+      "title": "March, grass rises, pollen and burrs",
+      "bullets": [
+        "Long grass corridors → post-hike combing and tick checks where relevant.",
+        "Allergies can mirror irritation, ask your vet if eyes/paws flare.",
+        "Fast-changing creek crossings, test depth and current."
+      ]
+    },
+    {
+      "month": 4,
+      "title": "April, spring crowds and snakes waking",
+      "bullets": [
+        "More users → leash courtesy and passing drills.",
+        "Snake awareness returns in many regions, control and sight lines.",
+        "Baby wildlife season in many areas, extra distance defaults."
+      ]
+    },
+    {
+      "month": 5,
+      "title": "May, real heat rehearsals",
+      "bullets": [
+        "Afternoon inland temps climb, bias morning starts.",
+        "Radiating rock and road heat near trailheads.",
+        "Carry extra water before ‘we might need it’ becomes true."
+      ]
+    },
+    {
+      "month": 6,
+      "title": "June, early summer discipline",
+      "bullets": [
+        "Smoke can appear depending on year, check AQI habits.",
+        "Water sources dry earlier at low elevations, plan carries.",
+        "Ticks and fleas peak in many zones, stay consistent with vet plan."
+      ]
+    },
+    {
+      "month": 7,
+      "title": "July, peak heat strategy",
+      "bullets": [
+        "Schedule around sun, not only around your calendar.",
+        "Brachycephalic and older dogs → conservative defaults.",
+        "Water crossing hype, giardia risk is regional and seasonal; ask your vet about exposure."
+      ]
+    },
+    {
+      "month": 8,
+      "title": "August, smoke and ozone weeks",
+      "bullets": [
+        "Cancel intensity on bad air days; low valleys vs ridges can differ.",
+        "Eye and airway irritation → stop early.",
+        "Wildlife stress in dry years, more nighttime movement possible."
+      ]
+    },
+    {
+      "month": 9,
+      "title": "September, hottest tail risk",
+      "bullets": [
+        "Inland heat can extend, do not autopilot ‘fall is cool’.",
+        "Rattlesnake encounters still common in warm zones.",
+        "Shorter water carries still fail fast if you overshoot shade."
+      ]
+    },
+    {
+      "month": 10,
+      "title": "October, best miles, variable nights",
+      "bullets": [
+        "Daytime perfection can hide early sunset chill, layer for stops.",
+        "Hunting seasons in many public lands, visibility gear and control.",
+        "Acorns / dropped fruit in some parks, ingestion risks vary by dog."
+      ]
+    },
+    {
+      "month": 11,
+      "title": "November, rain returns, traction changes",
+      "bullets": [
+        "Slick wood bridges and mud camber, shorten line on steep bits.",
+        "Creek crossings swell, do not assume summer lines.",
+        "Dark commutes near trailheads, leash discipline."
+      ]
+    },
+    {
+      "month": 12,
+      "title": "December, short days, holiday crowding",
+      "bullets": [
+        "Parking chaos → dog stress spikes; keep exit paths clean.",
+        "Cold rain vs snow depends on elevation, pack for the parking lot lie.",
+        "Gift-noise holidays → some dogs need space from crowds."
+      ]
+    }
+  ]
+}
