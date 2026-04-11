@@ -7,7 +7,6 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -21,18 +20,64 @@ import Colors from '@/constants/Colors';
 import { useSubscription } from '@/context/SubscriptionContext';
 import {
   canAccessPack,
-  getAllChecklists,
-  getAllPacks,
   getLibrary,
 } from '@/lib/content';
 import { gradientForPack, IMAGES } from '@/lib/contentVisuals';
-import { listChecklistOutings, listFavorites } from '@/lib/database';
 import { getDogProfile, type DogProfile } from '@/lib/profile';
 import { fetchUsWeatherForDeviceLocation, type HomeWeatherState } from '@/lib/weather/nwsWeather';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
 
 type TabName = 'home' | 'index' | 'checklists' | 'scan';
+
+type HomeReadiness = {
+  signal: string;
+  meaning: string;
+  followThrough: string | null;
+};
+
+function buildHomeReadiness(weather: Extract<HomeWeatherState, { status: 'ok' }>): HomeReadiness {
+  const blob = `${weather.forecastShort}\n${weather.summary}`.toLowerCase();
+  const precip = weather.precipChance ?? 0;
+  const looksWet = precip >= 38 || /rain|shower|storm|drizzle|snow|slush|ice/i.test(blob);
+  const windy = /wind|breezy|gust/i.test(blob);
+  const hot = weather.tempF >= 86 || (weather.tempF >= 80 && /sunny|clear|hot/i.test(blob));
+  const cool = weather.tempF <= 55 && !looksWet;
+
+  if (hot) {
+    return {
+      signal: 'Warm afternoon conditions',
+      meaning: 'Bring extra water and bias toward shade or shorter exposed stretches.',
+      followThrough: 'After outing: quick cool-down and hydration check.',
+    };
+  }
+  if (looksWet) {
+    return {
+      signal: 'Wet trail conditions likely',
+      meaning: 'Expect mud and slick footing; pack a towel and plan for cleaner paws.',
+      followThrough: 'After outing: towel + paw cleanup.',
+    };
+  }
+  if (windy) {
+    return {
+      signal: 'Windier than usual',
+      meaning: 'Keep routes simple and watch for debris, noise sensitivity, and quick weather shifts.',
+      followThrough: null,
+    };
+  }
+  if (cool) {
+    return {
+      signal: 'Cool, light-outing day',
+      meaning: 'Good conditions for a steady outing with a basic readiness check.',
+      followThrough: null,
+    };
+  }
+  return {
+    signal: 'Steady outing conditions',
+    meaning: 'Run a quick pack check and keep water and turn-back judgment in mind.',
+    followThrough: null,
+  };
+}
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -41,15 +86,9 @@ export default function HomeScreen() {
   const router = useRouter();
   const { isPro } = useSubscription();
   const lib = getLibrary();
-  const packs = getAllPacks();
-  const lists = getAllChecklists();
   const homeGrad = gradientForPack('trail-basics');
 
   const accessibleCards = lib.cards.filter((c) => canAccessPack(c.packId, isPro)).length;
-  const totalCards = lib.cards.length;
-
-  const [favoritesCount, setFavoritesCount] = useState(0);
-  const [outingsCount, setOutingsCount] = useState(0);
   const [weather, setWeather] = useState<HomeWeatherState>({ status: 'loading' });
   const [weatherModalOpen, setWeatherModalOpen] = useState(false);
   const [dogProfile, setDogProfile] = useState<DogProfile | null>(null);
@@ -85,12 +124,8 @@ export default function HomeScreen() {
     useCallback(() => {
       let gone = false;
       (async () => {
-        const favs = await listFavorites();
-        const outings = await listChecklistOutings(500);
         const profile = await getDogProfile();
         if (!gone) {
-          setFavoritesCount(favs.length);
-          setOutingsCount(outings.length);
           setDogProfile(profile);
         }
       })();
@@ -124,12 +159,79 @@ export default function HomeScreen() {
   );
 
   const weatherOk = weather.status === 'ok' ? weather : null;
+  const readiness = weatherOk ? buildHomeReadiness(weatherOk) : null;
+  const checklistSuggestion = weatherSuggestions.find((s) => s.kind === 'checklist');
+  const checklistCtaId = checklistSuggestion?.id ?? 'pre-trail-60s';
+  const checklistCtaTitle = checklistSuggestion?.title ?? 'Pre-trail 60-second check';
+  const checklistCtaLabel = checklistSuggestion ? `Start ${checklistSuggestion.title}` : 'Start quick pre-trail check';
 
   return (
     <>
     <ScrollView
       style={{ flex: 1, backgroundColor: palette.background }}
       contentContainerStyle={styles.container}>
+      <View style={styles.topQuickRow}>
+        {isPro ? (
+          <View style={[styles.topQuickChip, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+            <MaterialCommunityIcons name="shield-check" size={14} color={palette.text} style={styles.heroBadgeIcon} />
+            <Text style={styles.topQuickChipText} lightColor={palette.text} darkColor={palette.text}>
+              NorthPaw Pro
+            </Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => router.push({ pathname: '/paywall', params: { returnTo: '/(tabs)/home' } })}
+            style={({ pressed }) => [
+              styles.topQuickChip,
+              { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.9 : 1 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Become official, unlock NorthPaw Pro">
+            <MaterialCommunityIcons name="shield-outline" size={14} color={palette.text} style={styles.heroBadgeIcon} />
+            <Text style={styles.topQuickChipText} lightColor={palette.text} darkColor={palette.text}>
+              Become official
+            </Text>
+          </Pressable>
+        )}
+        <Pressable
+          onPress={() => {
+            if (weather.status === 'ok') setWeatherModalOpen(true);
+          }}
+          style={({ pressed }) => [
+            styles.topQuickChip,
+            {
+              borderColor: palette.border,
+              backgroundColor: palette.surface,
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Current weather">
+          <FontAwesome name="cloud" size={13} color={palette.text} style={{ marginRight: 6 }} />
+          <Text style={styles.topQuickChipText} lightColor={palette.text} darkColor={palette.text} numberOfLines={1}>
+            {weather.status === 'ok' ? `Current ${weather.tempF}°` : 'Current weather'}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/reminders')}
+          style={({ pressed }) => [
+            styles.topQuickChip,
+            { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.9 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Set reminders">
+          <MaterialCommunityIcons
+            name="bell-ring-outline"
+            size={14}
+            color={palette.text}
+            style={styles.heroReminderBtnIcon}
+          />
+          <Text style={styles.topQuickChipText} lightColor={palette.text} darkColor={palette.text}>
+            Reminders
+          </Text>
+        </Pressable>
+      </View>
+
       <View style={[styles.hero, { borderColor: palette.border, backgroundColor: palette.surface }]}>
         <Image source={IMAGES.homeHero} style={styles.heroImg} contentFit="cover" />
         <LinearGradient
@@ -139,7 +241,20 @@ export default function HomeScreen() {
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.heroInner}>
-          <View style={styles.heroTitleRow}>
+          <View style={styles.heroWeatherTop}>
+            <View style={styles.heroTitleCol}>
+              <Text style={styles.heroWeatherLabel} lightColor="rgba(255,255,255,0.82)" darkColor="rgba(255,255,255,0.82)">
+                Local weather
+              </Text>
+              <Text style={styles.heroPupName} lightColor="#fff" darkColor="#fff" numberOfLines={1}>
+                for {dogProfile?.dogName?.trim() || 'your pup'}
+              </Text>
+              {weather.status === 'ok' ? (
+                <Text style={styles.heroSub} lightColor="rgba(255,255,255,0.88)" darkColor="rgba(255,255,255,0.88)">
+                  {weather.place}
+                </Text>
+              ) : null}
+            </View>
             <Pressable
               onPress={() => router.push('/dog-profile')}
               style={({ pressed }) => [{ opacity: pressed ? 0.88 : 1 }]}
@@ -148,283 +263,109 @@ export default function HomeScreen() {
               {dogProfile?.dogPhotoUri ? (
                 <Image
                   source={{ uri: dogProfile.dogPhotoUri }}
-                  style={styles.heroDogAvatar}
+                  style={styles.heroDogAvatarSmall}
                   contentFit="cover"
                   cachePolicy="none"
                   recyclingKey={dogProfile.dogPhotoUri}
                 />
               ) : (
-                <View style={[styles.heroDogAvatar, styles.heroDogAvatarPlaceholder]}>
-                  <MaterialCommunityIcons name="paw" size={52} color="rgba(255,255,255,0.95)" />
+                <View style={[styles.heroDogAvatarSmall, styles.heroDogAvatarPlaceholder]}>
+                  <MaterialCommunityIcons name="paw" size={24} color="rgba(255,255,255,0.95)" />
                 </View>
               )}
             </Pressable>
-            <View style={styles.heroTitleCol}>
-              <Text
-                style={styles.heroPupName}
-                lightColor="#fff"
-                darkColor="#fff"
-                numberOfLines={2}>
-                Welcome {dogProfile?.dogName?.trim() || 'your pup'}
-              </Text>
-              <Text
-                style={styles.heroNurtureLine}
-                lightColor="rgba(255,255,255,0.94)"
-                darkColor="rgba(255,255,255,0.94)">
-                {dogProfile?.dogName?.trim()
-                  ? 'Good to see you both — here’s what’s ready for your next outing.'
-                  : 'Add their name and a photo from your dog’s profile.'}
-              </Text>
-              <Text
-                style={styles.heroSub}
-                lightColor="rgba(255,255,255,0.88)"
-                darkColor="rgba(255,255,255,0.88)">
-                Field cards stay on-device; US weather uses your location and api.weather.gov when you allow it.
+          </View>
+
+          {weather.status === 'loading' ? (
+            <View style={styles.weatherRow}>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={{ marginLeft: 10, color: 'rgba(255,255,255,0.9)' }}>
+                Getting local conditions…
               </Text>
             </View>
-          </View>
-          <View style={styles.heroBadgeRow}>
-            {isPro ? (
-              <View
-                style={styles.heroBadgeOutline}
-                accessibilityRole="text"
-                accessibilityLabel="NorthPaw Pro, official badge">
-                <MaterialCommunityIcons
-                  name="shield-check"
-                  size={14}
-                  color="rgba(255,255,255,0.98)"
-                  style={styles.heroBadgeIcon}
-                />
-                <Text
-                  style={styles.heroBadgeKicker}
-                  lightColor="rgba(255,255,255,0.9)"
-                  darkColor="rgba(255,255,255,0.9)"
-                  numberOfLines={1}>
-                  Official
+          ) : weather.status === 'permission_denied' ? (
+            <Text style={[styles.weatherSummaryCompact, { color: '#fff' }]}>
+              Allow location to show local conditions (US only).
+            </Text>
+          ) : weather.status === 'unavailable' ? (
+            <Text style={[styles.weatherSummaryCompact, { color: '#fff' }]}>{weather.message}</Text>
+          ) : (
+            <Pressable
+              onPress={() => setWeatherModalOpen(true)}
+              style={({ pressed }) => [{ opacity: pressed ? 0.94 : 1 }]}>
+              <View style={styles.heroWeatherHead}>
+                <Text style={styles.heroWeatherSignal} lightColor="#fff" darkColor="#fff" numberOfLines={2}>
+                  {readiness?.signal ?? weather.summary}
                 </Text>
-                <View style={styles.heroBadgeDivider} />
-                <Text
-                  style={styles.heroBadgeTitle}
-                  lightColor="#fff"
-                  darkColor="#fff"
-                  numberOfLines={1}>
-                  NorthPaw
+                <Text style={styles.heroWeatherTemp} lightColor="#fff" darkColor="#fff">
+                  {weather.tempF}°F
                 </Text>
               </View>
-            ) : (
-              <Pressable
-                onPress={() =>
-                  router.push({ pathname: '/paywall', params: { returnTo: '/(tabs)/home' } })
-                }
-                style={({ pressed }) => [styles.heroBadgeOutline, { opacity: pressed ? 0.86 : 1 }]}
-                accessibilityRole="button"
-                accessibilityLabel="Become official, unlock NorthPaw Pro">
-                <MaterialCommunityIcons
-                  name="shield-outline"
-                  size={14}
-                  color="rgba(255,255,255,0.95)"
-                  style={styles.heroBadgeIcon}
-                />
-                <Text
-                  style={styles.heroBadgeKicker}
-                  lightColor="rgba(255,255,255,0.9)"
-                  darkColor="rgba(255,255,255,0.9)"
-                  numberOfLines={1}
-                  ellipsizeMode="tail">
-                  Become official
-                </Text>
-                <View style={styles.heroBadgeDivider} />
-                <Text
-                  style={styles.heroBadgeTitle}
-                  lightColor="#fff"
-                  darkColor="#fff"
-                  numberOfLines={1}>
-                  NorthPaw
-                </Text>
-              </Pressable>
-            )}
-            <Pressable
-              onPress={() => router.push('/reminders')}
-              style={({ pressed }) => [styles.heroReminderBtn, { opacity: pressed ? 0.88 : 1 }]}
-              accessibilityRole="button"
-              accessibilityHint="Opens schedules for heartworm, flea and tick, and optional custom reminders"
-              accessibilityLabel="Set reminders">
-              <MaterialCommunityIcons
-                name="bell-ring-outline"
-                size={14}
-                color="rgba(255,255,255,0.98)"
-                style={styles.heroReminderBtnIcon}
-              />
-              <Text
-                style={styles.heroReminderBtnText}
-                lightColor="#fff"
-                darkColor="#fff"
-                numberOfLines={1}>
-                Reminders
+              <Text style={[styles.heroWeatherMeaning, { color: '#fff' }]} numberOfLines={3}>
+                {readiness?.meaning ?? weather.summary}
+              </Text>
+              <Text style={styles.heroWeatherHint} lightColor="rgba(255,255,255,0.85)" darkColor="rgba(255,255,255,0.85)">
+                Tap for full weather + weekend outlook
               </Text>
             </Pressable>
-          </View>
+          )}
         </View>
       </View>
 
-      <View
-        style={[
-          styles.weatherCard,
-          { borderColor: palette.border, backgroundColor: palette.surface },
-        ]}>
-        {weather.status === 'loading' && (
-          <View style={styles.weatherRow}>
-            <ActivityIndicator size="small" color={palette.tint} />
-            <Text style={{ marginLeft: 10, color: palette.textSecondary }}>Loading local weather…</Text>
+      {weatherOk ? (
+        <>
+          <View style={[styles.readinessCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+            <Text style={[styles.readinessLabel, { color: palette.textSecondary }]}>What changed</Text>
+            <Text style={[styles.readinessTitle, { color: palette.text }]}>{readiness?.signal}</Text>
+            <Text style={[styles.readinessBody, { color: palette.textSecondary }]}>
+              Local weather in your area for {dogProfile?.dogName?.trim() || 'your dog'}.
+            </Text>
           </View>
-        )}
-        {weather.status === 'permission_denied' && (
-          <>
-            <Text style={[styles.weatherTitle, { color: palette.text }]}>Local weather</Text>
-            <Text style={[styles.weatherBody, { color: palette.textSecondary }]}>
-              Allow location to show conditions from the National Weather Service for where you are (US only).
+
+          <View style={[styles.readinessCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+            <Text style={[styles.readinessLabel, { color: palette.textSecondary }]}>What to change</Text>
+            <Text style={[styles.readinessTitle, { color: palette.text }]}>{readiness?.meaning}</Text>
+            <Text style={[styles.readinessBody, { color: palette.textSecondary }]}>
+              {accessibleCards} weather-linked field cards are available right now.
             </Text>
-            <Pressable
-              onPress={() => Linking.openSettings()}
-              style={({ pressed }) => [styles.weatherButton, { opacity: pressed ? 0.85 : 1 }]}>
-              <Text style={{ color: palette.tint, fontWeight: '700' }}>Open Settings</Text>
-            </Pressable>
-          </>
-        )}
-        {weather.status === 'unavailable' && (
-          <>
-            <Text style={[styles.weatherTitle, { color: palette.text }]}>Local weather</Text>
-            <Text style={[styles.weatherBody, { color: palette.textSecondary }]}>{weather.message}</Text>
-          </>
-        )}
-        {weather.status === 'ok' && (
+          </View>
+
           <Pressable
-            onPress={() => setWeatherModalOpen(true)}
-            style={({ pressed }) => [{ opacity: pressed ? 0.94 : 1 }]}>
-            <View style={styles.weatherHeader}>
-              <FontAwesome name="cloud" size={22} color={palette.tint} style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.weatherTitle, { color: palette.text, marginBottom: 0 }]}>Local weather</Text>
-                <Text style={{ color: palette.textSecondary, fontSize: 13, marginTop: 2 }}>{weather.place}</Text>
-              </View>
-              <Text style={[styles.weatherTemp, { color: palette.text }]}>{weather.tempF}°F</Text>
-            </View>
-            <Text style={[styles.weatherSummaryCompact, { color: palette.text }]} numberOfLines={2}>
-              {weather.summary}
-            </Text>
-            <View style={styles.weatherTapHint}>
-              <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 13 }}>
-                Trail suggestions for these conditions
+            onPress={() => openSuggestion('checklist', checklistCtaId)}
+            style={({ pressed }) => [
+              styles.readinessAction,
+              { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.92 : 1 },
+            ]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.readinessLabel, { color: palette.textSecondary }]}>Do this next</Text>
+              <Text style={[styles.readinessTitle, { color: palette.text }]}>{checklistCtaLabel}</Text>
+              <Text style={[styles.readinessBody, { color: palette.textSecondary }]} numberOfLines={2}>
+                {checklistCtaTitle}
               </Text>
-              <FontAwesome name="chevron-right" size={13} color={palette.tint} />
             </View>
+            <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
           </Pressable>
-        )}
-      </View>
 
-      <Text style={[styles.sectionTitle, { color: palette.text }]}>At a glance</Text>
-      <Text style={{ color: palette.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: 10 }}>
-        Tap a tile to open that part of the app.
-      </Text>
-      <View style={styles.statGrid}>
-        <Pressable
-          onPress={() => goToTab('index')}
-          style={({ pressed }) => [
-            styles.statCard,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.surface,
-              opacity: pressed ? 0.92 : 1,
-            },
-          ]}>
-          <Text style={[styles.statValue, { color: palette.text }]}>{accessibleCards}</Text>
-          <Text style={[styles.statLabel, { color: palette.textSecondary }]}>
-            Field cards{!isPro && totalCards > accessibleCards ? ` · ${totalCards} total with Pro` : ''}
+          {readiness?.followThrough ? (
+            <View
+              style={[
+                styles.readinessCard,
+                styles.readinessFooterCard,
+                { borderColor: palette.border, backgroundColor: palette.surface },
+              ]}>
+              <Text style={[styles.readinessLabel, { color: palette.textSecondary }]}>Later / follow-through</Text>
+              <Text style={[styles.readinessFooterTitle, { color: palette.text }]}>{readiness.followThrough}</Text>
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <View style={[styles.readinessCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+          <Text style={[styles.readinessTitle, { color: palette.text }]}>Enable local weather to unlock readiness guidance</Text>
+          <Text style={[styles.readinessBody, { color: palette.textSecondary }]}>
+            NorthPaw surfaces a conditions signal, what it means for your outing, and one next action.
           </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => goToTab('index')}
-          style={({ pressed }) => [
-            styles.statCard,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.surface,
-              opacity: pressed ? 0.92 : 1,
-            },
-          ]}>
-          <Text style={[styles.statValue, { color: palette.text }]}>{packs.length}</Text>
-          <Text style={[styles.statLabel, { color: palette.textSecondary }]}>Packs</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => goToTab('checklists')}
-          style={({ pressed }) => [
-            styles.statCard,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.surface,
-              opacity: pressed ? 0.92 : 1,
-            },
-          ]}>
-          <Text style={[styles.statValue, { color: palette.text }]}>{lists.length}</Text>
-          <Text style={[styles.statLabel, { color: palette.textSecondary }]}>Checklists</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => goToTab('index')}
-          style={({ pressed }) => [
-            styles.statCard,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.surface,
-              opacity: pressed ? 0.92 : 1,
-            },
-          ]}>
-          <Text style={[styles.statValue, { color: palette.text }]}>{favoritesCount}</Text>
-          <Text style={[styles.statLabel, { color: palette.textSecondary }]}>Favorites</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => goToTab('checklists')}
-          style={({ pressed }) => [
-            styles.statCard,
-            styles.statCardWide,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.surface,
-              opacity: pressed ? 0.92 : 1,
-            },
-          ]}>
-          <Text style={[styles.statValue, { color: palette.text }]}>
-            {isPro ? outingsCount : '-'}
-          </Text>
-          <Text style={[styles.statLabel, { color: palette.textSecondary }]}>
-            {isPro ? 'Outing logs' : 'Outing logs (Pro)'}
-          </Text>
-        </Pressable>
-      </View>
-
-      <Text style={[styles.sectionTitle, { color: palette.text, marginTop: 8 }]}>Go to</Text>
-      {(
-        [
-          { label: 'Library', screen: 'index' as const, icon: 'book' as const },
-          { label: 'Checklists', screen: 'checklists' as const, icon: 'list-ul' as const },
-          { label: 'Scan QR', screen: 'scan' as const, icon: 'qrcode' as const },
-        ] as const
-      ).map((item) => (
-        <Pressable
-          key={item.screen}
-          onPress={() => goToTab(item.screen)}
-          style={({ pressed }) => [
-            styles.linkRow,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.surface,
-              opacity: pressed ? 0.92 : 1,
-            },
-          ]}>
-          <FontAwesome name={item.icon} size={20} color={palette.tint} style={styles.linkIcon} />
-          <Text style={{ flex: 1, color: palette.text, fontWeight: '700', fontSize: 16 }}>{item.label}</Text>
-          <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
-        </Pressable>
-      ))}
+        </View>
+      )}
     </ScrollView>
 
     <Modal
@@ -457,9 +398,12 @@ export default function HomeScreen() {
                 <Text style={[styles.weatherTitle, { color: palette.text, marginBottom: 0 }]}>Local weather</Text>
                 <Text style={{ color: palette.textSecondary, fontSize: 13, marginTop: 2 }}>{weatherOk.place}</Text>
               </View>
-              <Text style={[styles.weatherTemp, { color: palette.text }]}>{weatherOk.tempF}°F</Text>
             </View>
-            <Text style={[styles.weatherSummary, { color: palette.text }]}>{weatherOk.summary}</Text>
+            <Text style={[styles.weatherSectionLabel, { color: palette.textSecondary, marginTop: 6 }]}>Now</Text>
+            <View style={styles.weatherNowRow}>
+              <Text style={[styles.weatherTemp, { color: palette.text }]}>{weatherOk.tempF}°</Text>
+              <Text style={[styles.weatherSummary, { color: palette.text, flex: 1, marginTop: 0 }]}>{weatherOk.summary}</Text>
+            </View>
             {weatherOk.windLine ? (
               <Text style={[styles.weatherMeta, { color: palette.textSecondary }]}>Wind {weatherOk.windLine}</Text>
             ) : null}
@@ -468,6 +412,28 @@ export default function HomeScreen() {
                 Updated {weatherOk.updatedLabel}
               </Text>
             ) : null}
+            <View style={[styles.weatherDivider, { backgroundColor: palette.border, marginTop: 14 }]} />
+            <Text style={[styles.weatherSectionLabel, { color: palette.textSecondary, marginTop: 12 }]}>
+              Weekend outlook
+            </Text>
+            {weatherOk.weekendOutlook.length > 0 ? (
+              weatherOk.weekendOutlook.map((w) => (
+                <View key={`modal-${w.dayLabel}`} style={styles.weatherOutlookBlock}>
+                  <View style={styles.weatherOutlookHead}>
+                    <Text style={[styles.weatherWeekendDay, { color: palette.text }]}>{w.dayLabel}</Text>
+                    <Text style={[styles.weatherWeekendTemp, { color: palette.text }]}>{w.tempF}°</Text>
+                  </View>
+                  <Text style={[styles.weatherWeekendForecast, { color: palette.textSecondary }]} numberOfLines={3}>
+                    {w.shortForecast}
+                    {w.precipChance != null ? ` · ${w.precipChance}% precip` : ''}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: palette.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 4 }}>
+                No Sat/Sun daytime periods in the current forecast window.
+              </Text>
+            )}
             <Text style={[styles.weatherAttribution, { color: palette.textSecondary }]}>{weatherOk.sourceNote}</Text>
           </View>
           ) : null}
@@ -525,6 +491,22 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 20, paddingBottom: 40 },
+  topQuickRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 10,
+  },
+  topQuickChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    flexShrink: 1,
+  },
+  topQuickChipText: { fontSize: 12, fontWeight: '700' },
   hero: {
     borderRadius: 16,
     borderWidth: 1,
@@ -533,12 +515,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   heroImg: { ...StyleSheet.absoluteFillObject },
-  heroInner: { padding: 18, minHeight: 210, justifyContent: 'flex-end' },
-  heroTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 16 },
+  heroInner: { padding: 18, minHeight: 208, justifyContent: 'space-between' },
+  heroWeatherTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   heroDogAvatar: {
     width: 120,
     height: 120,
     borderRadius: 60,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  heroDogAvatarSmall: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.55)',
   },
@@ -547,6 +536,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroWeatherLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase' as const,
+  },
+  heroWeatherHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 2,
+  },
+  heroWeatherSignal: { fontSize: 24, fontWeight: '800', letterSpacing: -0.4, lineHeight: 30, flex: 1 },
+  heroWeatherTemp: { fontSize: 26, fontWeight: '800', lineHeight: 30 },
+  heroWeatherMeaning: { fontSize: 15, lineHeight: 21, marginTop: 8, fontWeight: '600' },
+  heroWeatherHint: { fontSize: 12, lineHeight: 16, marginTop: 10, fontWeight: '700' },
   heroTitleCol: { flex: 1, minWidth: 0 },
   heroPupName: { fontSize: 28, fontWeight: '800', letterSpacing: -0.6, lineHeight: 34 },
   heroNurtureLine: { fontSize: 14, lineHeight: 20, marginTop: 6, fontWeight: '600' },
@@ -624,6 +630,27 @@ const styles = StyleSheet.create({
   weatherTitle: { fontSize: 16, fontWeight: '800', marginBottom: 6 },
   weatherBody: { fontSize: 14, lineHeight: 20, marginBottom: 12 },
   weatherButton: { alignSelf: 'flex-start', paddingVertical: 8 },
+  weatherSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase' as const,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  weatherNowRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  weatherDivider: { height: StyleSheet.hairlineWidth, marginTop: 14 },
+  weatherOutlookBlock: { marginBottom: 14 },
+  weatherOutlookHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+    gap: 8,
+  },
+  weatherWeekendDay: { fontSize: 14, fontWeight: '800', flex: 1 },
+  weatherWeekendTemp: { fontSize: 20, fontWeight: '800' },
+  weatherWeekendForecast: { fontSize: 13, lineHeight: 18 },
   weatherTemp: { fontSize: 28, fontWeight: '800' },
   weatherSummary: { fontSize: 15, lineHeight: 22, marginTop: 10, fontWeight: '600' },
   weatherSummaryCompact: { fontSize: 15, lineHeight: 21, marginTop: 8, fontWeight: '600' },
@@ -666,28 +693,29 @@ const styles = StyleSheet.create({
   },
   suggestIcon: { marginRight: 12, width: 22 },
   sectionTitle: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
-  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
-  statCard: {
-    width: '47%',
-    flexGrow: 1,
-    minWidth: '42%',
+  readinessCard: {
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
+    marginBottom: 10,
   },
-  statCardWide: {
-    width: '100%',
-    minWidth: '100%',
-  },
-  statValue: { fontSize: 26, fontWeight: '800' },
-  statLabel: { fontSize: 13, lineHeight: 18, marginTop: 6 },
-  linkRow: {
+  readinessAction: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderRadius: 14,
-    padding: 16,
+    padding: 14,
     marginBottom: 10,
+    gap: 8,
   },
-  linkIcon: { marginRight: 14, width: 24 },
+  readinessLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase' as const,
+  },
+  readinessTitle: { fontSize: 16, fontWeight: '800', lineHeight: 22, marginTop: 6 },
+  readinessBody: { fontSize: 13, lineHeight: 18, marginTop: 8 },
+  readinessFooterCard: { paddingVertical: 12 },
+  readinessFooterTitle: { fontSize: 14, fontWeight: '700', lineHeight: 20, marginTop: 6 },
 });

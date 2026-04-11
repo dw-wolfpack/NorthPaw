@@ -7,6 +7,14 @@ const USER_AGENT = 'NorthPaw/1.0 (com.northpaw.app)';
 const CACHE_MS = 12 * 60 * 1000;
 const US_ONLY_MESSAGE = 'Weather is only available for US locations.';
 
+/** One daytime weekend day from the NWS grid forecast (Sat/Sun). */
+export type WeekendDayForecast = {
+  dayLabel: string;
+  tempF: number;
+  shortForecast: string;
+  precipChance: number | null;
+};
+
 export type HomeWeatherState =
   | { status: 'loading' }
   | { status: 'permission_denied' }
@@ -23,6 +31,8 @@ export type HomeWeatherState =
       forecastShort: string;
       precipChance: number | null;
       isDaytime: boolean;
+      /** Up to two upcoming Sat/Sun daytime snapshots from the same forecast. */
+      weekendOutlook: WeekendDayForecast[];
     };
 
 type NwsJson = Record<string, unknown>;
@@ -45,6 +55,63 @@ function formatUpdated(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+type NwsForecastPeriod = {
+  name?: string;
+  startTime?: string;
+  temperature: number;
+  temperatureUnit: string;
+  shortForecast: string;
+  probabilityOfPrecipitation?: { unitCode?: string; value?: number | null };
+  isDaytime?: boolean;
+};
+
+/** Earliest daytime period per Sat/Sun calendar day; next two days chronologically. */
+function extractWeekendOutlook(periods: NwsForecastPeriod[]): WeekendDayForecast[] {
+  if (!periods.length) return [];
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const byDayKey = new Map<
+    string,
+    { sortKey: number; day: Date; period: NwsForecastPeriod }
+  >();
+
+  for (const p of periods) {
+    if (!p.startTime) continue;
+    if (p.isDaytime === false) continue;
+    const d = new Date(p.startTime);
+    if (Number.isNaN(d.getTime())) continue;
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) continue;
+
+    const cal = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    if (cal.getTime() < startOfToday.getTime()) continue;
+
+    const key = `${cal.getFullYear()}-${cal.getMonth() + 1}-${cal.getDate()}`;
+    const sortKey = d.getTime();
+    const prev = byDayKey.get(key);
+    if (!prev || sortKey < prev.sortKey) {
+      byDayKey.set(key, { sortKey, day: cal, period: p });
+    }
+  }
+
+  const sortedDays = [...byDayKey.values()].sort((a, b) => a.day.getTime() - b.day.getTime());
+  return sortedDays.slice(0, 2).map(({ day, period }) => {
+    let tempF = Math.round(period.temperature);
+    if (period.temperatureUnit !== 'F') {
+      tempF = cToF(period.temperature);
+    }
+    const precipChance =
+      period.probabilityOfPrecipitation?.value != null &&
+      typeof period.probabilityOfPrecipitation.value === 'number'
+        ? period.probabilityOfPrecipitation.value
+        : null;
+    const dayLabel = day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    return { dayLabel, tempF, shortForecast: period.shortForecast, precipChance };
+  });
 }
 
 async function nwsFetchJson(url: string): Promise<NwsJson> {
@@ -87,16 +154,75 @@ export async function fetchUsWeatherForDeviceLocation(): Promise<
     return { status: 'permission_denied' };
   }
 
-  let pos: Location.LocationObject;
+  let pos: Location.LocationObject | null = null;
   try {
-    pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
+    pos = await Location.getLastKnownPositionAsync({
+      maxAge: 10 * 60 * 1000,
     });
   } catch {
-    return { status: 'unavailable', message: 'Could not read your location.' };
+    pos = null;
+  }
+  if (!pos) {
+    try {
+      pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Low,
+      });
+    } catch {
+      return { status: 'unavailable', message: 'Could not read your location.' };
+    }
   }
 
   return fetchUsWeatherAtCoordinates(pos.coords.latitude, pos.coords.longitude);
+}
+
+type LatestObs = {
+  tempF?: number;
+  summary?: string;
+  windLine: string | null;
+  updatedIso?: string;
+};
+
+async function fetchLatestObservationFromStations(stationsUrl: string | undefined): Promise<LatestObs | null> {
+  if (!stationsUrl) return null;
+  try {
+    const stationsData = (await nwsFetchJson(stationsUrl)) as {
+      features?: Array<{ id?: string }>;
+    };
+    const stationUrl = stationsData.features?.[0]?.id;
+    if (!stationUrl) return null;
+    const latest = (await nwsFetchJson(`${stationUrl}/observations/latest`)) as {
+      properties?: {
+        timestamp?: string;
+        textDescription?: string;
+        temperature?: { value?: number | null };
+        windSpeed?: { value?: number | null };
+        windDirection?: { value?: number | null };
+      };
+    };
+    const op = latest.properties;
+    if (!op) return null;
+    let tempF: number | undefined;
+    if (op.temperature?.value != null && typeof op.temperature.value === 'number') {
+      tempF = cToF(op.temperature.value);
+    }
+    const summary = op.textDescription?.trim() || undefined;
+    let windLine: string | null = null;
+    const wSpeed = op.windSpeed?.value;
+    const wDir = op.windDirection?.value;
+    if (wSpeed != null && typeof wSpeed === 'number') {
+      const mph = kmhToMph(wSpeed);
+      const dir = wDir != null && typeof wDir === 'number' ? `${wDir}° ` : '';
+      windLine = `${dir}${mph} mph`.trim();
+    }
+    return {
+      tempF,
+      summary,
+      windLine: windLine && windLine.length > 0 ? windLine : null,
+      updatedIso: op.timestamp,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function fetchUsWeatherAtCoordinates(
@@ -134,19 +260,18 @@ async function fetchUsWeatherAtCoordinates(
     return { status: 'unavailable', message: 'Forecast unavailable for this point.' };
   }
 
-  type Period = {
-    temperature: number;
-    temperatureUnit: string;
-    shortForecast: string;
+  type Period = NwsForecastPeriod & {
     windSpeed: string;
     windDirection: string;
-    isDaytime?: boolean;
-    probabilityOfPrecipitation?: { unitCode?: string; value?: number | null };
   };
 
   let forecastJson: { properties?: { periods?: Period[]; updateTime?: string } };
+  let obs: LatestObs | null = null;
   try {
-    forecastJson = (await nwsFetchJson(forecastUrl)) as typeof forecastJson;
+    ;[forecastJson, obs] = await Promise.all([
+      nwsFetchJson(forecastUrl) as Promise<{ properties?: { periods?: Period[]; updateTime?: string } }>,
+      fetchLatestObservationFromStations(stationsUrl),
+    ]);
   } catch {
     return { status: 'unavailable', message: 'Could not load forecast.' };
   }
@@ -171,44 +296,15 @@ async function fetchUsWeatherAtCoordinates(
   let windLine = `${p0.windDirection} ${p0.windSpeed}`.trim();
   let updatedIso = forecastJson.properties?.updateTime ?? '';
 
-  if (stationsUrl) {
-    try {
-      const stationsData = (await nwsFetchJson(stationsUrl)) as {
-        features?: Array<{ id?: string }>;
-      };
-      const stationUrl = stationsData.features?.[0]?.id;
-      if (stationUrl) {
-        const latest = (await nwsFetchJson(`${stationUrl}/observations/latest`)) as {
-          properties?: {
-            timestamp?: string;
-            textDescription?: string;
-            temperature?: { value?: number | null };
-            windSpeed?: { value?: number | null };
-            windDirection?: { value?: number | null };
-          };
-        };
-        const op = latest.properties;
-        if (op?.temperature?.value != null && typeof op.temperature.value === 'number') {
-          tempF = cToF(op.temperature.value);
-        }
-        if (op?.textDescription) {
-          summary = op.textDescription;
-        }
-        const wSpeed = op?.windSpeed?.value;
-        const wDir = op?.windDirection?.value;
-        if (wSpeed != null && typeof wSpeed === 'number') {
-          const mph = kmhToMph(wSpeed);
-          const dir = wDir != null && typeof wDir === 'number' ? `${wDir}° ` : '';
-          windLine = `${dir}${mph} mph`.trim();
-        }
-        if (op?.timestamp) {
-          updatedIso = op.timestamp;
-        }
-      }
-    } catch {
-      /* forecast-only is fine */
-    }
+  if (obs) {
+    if (obs.tempF != null) tempF = obs.tempF;
+    if (obs.summary) summary = obs.summary;
+    if (obs.windLine) windLine = obs.windLine;
+    if (obs.updatedIso) updatedIso = obs.updatedIso;
   }
+
+  const allPeriods = (forecastJson.properties?.periods ?? []) as NwsForecastPeriod[];
+  const weekendOutlook = extractWeekendOutlook(allPeriods);
 
   const ok: HomeWeatherState = {
     status: 'ok',
@@ -221,6 +317,7 @@ async function fetchUsWeatherAtCoordinates(
     forecastShort,
     precipChance,
     isDaytime,
+    weekendOutlook,
   };
   setCache(ok);
   return ok;

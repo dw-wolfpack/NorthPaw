@@ -3,6 +3,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs } from 'expo-router';
 
 import Colors from '@/constants/Colors';
+import { TAB_HOME_TITLE, TAB_LIBRARY_TITLE } from '@/constants/NavCopy';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 
@@ -31,14 +32,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          title: 'Home',
+          title: TAB_HOME_TITLE,
           tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
         }}
       />
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Library',
+          title: TAB_LIBRARY_TITLE,
           tabBarIcon: ({ color }) => <TabBarIcon name="book" color={color} />,
         }}
       />

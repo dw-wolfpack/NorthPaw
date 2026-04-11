@@ -37,7 +37,7 @@ export default function LibraryScreen() {
         <View style={styles.heroLabelRow}>
           <MaterialCommunityIcons name="paw" size={18} color="rgba(255,255,255,0.95)" />
           <Text style={styles.heroKicker} lightColor="rgba(255,255,255,0.92)" darkColor="rgba(255,255,255,0.92)">
-            Field manual · offline
+            Field guide · offline
           </Text>
         </View>
         <Text style={styles.heroTitle} lightColor="#fff" darkColor="#fff">

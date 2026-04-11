@@ -87,7 +87,9 @@ export default function OnboardingScreen() {
           keyboardDismissMode="on-drag">
           <Text style={[styles.h1, { color: palette.text }]}>Welcome to NorthPaw</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Add your dog so Home feels yours. Name and photo stay on this device—never uploaded to our servers.
+            Add your dog so the app feels yours. Your main tab becomes <Text style={{ fontWeight: '700' }}>Ready</Text>{' '}
+            (today’s conditions), and field cards live under <Text style={{ fontWeight: '700' }}>Field guide</Text>. Name and
+            photo stay on this device—never uploaded to our servers.
           </Text>
 
           <Text style={[styles.label, { color: palette.text }]}>Dog&apos;s name</Text>
