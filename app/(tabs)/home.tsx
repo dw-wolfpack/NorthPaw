@@ -1,12 +1,13 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  ImageBackground,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -18,17 +19,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useSubscription } from '@/context/SubscriptionContext';
-import {
-  canAccessPack,
-  getLibrary,
-} from '@/lib/content';
-import { gradientForPack, IMAGES } from '@/lib/contentVisuals';
+import { canAccessPack, getLibrary } from '@/lib/content';
+import { IMAGES } from '@/lib/contentVisuals';
 import { getDogProfile, type DogProfile } from '@/lib/profile';
+import { buildHomeTimeline, type TimelineTone } from '@/lib/weather/homeTimeline';
 import { fetchUsWeatherForDeviceLocation, type HomeWeatherState } from '@/lib/weather/nwsWeather';
+import { currentWeatherIconName } from '@/lib/weather/currentWeatherIcon';
+import {
+  WEATHER_CARD_SCRIM_COLORS,
+  weatherCardImageOverlayColors,
+  weatherCardStyle,
+} from '@/lib/weather/weatherCardBackground';
+import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundImages';
+import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
 
-type TabName = 'home' | 'index' | 'checklists' | 'scan';
+const FOREST = '#1B4332';
 
 type HomeReadiness = {
   signal: string;
@@ -79,19 +86,38 @@ function buildHomeReadiness(weather: Extract<HomeWeatherState, { status: 'ok' }>
   };
 }
 
+function headlineFromReadiness(r: HomeReadiness, weather: Extract<HomeWeatherState, { status: 'ok' }>): string {
+  const blob = `${weather.forecastShort}\n${weather.summary}`.toLowerCase();
+  const looksWet =
+    (weather.precipChance ?? 0) >= 38 || /rain|shower|storm|drizzle/i.test(blob);
+  if (looksWet) {
+    return 'Good conditions with rain later—plan around it.';
+  }
+  if (/rain|shower/i.test(blob)) {
+    return 'Mixed sky—watch timing for your walk.';
+  }
+  return 'Good conditions for a normal outing—stay aware as the day shifts.';
+}
+
+function toneColor(tone: TimelineTone, palette: (typeof Colors)['light']): string {
+  if (tone === 'good') return palette.tint;
+  if (tone === 'warn') return '#d4a017';
+  return palette.textSecondary;
+}
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
-  const navigation = useNavigation();
   const router = useRouter();
   const { isPro } = useSubscription();
   const lib = getLibrary();
-  const homeGrad = gradientForPack('trail-basics');
 
   const accessibleCards = lib.cards.filter((c) => canAccessPack(c.packId, isPro)).length;
   const [weather, setWeather] = useState<HomeWeatherState>({ status: 'loading' });
   const [weatherModalOpen, setWeatherModalOpen] = useState(false);
   const [dogProfile, setDogProfile] = useState<DogProfile | null>(null);
+
+  const bgMint = palette.readyMint ?? palette.background;
 
   const weatherSuggestions = useMemo(() => {
     if (weather.status !== 'ok') return [];
@@ -112,13 +138,6 @@ export default function HomeScreen() {
       setWeatherModalOpen(false);
     }
   }, [weather.status]);
-
-  const goToTab = useCallback(
-    (screen: TabName) => {
-      navigation.navigate(screen as never);
-    },
-    [navigation]
-  );
 
   useFocusEffect(
     useCallback(() => {
@@ -160,476 +179,605 @@ export default function HomeScreen() {
 
   const weatherOk = weather.status === 'ok' ? weather : null;
   const readiness = weatherOk ? buildHomeReadiness(weatherOk) : null;
+  const timeline = weatherOk && readiness ? buildHomeTimeline(weatherOk, readiness) : [];
+  const heroLine = weatherOk && readiness ? headlineFromReadiness(readiness, weatherOk) : '';
+
   const checklistSuggestion = weatherSuggestions.find((s) => s.kind === 'checklist');
   const checklistCtaId = checklistSuggestion?.id ?? 'pre-trail-60s';
-  const checklistCtaTitle = checklistSuggestion?.title ?? 'Pre-trail 60-second check';
-  const checklistCtaLabel = checklistSuggestion ? `Start ${checklistSuggestion.title}` : 'Start quick pre-trail check';
+
+  const suggestedStrip = useMemo(
+    () => [IMAGES.pack, IMAGES.card, IMAGES.pack, IMAGES.card],
+    []
+  );
+
+  const dogName = dogProfile?.dogName?.trim() || 'Your pup';
+  const placeLabel =
+    weatherOk?.place ?? (weather.status === 'permission_denied' ? 'Location off' : '—');
+
+  const weatherCardBgSource = useMemo(() => {
+    if (!weatherOk) return null;
+    return weatherCardBackgroundImage(weatherConditionKind(weatherOk));
+  }, [weatherOk]);
+
+  const weatherCardTint = useMemo(() => {
+    if (!weatherOk) return null;
+    return weatherCardStyle(weatherConditionKind(weatherOk), colorScheme);
+  }, [weatherOk, colorScheme]);
+
+  const weatherCardOverlay = useMemo(() => {
+    if (!weatherCardTint) return null;
+    return weatherCardImageOverlayColors(weatherCardTint.gradientColors, colorScheme);
+  }, [weatherCardTint, colorScheme]);
 
   return (
     <>
-    <ScrollView
-      style={{ flex: 1, backgroundColor: palette.background }}
-      contentContainerStyle={styles.container}>
-      <View style={styles.topQuickRow}>
-        {isPro ? (
-          <View style={[styles.topQuickChip, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-            <MaterialCommunityIcons name="shield-check" size={14} color={palette.text} style={styles.heroBadgeIcon} />
-            <Text style={styles.topQuickChipText} lightColor={palette.text} darkColor={palette.text}>
-              NorthPaw Pro
-            </Text>
-          </View>
-        ) : (
+      <ScrollView
+        style={{ flex: 1, backgroundColor: bgMint }}
+        contentContainerStyle={styles.container}>
+        {/* Header: name + Go Pro + Alerts */}
+        <View style={styles.headerRow}>
           <Pressable
-            onPress={() => router.push({ pathname: '/paywall', params: { returnTo: '/(tabs)/home' } })}
-            style={({ pressed }) => [
-              styles.topQuickChip,
-              { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.9 : 1 },
-            ]}
+            onPress={() => router.push('/dog-profile')}
+            style={({ pressed }) => [styles.headerProfile, { opacity: pressed ? 0.88 : 1 }]}
             accessibilityRole="button"
-            accessibilityLabel="Become official, unlock NorthPaw Pro">
-            <MaterialCommunityIcons name="shield-outline" size={14} color={palette.text} style={styles.heroBadgeIcon} />
-            <Text style={styles.topQuickChipText} lightColor={palette.text} darkColor={palette.text}>
-              Become official
-            </Text>
-          </Pressable>
-        )}
-        <Pressable
-          onPress={() => {
-            if (weather.status === 'ok') setWeatherModalOpen(true);
-          }}
-          style={({ pressed }) => [
-            styles.topQuickChip,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.surface,
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Current weather">
-          <FontAwesome name="cloud" size={13} color={palette.text} style={{ marginRight: 6 }} />
-          <Text style={styles.topQuickChipText} lightColor={palette.text} darkColor={palette.text} numberOfLines={1}>
-            {weather.status === 'ok' ? `Current ${weather.tempF}°` : 'Current weather'}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/reminders')}
-          style={({ pressed }) => [
-            styles.topQuickChip,
-            { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.9 : 1 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Set reminders">
-          <MaterialCommunityIcons
-            name="bell-ring-outline"
-            size={14}
-            color={palette.text}
-            style={styles.heroReminderBtnIcon}
-          />
-          <Text style={styles.topQuickChipText} lightColor={palette.text} darkColor={palette.text}>
-            Reminders
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.hero, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-        <Image source={IMAGES.homeHero} style={styles.heroImg} contentFit="cover" />
-        <LinearGradient
-          colors={[`${homeGrad[0]}cc`, homeGrad[1]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.heroInner}>
-          <View style={styles.heroWeatherTop}>
-            <View style={styles.heroTitleCol}>
-              <Text style={styles.heroWeatherLabel} lightColor="rgba(255,255,255,0.82)" darkColor="rgba(255,255,255,0.82)">
-                Local weather
+            accessibilityLabel="Dog profile">
+            <View style={styles.headerProfileText}>
+              <Text style={[styles.headerName, { color: palette.text }]} numberOfLines={1}>
+                {dogName}
               </Text>
-              <Text style={styles.heroPupName} lightColor="#fff" darkColor="#fff" numberOfLines={1}>
-                for {dogProfile?.dogName?.trim() || 'your pup'}
+              <Text style={[styles.headerPlace, { color: palette.textSecondary }]} numberOfLines={1}>
+                {placeLabel}
               </Text>
-              {weather.status === 'ok' ? (
-                <Text style={styles.heroSub} lightColor="rgba(255,255,255,0.88)" darkColor="rgba(255,255,255,0.88)">
-                  {weather.place}
-                </Text>
-              ) : null}
             </View>
+          </Pressable>
+          <View style={styles.headerRight}>
             <Pressable
-              onPress={() => router.push('/dog-profile')}
-              style={({ pressed }) => [{ opacity: pressed ? 0.88 : 1 }]}
+              onPress={() =>
+                isPro
+                  ? router.push('/(tabs)/settings')
+                  : router.push({ pathname: '/paywall', params: { returnTo: '/(tabs)/home' } })
+              }
+              style={({ pressed }) => [
+                styles.headerPill,
+                {
+                  borderColor: palette.border,
+                  backgroundColor: palette.surface,
+                  opacity: pressed ? 0.9 : 1,
+                },
+              ]}
               accessibilityRole="button"
-              accessibilityLabel="Dog profile and photo">
-              {dogProfile?.dogPhotoUri ? (
-                <Image
-                  source={{ uri: dogProfile.dogPhotoUri }}
-                  style={styles.heroDogAvatarSmall}
-                  contentFit="cover"
-                  cachePolicy="none"
-                  recyclingKey={dogProfile.dogPhotoUri}
-                />
-              ) : (
-                <View style={[styles.heroDogAvatarSmall, styles.heroDogAvatarPlaceholder]}>
-                  <MaterialCommunityIcons name="paw" size={24} color="rgba(255,255,255,0.95)" />
-                </View>
-              )}
+              accessibilityLabel={isPro ? 'Pro membership' : 'Upgrade to Pro'}>
+              <Text style={[styles.headerPillLabel, { color: palette.text }]}>
+                {isPro ? 'Pro' : 'Go Pro'}
+              </Text>
+              <View style={[styles.proBadge, { backgroundColor: isPro ? palette.tint : '#c9a227' }]}>
+                <Text style={styles.proBadgeText}>PRO</Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/reminders')}
+              style={({ pressed }) => [
+                styles.headerPill,
+                {
+                  borderColor: palette.border,
+                  backgroundColor: palette.surface,
+                  opacity: pressed ? 0.9 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Alerts">
+              <MaterialCommunityIcons name="bell-outline" size={17} color={palette.text} />
+              <Text style={[styles.headerPillLabel, { color: palette.text }]}>Alerts</Text>
             </Pressable>
           </View>
+        </View>
 
+        {/* Hero: dog photo */}
+        <View style={styles.heroBlock}>
           {weather.status === 'loading' ? (
-            <View style={styles.weatherRow}>
-              <ActivityIndicator size="small" color="#fff" />
-              <Text style={{ marginLeft: 10, color: 'rgba(255,255,255,0.9)' }}>
+            <View style={styles.heroLoading}>
+              <ActivityIndicator size="large" color={FOREST} />
+              <Text style={[styles.heroLoadingText, { color: palette.textSecondary }]}>
                 Getting local conditions…
               </Text>
             </View>
           ) : weather.status === 'permission_denied' ? (
-            <Text style={[styles.weatherSummaryCompact, { color: '#fff' }]}>
-              Allow location to show local conditions (US only).
+            <Text style={[styles.permissionText, { color: palette.text }]}>
+              Turn on location to see your timeline and weather (US).
             </Text>
           ) : weather.status === 'unavailable' ? (
-            <Text style={[styles.weatherSummaryCompact, { color: '#fff' }]}>{weather.message}</Text>
+            <Text style={[styles.permissionText, { color: palette.text }]}>{weather.message}</Text>
           ) : (
-            <Pressable
-              onPress={() => setWeatherModalOpen(true)}
-              style={({ pressed }) => [{ opacity: pressed ? 0.94 : 1 }]}>
-              <View style={styles.heroWeatherHead}>
-                <Text style={styles.heroWeatherSignal} lightColor="#fff" darkColor="#fff" numberOfLines={2}>
-                  {readiness?.signal ?? weather.summary}
-                </Text>
-                <Text style={styles.heroWeatherTemp} lightColor="#fff" darkColor="#fff">
-                  {weather.tempF}°F
-                </Text>
+            <>
+              <View style={styles.heroRow}>
+                <Pressable
+                  onPress={() => router.push('/dog-profile')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dog photo">
+                  {dogProfile?.dogPhotoUri ? (
+                    <Image
+                      source={{ uri: dogProfile.dogPhotoUri }}
+                      style={[styles.heroDogCircle, { borderColor: palette.border }]}
+                      contentFit="cover"
+                      cachePolicy="none"
+                      recyclingKey={dogProfile.dogPhotoUri}
+                    />
+                  ) : (
+                    <View style={[styles.heroDogCircle, styles.heroDogPh, { borderColor: palette.border }]}>
+                      <MaterialCommunityIcons name="camera-plus" size={40} color={palette.textSecondary} />
+                    </View>
+                  )}
+                </Pressable>
               </View>
-              <Text style={[styles.heroWeatherMeaning, { color: '#fff' }]} numberOfLines={3}>
-                {readiness?.meaning ?? weather.summary}
+              <Text style={[styles.readyTitle, { color: palette.text }]}>
+                {dogName} Ready for Today
               </Text>
-              <Text style={styles.heroWeatherHint} lightColor="rgba(255,255,255,0.85)" darkColor="rgba(255,255,255,0.85)">
-                Tap for full weather + weekend outlook
-              </Text>
-            </Pressable>
+              <Text style={[styles.readySub, { color: palette.textSecondary }]}>{heroLine}</Text>
+            </>
           )}
         </View>
-      </View>
 
-      {weatherOk ? (
-        <>
-          <View style={[styles.readinessCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-            <Text style={[styles.readinessLabel, { color: palette.textSecondary }]}>What changed</Text>
-            <Text style={[styles.readinessTitle, { color: palette.text }]}>{readiness?.signal}</Text>
-            <Text style={[styles.readinessBody, { color: palette.textSecondary }]}>
-              Local weather in your area for {dogProfile?.dogName?.trim() || 'your dog'}.
-            </Text>
-          </View>
-
-          <View style={[styles.readinessCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-            <Text style={[styles.readinessLabel, { color: palette.textSecondary }]}>What to change</Text>
-            <Text style={[styles.readinessTitle, { color: palette.text }]}>{readiness?.meaning}</Text>
-            <Text style={[styles.readinessBody, { color: palette.textSecondary }]}>
-              {accessibleCards} weather-linked field cards are available right now.
-            </Text>
-          </View>
-
+        {/* Weather summary row — photo + condition-colored overlay + light scrim (PNGs in assets/images/weather-cards/) */}
+        {weatherOk && weatherCardBgSource && weatherCardTint && weatherCardOverlay ? (
           <Pressable
-            onPress={() => openSuggestion('checklist', checklistCtaId)}
-            style={({ pressed }) => [
-              styles.readinessAction,
-              { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.92 : 1 },
-            ]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.readinessLabel, { color: palette.textSecondary }]}>Do this next</Text>
-              <Text style={[styles.readinessTitle, { color: palette.text }]}>{checklistCtaLabel}</Text>
-              <Text style={[styles.readinessBody, { color: palette.textSecondary }]} numberOfLines={2}>
-                {checklistCtaTitle}
-              </Text>
-            </View>
-            <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
-          </Pressable>
-
-          {readiness?.followThrough ? (
-            <View
-              style={[
-                styles.readinessCard,
-                styles.readinessFooterCard,
-                { borderColor: palette.border, backgroundColor: palette.surface },
-              ]}>
-              <Text style={[styles.readinessLabel, { color: palette.textSecondary }]}>Later / follow-through</Text>
-              <Text style={[styles.readinessFooterTitle, { color: palette.text }]}>{readiness.followThrough}</Text>
-            </View>
-          ) : null}
-        </>
-      ) : (
-        <View style={[styles.readinessCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-          <Text style={[styles.readinessTitle, { color: palette.text }]}>Enable local weather to unlock readiness guidance</Text>
-          <Text style={[styles.readinessBody, { color: palette.textSecondary }]}>
-            NorthPaw surfaces a conditions signal, what it means for your outing, and one next action.
-          </Text>
-        </View>
-      )}
-    </ScrollView>
-
-    <Modal
-      visible={weatherModalOpen && weather.status === 'ok'}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => setWeatherModalOpen(false)}>
-      <SafeAreaView
-        style={[styles.modalRoot, { backgroundColor: palette.background }]}
-        edges={['top', 'left', 'right', 'bottom']}>
-        <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
-          <Text style={[styles.modalTitle, { color: palette.text }]}>Weather & suggestions</Text>
-          <Pressable
-            onPress={() => setWeatherModalOpen(false)}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Close">
-            <FontAwesome name="close" size={22} color={palette.textSecondary} />
-          </Pressable>
-        </View>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.modalScroll}
-          keyboardShouldPersistTaps="handled">
-          {weatherOk ? (
-          <View style={[styles.modalWeatherBlock, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-            <View style={styles.weatherHeader}>
-              <FontAwesome name="cloud" size={22} color={palette.tint} style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.weatherTitle, { color: palette.text, marginBottom: 0 }]}>Local weather</Text>
-                <Text style={{ color: palette.textSecondary, fontSize: 13, marginTop: 2 }}>{weatherOk.place}</Text>
-              </View>
-            </View>
-            <Text style={[styles.weatherSectionLabel, { color: palette.textSecondary, marginTop: 6 }]}>Now</Text>
-            <View style={styles.weatherNowRow}>
-              <Text style={[styles.weatherTemp, { color: palette.text }]}>{weatherOk.tempF}°</Text>
-              <Text style={[styles.weatherSummary, { color: palette.text, flex: 1, marginTop: 0 }]}>{weatherOk.summary}</Text>
-            </View>
-            {weatherOk.windLine ? (
-              <Text style={[styles.weatherMeta, { color: palette.textSecondary }]}>Wind {weatherOk.windLine}</Text>
-            ) : null}
-            {weatherOk.updatedLabel ? (
-              <Text style={[styles.weatherMeta, { color: palette.textSecondary, marginTop: 4 }]}>
-                Updated {weatherOk.updatedLabel}
-              </Text>
-            ) : null}
-            <View style={[styles.weatherDivider, { backgroundColor: palette.border, marginTop: 14 }]} />
-            <Text style={[styles.weatherSectionLabel, { color: palette.textSecondary, marginTop: 12 }]}>
-              Weekend outlook
-            </Text>
-            {weatherOk.weekendOutlook.length > 0 ? (
-              weatherOk.weekendOutlook.map((w) => (
-                <View key={`modal-${w.dayLabel}`} style={styles.weatherOutlookBlock}>
-                  <View style={styles.weatherOutlookHead}>
-                    <Text style={[styles.weatherWeekendDay, { color: palette.text }]}>{w.dayLabel}</Text>
-                    <Text style={[styles.weatherWeekendTemp, { color: palette.text }]}>{w.tempF}°</Text>
-                  </View>
-                  <Text style={[styles.weatherWeekendForecast, { color: palette.textSecondary }]} numberOfLines={3}>
-                    {w.shortForecast}
-                    {w.precipChance != null ? ` · ${w.precipChance}% precip` : ''}
+            onPress={() => setWeatherModalOpen(true)}
+            style={({ pressed }) => [styles.weatherCardOuter, { opacity: pressed ? 0.92 : 1 }]}>
+            <ImageBackground
+              source={weatherCardBgSource}
+              style={styles.weatherRowImageBg}
+              imageStyle={styles.weatherRowImageRadius}
+              resizeMode="cover">
+              <LinearGradient
+                colors={weatherCardOverlay}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <LinearGradient
+                colors={WEATHER_CARD_SCRIM_COLORS}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.85, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.weatherRowInner}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={[
+                      styles.weatherTempBig,
+                      styles.weatherCardTextShadow,
+                      { color: weatherCardTint.tempColor },
+                    ]}>
+                    {weatherOk.tempF}°
+                  </Text>
+                  <Text
+                    style={[
+                      styles.weatherLine,
+                      styles.weatherCardTextShadow,
+                      { color: weatherCardTint.summaryColor },
+                    ]}
+                    numberOfLines={2}>
+                    {weatherOk.summary}
                   </Text>
                 </View>
+                <FontAwesome name="chevron-right" size={16} color={weatherCardTint.chevronColor} />
+              </View>
+            </ImageBackground>
+          </Pressable>
+        ) : null}
+
+        {/* Timeline */}
+        {timeline.length > 0 ? (
+          <View style={styles.section}>
+            <View style={[styles.timelineHairline, { backgroundColor: palette.border }]} />
+            <Text style={[styles.sectionKicker, { color: palette.textSecondary }]}>Timeline</Text>
+            {timeline.map((item, i) => (
+              <View key={i} style={styles.timelineRow}>
+                <View style={styles.timelineRail}>
+                  <View style={[styles.timelineDot, { backgroundColor: toneColor(item.tone, palette) }]} />
+                  {i < timeline.length - 1 ? (
+                    <View style={[styles.timelineConnector, { backgroundColor: palette.border }]} />
+                  ) : null}
+                </View>
+                <View style={styles.timelineBody}>
+                  <Text style={[styles.timelineRange, { color: palette.textSecondary }]}>
+                    {item.rangeLabel}
+                  </Text>
+                  <Text style={[styles.timelineTitle, { color: palette.textSecondary }]}>{item.title}</Text>
+                  <Text style={[styles.timelineDetail, { color: palette.tint }]}>
+                    {item.detail}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            <View style={[styles.timelineHairline, { backgroundColor: palette.border, marginTop: 4 }]} />
+          </View>
+        ) : null}
+
+        {/* Suggested strip + CTA */}
+        {weatherOk ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionKicker, { color: palette.textSecondary }]}>Suggested</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.stripScroll}
+              style={{ marginBottom: 14 }}>
+              {suggestedStrip.map((src, idx) => (
+                <Image
+                  key={idx}
+                  source={src}
+                  style={[styles.stripThumb, { borderColor: palette.border }]}
+                  contentFit="cover"
+                />
+              ))}
+            </ScrollView>
+            <Pressable
+              onPress={() => openSuggestion('checklist', checklistCtaId)}
+              style={({ pressed }) => [
+                styles.primaryCta,
+                { backgroundColor: FOREST, opacity: pressed ? 0.92 : 1 },
+              ]}>
+              <Text style={styles.primaryCtaText}>Start pre-walk checklist</Text>
+            </Pressable>
+            <Text style={[styles.stripHint, { color: palette.textSecondary }]}>
+              {accessibleCards} field cards available · tailored to today’s conditions
+            </Text>
+          </View>
+        ) : null}
+
+        {weather.status === 'permission_denied' ? (
+          <Pressable onPress={() => Linking.openSettings()} style={styles.secondaryLink}>
+            <Text style={{ color: palette.tint, fontWeight: '700' }}>Open Settings</Text>
+          </Pressable>
+        ) : null}
+
+        {readiness?.followThrough && weatherOk ? (
+          <View style={[styles.footerCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+            <Text style={[styles.sectionKicker, { color: palette.textSecondary, marginBottom: 6 }]}>
+              Later / follow-through
+            </Text>
+            <Text style={{ color: palette.text, fontWeight: '600', fontSize: 14, lineHeight: 20 }}>
+              {readiness.followThrough}
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <Modal
+        visible={weatherModalOpen && weather.status === 'ok'}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setWeatherModalOpen(false)}>
+        <SafeAreaView
+          style={[styles.modalRoot, { backgroundColor: palette.background }]}
+          edges={['top', 'left', 'right', 'bottom']}>
+          <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>Weather & suggestions</Text>
+            <Pressable
+              onPress={() => setWeatherModalOpen(false)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Close">
+              <FontAwesome name="close" size={22} color={palette.textSecondary} />
+            </Pressable>
+          </View>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.modalScroll}
+            keyboardShouldPersistTaps="handled">
+            {weatherOk && weatherCardBgSource && weatherCardTint && weatherCardOverlay ? (
+              <View style={[styles.modalWeatherOuter, { borderColor: palette.border }]}>
+                <ImageBackground
+                  source={weatherCardBgSource}
+                  style={styles.modalWeatherHeroBg}
+                  resizeMode="cover">
+                  <LinearGradient
+                    colors={weatherCardOverlay}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <LinearGradient
+                    colors={WEATHER_CARD_SCRIM_COLORS}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0.85, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <View style={styles.modalWeatherHeroInner}>
+                    <View style={styles.weatherHeader}>
+                      <MaterialCommunityIcons
+                        name={currentWeatherIconName(weatherOk)}
+                        size={26}
+                        color={weatherCardTint.chevronColor}
+                        style={{ marginRight: 10 }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.weatherTitle,
+                            styles.weatherCardTextShadow,
+                            { color: weatherCardTint.tempColor, marginBottom: 0 },
+                          ]}>
+                          Local weather
+                        </Text>
+                        <Text style={{ color: weatherCardTint.summaryColor, fontSize: 13, marginTop: 2 }}>
+                          {weatherOk.place}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text
+                      style={[
+                        styles.weatherSectionLabel,
+                        { color: weatherCardTint.summaryColor, marginTop: 10, marginBottom: 6 },
+                      ]}>
+                      Now
+                    </Text>
+                    <View style={styles.weatherNowRow}>
+                      <Text
+                        style={[
+                          styles.weatherTemp,
+                          styles.weatherCardTextShadow,
+                          { color: weatherCardTint.tempColor },
+                        ]}>
+                        {weatherOk.tempF}°
+                      </Text>
+                      <Text
+                        style={[
+                          styles.weatherSummary,
+                          styles.weatherCardTextShadow,
+                          {
+                            color: weatherCardTint.summaryColor,
+                            flex: 1,
+                            marginTop: 0,
+                          },
+                        ]}>
+                        {weatherOk.summary}
+                      </Text>
+                    </View>
+                    {weatherOk.windLine ? (
+                      <Text style={[styles.weatherMeta, { color: weatherCardTint.summaryColor, marginTop: 6 }]}>
+                        Wind {weatherOk.windLine}
+                      </Text>
+                    ) : null}
+                    {weatherOk.updatedLabel ? (
+                      <Text style={[styles.weatherMeta, { color: weatherCardTint.summaryColor, marginTop: 4 }]}>
+                        Updated {weatherOk.updatedLabel}
+                      </Text>
+                    ) : null}
+                  </View>
+                </ImageBackground>
+                <View
+                  style={[
+                    styles.modalWeatherFooter,
+                    {
+                      backgroundColor: palette.surface,
+                      borderTopColor: palette.border,
+                    },
+                  ]}>
+                  <View style={[styles.timelineHairline, { backgroundColor: palette.border }]} />
+                  <Text style={[styles.weatherSectionLabel, { color: palette.textSecondary, marginTop: 0 }]}>
+                    Weekend outlook
+                  </Text>
+                  {weatherOk.weekendOutlook.length > 0 ? (
+                    weatherOk.weekendOutlook.map((w, i) => {
+                      const n = weatherOk.weekendOutlook.length;
+                      const showBridge = i < n - 1;
+                      const showTail = i === n - 1 && n > 1;
+                      return (
+                      <View key={`modal-${w.dayLabel}`} style={styles.modalWeekendRow}>
+                        <View style={styles.modalWeekendRail}>
+                          <View style={[styles.timelineDot, { backgroundColor: palette.tint }]} />
+                          {showBridge || showTail ? (
+                            <View style={[styles.modalWeekendConnector, { backgroundColor: palette.border }]} />
+                          ) : null}
+                        </View>
+                        <View style={styles.timelineBody}>
+                          <Text style={[styles.timelineRange, { color: palette.textSecondary }]}>{w.dayLabel}</Text>
+                          <Text
+                            style={[
+                              styles.timelineTitle,
+                              { color: palette.textSecondary, fontSize: 20, letterSpacing: -0.3 },
+                            ]}>
+                            {w.tempF}°
+                          </Text>
+                          <Text style={[styles.timelineDetail, { color: palette.tint }]} numberOfLines={4}>
+                            {w.shortForecast}
+                            {w.precipChance != null ? ` · ${w.precipChance}% precip` : ''}
+                          </Text>
+                        </View>
+                      </View>
+                      );
+                    })
+                  ) : (
+                    <Text style={{ color: palette.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 4 }}>
+                      No Sat/Sun daytime periods in the current forecast window.
+                    </Text>
+                  )}
+                  <View style={[styles.timelineHairline, { backgroundColor: palette.border, marginTop: 4 }]} />
+                  <Text style={[styles.weatherAttribution, { color: palette.textSecondary }]}>{weatherOk.sourceNote}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            <Text style={[styles.suggestHeading, { color: palette.text, marginTop: 8, marginBottom: 4 }]}>
+              Suggested for these conditions
+            </Text>
+            <Text style={[styles.suggestSub, { color: palette.textSecondary, marginBottom: 12 }]}>
+              From temperature, precipitation chance, time of day, and forecast wording.
+            </Text>
+            {weatherSuggestions.length > 0 ? (
+              weatherSuggestions.map((s) => (
+                <Pressable
+                  key={`modal-${s.kind}-${s.id}`}
+                  onPress={() => openSuggestion(s.kind, s.id)}
+                  style={({ pressed }) => [
+                    styles.suggestRow,
+                    {
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                      opacity: pressed ? 0.92 : 1,
+                    },
+                  ]}>
+                  <FontAwesome
+                    name={s.kind === 'card' ? 'file-text-o' : 'list-ul'}
+                    size={18}
+                    color={palette.tint}
+                    style={styles.suggestIcon}
+                  />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: palette.text, fontWeight: '700', fontSize: 15 }} numberOfLines={3}>
+                      {s.title}
+                    </Text>
+                    <Text style={{ color: palette.textSecondary, fontSize: 12, lineHeight: 16, marginTop: 3 }}>
+                      {s.reason}
+                    </Text>
+                    <Text style={{ color: palette.textSecondary, fontSize: 11, marginTop: 4, opacity: 0.85 }}>
+                      {s.kind === 'card' ? 'Field card' : 'Checklist'}
+                    </Text>
+                  </View>
+                  <FontAwesome name="chevron-right" size={12} color={palette.textSecondary} style={{ marginLeft: 6 }} />
+                </Pressable>
               ))
             ) : (
-              <Text style={{ color: palette.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 4 }}>
-                No Sat/Sun daytime periods in the current forecast window.
+              <Text style={{ color: palette.textSecondary, fontSize: 14, lineHeight: 20 }}>
+                No picks yet — open the Field guide for full packs.
               </Text>
             )}
-            <Text style={[styles.weatherAttribution, { color: palette.textSecondary }]}>{weatherOk.sourceNote}</Text>
-          </View>
-          ) : null}
-
-          <Text style={[styles.suggestHeading, { color: palette.text, marginTop: 8, marginBottom: 4 }]}>
-            Suggested for these conditions
-          </Text>
-          <Text style={[styles.suggestSub, { color: palette.textSecondary, marginBottom: 12 }]}>
-            From temperature, precipitation chance, time of day, and forecast wording.
-          </Text>
-          {weatherSuggestions.length > 0 ? (
-            weatherSuggestions.map((s) => (
-              <Pressable
-                key={`modal-${s.kind}-${s.id}`}
-                onPress={() => openSuggestion(s.kind, s.id)}
-                style={({ pressed }) => [
-                  styles.suggestRow,
-                  {
-                    borderColor: palette.border,
-                    backgroundColor: palette.surface,
-                    opacity: pressed ? 0.92 : 1,
-                  },
-                ]}>
-                <FontAwesome
-                  name={s.kind === 'card' ? 'file-text-o' : 'list-ul'}
-                  size={18}
-                  color={palette.tint}
-                  style={styles.suggestIcon}
-                />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: palette.text, fontWeight: '700', fontSize: 15 }} numberOfLines={3}>
-                    {s.title}
-                  </Text>
-                  <Text style={{ color: palette.textSecondary, fontSize: 12, lineHeight: 16, marginTop: 3 }}>
-                    {s.reason}
-                  </Text>
-                  <Text style={{ color: palette.textSecondary, fontSize: 11, marginTop: 4, opacity: 0.85 }}>
-                    {s.kind === 'card' ? 'Field card' : 'Checklist'}
-                  </Text>
-                </View>
-                <FontAwesome name="chevron-right" size={12} color={palette.textSecondary} style={{ marginLeft: 6 }} />
-              </Pressable>
-            ))
-          ) : (
-            <Text style={{ color: palette.textSecondary, fontSize: 14, lineHeight: 20 }}>
-              No picks yet — open the Library for full packs.
-            </Text>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, paddingBottom: 40 },
-  topQuickRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 10,
-  },
-  topQuickChip: {
+  container: { padding: 20, paddingBottom: 48 },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    flexShrink: 1,
-  },
-  topQuickChipText: { fontSize: 12, fontWeight: '700' },
-  hero: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    minHeight: 208,
+    justifyContent: 'space-between',
     marginBottom: 20,
   },
-  heroImg: { ...StyleSheet.absoluteFillObject },
-  heroInner: { padding: 18, minHeight: 208, justifyContent: 'space-between' },
-  heroWeatherTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  heroDogAvatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.55)',
+  headerProfile: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, gap: 12 },
+  headerProfileText: { flex: 1, minWidth: 0 },
+  headerName: { fontSize: 17, fontWeight: '800' },
+  headerPlace: { fontSize: 13, marginTop: 2 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
   },
-  heroDogAvatarSmall: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.55)',
+  headerPillLabel: { fontSize: 13, fontWeight: '700' },
+  proBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  heroDogAvatarPlaceholder: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
+  proBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  heroBlock: { alignItems: 'center', marginBottom: 20 },
+  heroLoading: { alignItems: 'center', paddingVertical: 24 },
+  heroLoadingText: { marginTop: 12, fontSize: 14 },
+  permissionText: { textAlign: 'center', fontSize: 15, lineHeight: 22, paddingHorizontal: 8 },
+  heroRow: {
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
+    width: '100%',
   },
-  heroWeatherLabel: {
+  heroDogCircle: {
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    borderWidth: 3,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(45,106,79,0.08)',
+  },
+  heroDogPh: { alignItems: 'center', justifyContent: 'center' },
+  readyTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  readySub: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 8, paddingHorizontal: 8 },
+  weatherCardOuter: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 22,
+  },
+  weatherRowImageBg: {
+    width: '100%',
+    minHeight: 112,
+    justifyContent: 'center',
+  },
+  weatherRowImageRadius: {
+    borderRadius: 16,
+  },
+  weatherRowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  /** Subtle edge for temp/summary on busy photos; works with both light and dark `weatherCardTint` colors */
+  weatherCardTextShadow: {
+    textShadowColor: 'rgba(0,0,0,0.22)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  weatherTempBig: { fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
+  weatherLine: { fontSize: 14, lineHeight: 20, marginTop: 4 },
+  section: { marginBottom: 8 },
+  sectionKicker: {
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
     textTransform: 'uppercase' as const,
+    marginBottom: 12,
   },
-  heroWeatherHead: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 2,
+  timelineHairline: { height: StyleSheet.hairlineWidth, width: '100%', marginBottom: 12 },
+  timelineRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  timelineRail: { width: 18, alignItems: 'center' },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, zIndex: 1 },
+  timelineConnector: {
+    width: 2,
+    height: 52,
+    marginTop: 3,
+    borderRadius: 1,
+    opacity: 0.55,
   },
-  heroWeatherSignal: { fontSize: 24, fontWeight: '800', letterSpacing: -0.4, lineHeight: 30, flex: 1 },
-  heroWeatherTemp: { fontSize: 26, fontWeight: '800', lineHeight: 30 },
-  heroWeatherMeaning: { fontSize: 15, lineHeight: 21, marginTop: 8, fontWeight: '600' },
-  heroWeatherHint: { fontSize: 12, lineHeight: 16, marginTop: 10, fontWeight: '700' },
-  heroTitleCol: { flex: 1, minWidth: 0 },
-  heroPupName: { fontSize: 28, fontWeight: '800', letterSpacing: -0.6, lineHeight: 34 },
-  heroNurtureLine: { fontSize: 14, lineHeight: 20, marginTop: 6, fontWeight: '600' },
-  heroBadgeRow: {
-    flexDirection: 'row',
+  /** Modal weekend outlook: stretch rail so connector reaches the next dot; tail line under last dot */
+  modalWeekendRow: { flexDirection: 'row', gap: 12, alignItems: 'stretch' },
+  modalWeekendRail: {
+    width: 18,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'nowrap',
-    marginTop: 12,
-    alignSelf: 'stretch',
-    maxWidth: '100%',
   },
-  heroBadgeOutline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 1,
-    minWidth: 0,
-    paddingVertical: 5,
-    paddingLeft: 6,
-    paddingRight: 8,
-    borderRadius: 9,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.78)',
+  modalWeekendConnector: {
+    width: 2,
+    flexGrow: 1,
+    minHeight: 20,
+    marginTop: 3,
+    borderRadius: 1,
+    opacity: 0.55,
   },
-  heroReminderBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 0,
-    paddingVertical: 5,
-    paddingLeft: 7,
-    paddingRight: 8,
-    borderRadius: 9,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.78)',
-  },
-  heroReminderBtnIcon: { marginRight: 3 },
-  heroReminderBtnText: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  heroBadgeIcon: { marginRight: 2 },
-  heroBadgeKicker: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase' as const,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  heroBadgeDivider: {
-    width: 1,
-    height: 11,
-    marginHorizontal: 5,
-    flexShrink: 0,
-    backgroundColor: 'rgba(255,255,255,0.55)',
-  },
-  heroBadgeTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.1,
-    flexShrink: 0,
-  },
-  heroSub: { fontSize: 13, lineHeight: 18, marginTop: 8 },
-  weatherCard: {
-    borderWidth: 1,
+  timelineBody: { flex: 1, paddingBottom: 12 },
+  timelineRange: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
+  timelineTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  timelineDetail: { fontSize: 13, lineHeight: 19 },
+  stripScroll: { gap: 10, paddingRight: 8 },
+  stripThumb: { width: 88, height: 88, borderRadius: 14, borderWidth: 1 },
+  primaryCta: {
     borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  weatherRow: { flexDirection: 'row', alignItems: 'center' },
+  primaryCtaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  stripHint: { fontSize: 12, lineHeight: 17, marginTop: 10, textAlign: 'center' },
+  secondaryLink: { alignSelf: 'center', marginTop: 8, paddingVertical: 8 },
+  footerCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginTop: 8 },
   weatherHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   weatherTitle: { fontSize: 16, fontWeight: '800', marginBottom: 6 },
-  weatherBody: { fontSize: 14, lineHeight: 20, marginBottom: 12 },
-  weatherButton: { alignSelf: 'flex-start', paddingVertical: 8 },
   weatherSectionLabel: {
     fontSize: 11,
     fontWeight: '800',
@@ -639,28 +787,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   weatherNowRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  weatherDivider: { height: StyleSheet.hairlineWidth, marginTop: 14 },
-  weatherOutlookBlock: { marginBottom: 14 },
-  weatherOutlookHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-    gap: 8,
-  },
-  weatherWeekendDay: { fontSize: 14, fontWeight: '800', flex: 1 },
-  weatherWeekendTemp: { fontSize: 20, fontWeight: '800' },
-  weatherWeekendForecast: { fontSize: 13, lineHeight: 18 },
   weatherTemp: { fontSize: 28, fontWeight: '800' },
   weatherSummary: { fontSize: 15, lineHeight: 22, marginTop: 10, fontWeight: '600' },
-  weatherSummaryCompact: { fontSize: 15, lineHeight: 21, marginTop: 8, fontWeight: '600' },
-  weatherTapHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    gap: 8,
-  },
   weatherMeta: { fontSize: 13, lineHeight: 18, marginTop: 4 },
   weatherAttribution: { fontSize: 11, lineHeight: 15, marginTop: 12 },
   modalRoot: { flex: 1 },
@@ -674,11 +802,23 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 17, fontWeight: '800' },
   modalScroll: { padding: 16, paddingBottom: 32 },
-  modalWeatherBlock: {
+  modalWeatherOuter: {
     borderWidth: 1,
     borderRadius: 14,
-    padding: 16,
+    overflow: 'hidden',
     marginBottom: 8,
+  },
+  modalWeatherHeroBg: {
+    width: '100%',
+    minHeight: 172,
+  },
+  modalWeatherHeroInner: {
+    padding: 16,
+  },
+  modalWeatherFooter: {
+    padding: 16,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   suggestHeading: { fontSize: 14, fontWeight: '800', marginBottom: 4 },
   suggestSub: { fontSize: 12, lineHeight: 16, marginBottom: 10 },
@@ -692,30 +832,4 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   suggestIcon: { marginRight: 12, width: 22 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
-  readinessCard: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-  },
-  readinessAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    gap: 8,
-  },
-  readinessLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase' as const,
-  },
-  readinessTitle: { fontSize: 16, fontWeight: '800', lineHeight: 22, marginTop: 6 },
-  readinessBody: { fontSize: 13, lineHeight: 18, marginTop: 8 },
-  readinessFooterCard: { paddingVertical: 12 },
-  readinessFooterTitle: { fontSize: 14, fontWeight: '700', lineHeight: 20, marginTop: 6 },
 });

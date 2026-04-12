@@ -1,5 +1,14 @@
 import * as Location from 'expo-location';
 
+import {
+  buildSyntheticTimelineSlots,
+  buildTimelineSlotsFromHourly,
+  parseNwsHourlyPeriods,
+} from './timelineSlots';
+import type { TimelineSlot } from './timelineSlots';
+
+export type { TimelineSlot } from './timelineSlots';
+
 const NWS_ORIGIN = 'https://api.weather.gov';
 /** Required by NWS (identify the client). https://www.weather.gov/documentation/services-web-api */
 const USER_AGENT = 'NorthPaw/1.0 (com.northpaw.app)';
@@ -33,6 +42,13 @@ export type HomeWeatherState =
       isDaytime: boolean;
       /** Up to two upcoming Sat/Sun daytime snapshots from the same forecast. */
       weekendOutlook: WeekendDayForecast[];
+      /**
+       * Three consecutive non-overlapping windows for the Home timeline.
+       * Prefer **hourly** data grouped into ~3–4h blocks; otherwise synthetic 3h steps from now.
+       */
+      timelineSlots: TimelineSlot[];
+      /** True when `forecastHourly` was fetched and parsed successfully. */
+      hourlyForecastAvailable: boolean;
     };
 
 type NwsJson = Record<string, unknown>;
@@ -60,6 +76,8 @@ function formatUpdated(iso: string): string {
 type NwsForecastPeriod = {
   name?: string;
   startTime?: string;
+  /** ISO end time — used for timeline range labels. */
+  endTime?: string;
   temperature: number;
   temperatureUnit: string;
   shortForecast: string;
@@ -250,6 +268,7 @@ async function fetchUsWeatherAtCoordinates(
   }
 
   const forecastUrl = props.forecast as string | undefined;
+  const forecastHourlyUrl = props.forecastHourly as string | undefined;
   const stationsUrl = props.observationStations as string | undefined;
   const rel = props.relativeLocation as { properties?: { city?: string; state?: string } } | undefined;
   const city = rel?.properties?.city;
@@ -267,11 +286,27 @@ async function fetchUsWeatherAtCoordinates(
 
   let forecastJson: { properties?: { periods?: Period[]; updateTime?: string } };
   let obs: LatestObs | null = null;
+  let hourlyForecastAvailable = false;
+  let timelineSlotsResolved: TimelineSlot[] = buildSyntheticTimelineSlots();
   try {
-    ;[forecastJson, obs] = await Promise.all([
+    const [fj, obsResult, hourlyPack] = await Promise.all([
       nwsFetchJson(forecastUrl) as Promise<{ properties?: { periods?: Period[]; updateTime?: string } }>,
       fetchLatestObservationFromStations(stationsUrl),
+      forecastHourlyUrl
+        ? nwsFetchJson(forecastHourlyUrl).then(
+            (data) => ({ ok: true as const, data }),
+            () => ({ ok: false as const, data: null as unknown })
+          )
+        : Promise.resolve({ ok: false as const, data: null as unknown }),
     ]);
+    forecastJson = fj;
+    obs = obsResult;
+    const hourlyPeriods = hourlyPack.ok ? parseNwsHourlyPeriods(hourlyPack.data) : [];
+    hourlyForecastAvailable = hourlyPack.ok && hourlyPeriods.length > 0;
+    timelineSlotsResolved =
+      hourlyPeriods.length >= 3
+        ? buildTimelineSlotsFromHourly(hourlyPeriods)
+        : buildSyntheticTimelineSlots();
   } catch {
     return { status: 'unavailable', message: 'Could not load forecast.' };
   }
@@ -318,6 +353,8 @@ async function fetchUsWeatherAtCoordinates(
     precipChance,
     isDaytime,
     weekendOutlook,
+    timelineSlots: timelineSlotsResolved,
+    hourlyForecastAvailable,
   };
   setCache(ok);
   return ok;

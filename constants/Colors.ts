@@ -12,6 +12,8 @@ export default {
     text: ink,
     textSecondary: '#3d5349',
     background: cream,
+    /** Softer mint for Ready tab hero (Figma-style landing). */
+    readyMint: '#EEF7F3',
     surface: '#ffffff',
     border: '#d8e2dc',
     tint: tintColorLight,
@@ -24,6 +26,7 @@ export default {
     text: cream,
     textSecondary: '#b7c4bc',
     background: ink,
+    readyMint: '#0f1f18',
     surface: '#13261c',
     border: '#2a3d32',
     tint: tintColorDark,
