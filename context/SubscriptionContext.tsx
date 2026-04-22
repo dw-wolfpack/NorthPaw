@@ -13,6 +13,8 @@ import { isExpoGo as getIsExpoGo } from '@/lib/expoMode';
 type SubscriptionContextValue = {
   /** True when RevenueCat reports active `pro` entitlement (or dev unlock). */
   isPro: boolean;
+  /** Array of string IDs for all currently active item entitlements */
+  activeEntitlements: string[];
   loading: boolean;
   configured: boolean;
   /** True when running in Expo Go, real IAP is unavailable. */
@@ -34,6 +36,7 @@ const devUnlock =
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const [isProInternal, setIsProInternal] = useState(false);
+  const [activeEntitlements, setActiveEntitlements] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +47,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const applyCustomerInfo = useCallback((info: CustomerInfo) => {
     const active = info.entitlements.active[ENTITLEMENT_PRO] != null;
     setIsProInternal(active);
+    setActiveEntitlements(Object.keys(info.entitlements.active));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -70,6 +74,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       setConfigured(false);
       setLoading(false);
       setIsProInternal(false);
+      setActiveEntitlements([]);
       setCurrentOffering(null);
       setError(null);
       return;
@@ -85,6 +90,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       setConfigured(false);
       setLoading(false);
       setIsProInternal(false);
+      setActiveEntitlements([]);
       return;
     }
 
@@ -152,6 +158,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const value = useMemo(
     () => ({
       isPro,
+      activeEntitlements,
       loading,
       configured,
       expoGo,
@@ -163,6 +170,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     }),
     [
       isPro,
+      activeEntitlements,
       loading,
       configured,
       expoGo,

@@ -30,6 +30,8 @@ export type HomeWeatherState =
   | { status: 'unavailable'; message: string }
   | {
       status: 'ok';
+      latitude: number;
+      longitude: number;
       place: string;
       tempF: number;
       summary: string;
@@ -49,6 +51,18 @@ export type HomeWeatherState =
       timelineSlots: TimelineSlot[];
       /** True when `forecastHourly` was fetched and parsed successfully. */
       hourlyForecastAvailable: boolean;
+      /** Hourly condition points used by timeline bars on Home. */
+      hourlySamples: Array<{
+        timeIso: string;
+        airTempF: number;
+        windSpeedMph: number;
+        isDaytime: boolean;
+        skyCover: number | null;
+      }>;
+      /** Zero-cost approximate sunset tracking */
+      sunsetTimeIso: string | null;
+      mockAqi: number;
+      mockRecentRain: boolean;
     };
 
 type NwsJson = Record<string, unknown>;
@@ -71,6 +85,73 @@ function formatUpdated(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function parseWindSpeedMph(windSpeed: string | undefined): number {
+  if (!windSpeed) return 0;
+  const matches = windSpeed.match(/-?\d+(\.\d+)?/g);
+  if (!matches || matches.length === 0) return 0;
+  const nums = matches.map((s) => Number(s)).filter((n) => Number.isFinite(n));
+  if (!nums.length) return 0;
+  return Math.max(...nums);
+}
+
+function parseDurationHours(validTime: string): number {
+  const slashIdx = validTime.indexOf('/');
+  if (slashIdx < 0) return 1;
+  const duration = validTime.slice(slashIdx + 1);
+  const m = duration.match(/^PT(?:(\d+)H)?(?:(\d+)M)?$/);
+  if (!m) return 1;
+  const h = m[1] ? Number(m[1]) : 0;
+  const mins = m[2] ? Number(m[2]) : 0;
+  const total = h + mins / 60;
+  return total > 0 ? total : 1;
+}
+
+function utcHourKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setUTCMinutes(0, 0, 0);
+  return d.toISOString();
+}
+
+function fallbackSkyCoverFromText(shortForecast: string, isDaytime: boolean): number {
+  const txt = shortForecast.toLowerCase();
+  if (/overcast|cloudy|mostly cloud/i.test(txt)) return 85;
+  if (/partly|some clouds|scattered cloud/i.test(txt)) return 45;
+  if (/rain|storm|drizzle|snow|fog|mist/i.test(txt)) return 75;
+  if (/clear|sunny/i.test(txt)) return isDaytime ? 10 : 35;
+  return isDaytime ? 30 : 45;
+}
+
+function parseSkyCoverByHour(gridData: unknown): Map<string, number> {
+  const root = gridData as {
+    properties?: {
+      skyCover?: {
+        values?: Array<{ validTime?: string; value?: number | null }>;
+      };
+    };
+  };
+  const values = root.properties?.skyCover?.values;
+  const out = new Map<string, number>();
+  if (!Array.isArray(values)) return out;
+
+  for (const v of values) {
+    if (!v?.validTime || v.value == null || typeof v.value !== 'number') continue;
+    const slashIdx = v.validTime.indexOf('/');
+    const startIso = slashIdx >= 0 ? v.validTime.slice(0, slashIdx) : v.validTime;
+    const start = new Date(startIso);
+    if (Number.isNaN(start.getTime())) continue;
+    const durationHours = parseDurationHours(v.validTime);
+    const steps = Math.max(1, Math.round(durationHours));
+    for (let i = 0; i < steps; i++) {
+      const t = new Date(start.getTime() + i * 60 * 60 * 1000);
+      t.setUTCMinutes(0, 0, 0);
+      out.set(t.toISOString(), Math.max(0, Math.min(100, Math.round(v.value))));
+    }
+  }
+
+  return out;
 }
 
 type NwsForecastPeriod = {
@@ -130,6 +211,19 @@ function extractWeekendOutlook(periods: NwsForecastPeriod[]): WeekendDayForecast
     const dayLabel = day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     return { dayLabel, tempF, shortForecast: period.shortForecast, precipChance };
   });
+}
+
+function getApproximateSunset(lat: number, lon: number, date: Date): string {
+  // Zero-cost approximation of local sunset. 
+  // TODO: AI AGENT - For production, use a library like `suncalc` for exact solar equations.
+  const startOfYear = new Date(date.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((date.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+  const seasonOffsetHours = Math.sin((dayOfYear - 80) / 365.25 * Math.PI * 2) * (lat / 20); // ~2 hours shift at 40 lat
+  const sunsetLocalHour = 18 + seasonOffsetHours;
+
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setHours(Math.floor(sunsetLocalHour), (sunsetLocalHour % 1) * 60, 0, 0);
+  return d.toISOString();
 }
 
 async function nwsFetchJson(url: string): Promise<NwsJson> {
@@ -269,6 +363,7 @@ async function fetchUsWeatherAtCoordinates(
 
   const forecastUrl = props.forecast as string | undefined;
   const forecastHourlyUrl = props.forecastHourly as string | undefined;
+  const forecastGridDataUrl = props.forecastGridData as string | undefined;
   const stationsUrl = props.observationStations as string | undefined;
   const rel = props.relativeLocation as { properties?: { city?: string; state?: string } } | undefined;
   const city = rel?.properties?.city;
@@ -288,8 +383,15 @@ async function fetchUsWeatherAtCoordinates(
   let obs: LatestObs | null = null;
   let hourlyForecastAvailable = false;
   let timelineSlotsResolved: TimelineSlot[] = buildSyntheticTimelineSlots();
+  let hourlySamplesResolved: Array<{
+    timeIso: string;
+    airTempF: number;
+    windSpeedMph: number;
+    isDaytime: boolean;
+    skyCover: number | null;
+  }> = [];
   try {
-    const [fj, obsResult, hourlyPack] = await Promise.all([
+    const [fj, obsResult, hourlyPack, gridPack] = await Promise.all([
       nwsFetchJson(forecastUrl) as Promise<{ properties?: { periods?: Period[]; updateTime?: string } }>,
       fetchLatestObservationFromStations(stationsUrl),
       forecastHourlyUrl
@@ -298,15 +400,62 @@ async function fetchUsWeatherAtCoordinates(
             () => ({ ok: false as const, data: null as unknown })
           )
         : Promise.resolve({ ok: false as const, data: null as unknown }),
+      forecastGridDataUrl
+        ? nwsFetchJson(forecastGridDataUrl).then(
+            (data) => ({ ok: true as const, data }),
+            () => ({ ok: false as const, data: null as unknown })
+          )
+        : Promise.resolve({ ok: false as const, data: null as unknown }),
     ]);
     forecastJson = fj;
     obs = obsResult;
     const hourlyPeriods = hourlyPack.ok ? parseNwsHourlyPeriods(hourlyPack.data) : [];
+    const skyCoverByHour = gridPack.ok ? parseSkyCoverByHour(gridPack.data) : new Map<string, number>();
     hourlyForecastAvailable = hourlyPack.ok && hourlyPeriods.length > 0;
     timelineSlotsResolved =
       hourlyPeriods.length >= 3
         ? buildTimelineSlotsFromHourly(hourlyPeriods)
         : buildSyntheticTimelineSlots();
+    if (hourlyPack.ok) {
+      const rawPeriods = (hourlyPack.data as { properties?: { periods?: unknown[] } })?.properties?.periods;
+      if (Array.isArray(rawPeriods)) {
+        hourlySamplesResolved = rawPeriods
+          .map((r) => {
+            const p = r as {
+              startTime?: string;
+              temperature?: number;
+              temperatureUnit?: string;
+              windSpeed?: string;
+              isDaytime?: boolean;
+              shortForecast?: string;
+            };
+            if (!p.startTime || typeof p.temperature !== 'number') return null;
+            const key = utcHourKey(p.startTime);
+            let airTempF = Math.round(p.temperature);
+            if (p.temperatureUnit !== 'F') {
+              airTempF = cToF(p.temperature);
+            }
+            const inferredDaytime =
+              typeof p.isDaytime === 'boolean'
+                ? p.isDaytime
+                : !/night|overnight|evening/i.test((p.shortForecast || '').toLowerCase());
+            const gridSkyCover = key && skyCoverByHour.has(key) ? skyCoverByHour.get(key) ?? null : null;
+            const skyCover =
+              gridSkyCover != null
+                ? gridSkyCover
+                : fallbackSkyCoverFromText(p.shortForecast || '', inferredDaytime);
+            return {
+              timeIso: p.startTime,
+              airTempF,
+              windSpeedMph: parseWindSpeedMph(p.windSpeed),
+              isDaytime: inferredDaytime,
+              skyCover,
+            };
+          })
+          .filter((v): v is NonNullable<typeof v> => !!v)
+          .slice(0, 36);
+      }
+    }
   } catch {
     return { status: 'unavailable', message: 'Could not load forecast.' };
   }
@@ -343,6 +492,8 @@ async function fetchUsWeatherAtCoordinates(
 
   const ok: HomeWeatherState = {
     status: 'ok',
+    latitude,
+    longitude,
     place,
     tempF,
     summary,
@@ -355,6 +506,10 @@ async function fetchUsWeatherAtCoordinates(
     weekendOutlook,
     timelineSlots: timelineSlotsResolved,
     hourlyForecastAvailable,
+    hourlySamples: hourlySamplesResolved,
+    sunsetTimeIso: getApproximateSunset(latitude, longitude, new Date()),
+    mockAqi: 45, // TODO: AI AGENT - Replace with real AQI API
+    mockRecentRain: false, // TODO: AI AGENT - Replace with real historical precipitation
   };
   setCache(ok);
   return ok;

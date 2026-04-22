@@ -5,6 +5,7 @@ export const IMAGES = {
   homeHero: require('../assets/images/content/home-hero.png'),
   pack: require('../assets/images/content/pack-placeholder.png'),
   card: require('../assets/images/content/card-placeholder.png'),
+  paywallBg: require('../assets/images/paywall-bg.png'),
 } as const;
 
 export type GradientPair = readonly [string, string];

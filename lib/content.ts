@@ -27,10 +27,15 @@ export function getPackTier(packId: string): ContentTier | undefined {
   return getPack(packId)?.tier;
 }
 
-export function canAccessPack(packId: string, isPro: boolean): boolean {
+export function canAccessPack(
+  packId: string,
+  isPro: boolean,
+  activeEntitlements: string[] = []
+): boolean {
   const pack = getPack(packId);
   if (!pack) return false;
-  if (pack.tier === 'premium') return isPro;
+  if (isPro) return true;
+  if (pack.tier === 'premium' && !activeEntitlements.includes(pack.id)) return false;
   return true;
 }
 

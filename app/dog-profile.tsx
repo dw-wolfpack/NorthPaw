@@ -28,6 +28,9 @@ export default function DogProfileScreen() {
   const [name, setName] = useState('');
   const [savedPhotoUri, setSavedPhotoUri] = useState('');
   const [pickedUri, setPickedUri] = useState<string | null>(null);
+  const [dogWeightLbs, setDogWeightLbs] = useState('');
+  const [dogCoatType, setDogCoatType] = useState('');
+  const [dogColor, setDogColor] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -35,6 +38,9 @@ export default function DogProfileScreen() {
     const p = await getDogProfile();
     setName(p.dogName);
     setSavedPhotoUri(p.dogPhotoUri);
+    setDogWeightLbs(p.dogWeightLbs ? p.dogWeightLbs.toString() : '');
+    setDogCoatType(p.dogCoatType || '');
+    setDogColor(p.dogColor || '');
     setPickedUri(null);
   }, []);
 
@@ -80,6 +86,9 @@ export default function DogProfileScreen() {
         onboardingDone: true,
         dogName: trimmed,
         dogPhotoUri: photoUri,
+        dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
+        dogCoatType: dogCoatType,
+        dogColor: dogColor,
       });
       router.back();
     } catch (e) {
@@ -132,7 +141,51 @@ export default function DogProfileScreen() {
             ]}
           />
 
-          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Photo</Text>
+          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Weight (lbs)</Text>
+          <TextInput
+            value={dogWeightLbs}
+            onChangeText={setDogWeightLbs}
+            placeholder="e.g. 45"
+            placeholderTextColor={palette.textSecondary}
+            keyboardType="numeric"
+            maxLength={3}
+            style={[
+              styles.input,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                color: palette.text,
+              },
+            ]}
+          />
+
+          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Coat Type</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {['Single', 'Double', 'Hairless'].map(coat => (
+              <Pressable
+                key={coat}
+                onPress={() => setDogCoatType(coat)}
+                style={[{ flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }, dogCoatType === coat ? { borderColor: palette.tint, backgroundColor: palette.surface } : { borderColor: palette.border }]}
+              >
+                <Text style={[{ fontSize: 13, fontWeight: '700' }, dogCoatType === coat ? { color: palette.text } : { color: palette.textSecondary }]}>{coat}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Fur Color</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {['Light', 'Medium', 'Dark'].map(colorOpt => (
+              <Pressable
+                key={colorOpt}
+                onPress={() => setDogColor(colorOpt)}
+                style={[{ flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }, dogColor === colorOpt ? { borderColor: palette.tint, backgroundColor: palette.surface } : { borderColor: palette.border }]}
+              >
+                <Text style={[{ fontSize: 13, fontWeight: '700' }, dogColor === colorOpt ? { color: palette.text } : { color: palette.textSecondary }]}>{colorOpt}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={[styles.label, { color: palette.text, marginTop: 32 }]}>Photo</Text>
           <View style={styles.photoRow}>
             <Pressable
               onPress={pickPhoto}

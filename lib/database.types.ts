@@ -20,6 +20,14 @@ export type ChecklistOutingRow = {
   photos_json: string;
 };
 
+/** Day-scoped outing readiness signals (device-local calendar date). */
+export type ReadinessDayRow = {
+  local_date: string;
+  conditions_viewed: number;
+  primary_checklist_id: string;
+  checklist_opened: number;
+};
+
 export type SaveChecklistOutingInput = {
   checklistId: string;
   notes: string;

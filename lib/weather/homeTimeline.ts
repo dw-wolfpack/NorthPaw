@@ -93,3 +93,35 @@ export function buildHomeTimeline(
 
   return [now, mid, eve];
 }
+
+export type HomeTimelineSummaryRow = {
+  /** Section label shown on Home (compact interpretation). */
+  sectionLabel: string;
+  rangeLabel: string;
+  /** One short planning line (not a second hero). */
+  body: string;
+  tone: TimelineTone;
+};
+
+/**
+ * Two-row “interpretation” for Home: best window + next change (drops the third slot).
+ * Reuses `buildHomeTimeline` logic and data without changing the full timeline API.
+ */
+export function buildHomeTimelineSummary(
+  weather: Extract<HomeWeatherState, { status: 'ok' }>,
+  readiness: ReadinessLite
+): HomeTimelineSummaryRow[] {
+  const items = buildHomeTimeline(weather, readiness);
+  const first = items[0];
+  const second = items[1];
+  if (!first || !second) return [];
+
+  const body0 = `${first.title} — ${first.detail}`.replace(/\s+—\s+—/g, ' — ');
+  const body1 = `${second.title} — ${second.detail}`.replace(/\s+—\s+—/g, ' — ');
+
+  return [
+    { sectionLabel: 'Best window', rangeLabel: first.rangeLabel, body: body0, tone: first.tone },
+    { sectionLabel: 'Next change', rangeLabel: second.rangeLabel, body: body1, tone: second.tone },
+  ];
+}
+

@@ -3,6 +3,8 @@ import { HeaderBackButton, type HeaderBackButtonProps } from '@react-navigation/
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -28,10 +30,36 @@ import {
   saveChecklistOuting,
   setChecklistItemChecked,
 } from '@/lib/database';
+import {
+  localCalendarDateString,
+  markPrimaryChecklistOpenedForLocalDate,
+} from '@/lib/readiness/persistence';
 import { captureLocationForOuting, pickOutingPhotos } from '@/lib/outingCaptureHelpers';
 import { useColorScheme } from '@/components/useColorScheme';
 
 const MAX_PHOTOS = 3;
+
+function AnimatedCheckbox({ isOn, tintColor, borderColor }: { isOn: boolean; tintColor: string; borderColor: string; }) {
+  const scale = useSharedValue(isOn ? 1 : 0);
+
+  useEffect(() => {
+    scale.value = withSpring(isOn ? 1 : 0, { stiffness: 350, damping: 25 });
+  }, [isOn, scale]);
+
+  const style = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: 0.8 + scale.value * 0.2 }],
+      backgroundColor: isOn ? tintColor : 'transparent',
+      borderColor: isOn ? tintColor : borderColor,
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.box, style]}>
+      {isOn ? <Text style={{ color: '#fff', fontWeight: '800' }}>✓</Text> : null}
+    </Animated.View>
+  );
+}
 
 export default function ChecklistDetailScreen() {
   const { id: idParam } = useLocalSearchParams<{ id?: string | string[] }>();
@@ -41,7 +69,7 @@ export default function ChecklistDetailScreen() {
   const isFocused = useIsFocused();
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
-  const { isPro, loading: subLoading } = useSubscription();
+  const { isPro, activeEntitlements, loading: subLoading } = useSubscription();
   const cl = id ? getChecklist(id) : undefined;
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [outingNotes, setOutingNotes] = useState('');
@@ -60,7 +88,17 @@ export default function ChecklistDetailScreen() {
     if (!id || !cl) return;
     recordOpen('checklist', id).catch(() => {});
     reload().catch(() => {});
+    markPrimaryChecklistOpenedForLocalDate(localCalendarDateString(), id).catch(() => {});
   }, [id, cl, reload]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return undefined;
+      reload().catch(() => {});
+      markPrimaryChecklistOpenedForLocalDate(localCalendarDateString(), id).catch(() => {});
+      return undefined;
+    }, [id, reload])
+  );
 
   const exitChecklist = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -91,14 +129,19 @@ export default function ChecklistDetailScreen() {
 
   useEffect(() => {
     if (!isFocused || !cl || subLoading) return;
-    if (!canAccessPack(cl.packId, isPro)) {
+    if (!canAccessPack(cl.packId, isPro, activeEntitlements)) {
       router.replace({ pathname: '/paywall', params: { returnTo: `/checklist/${cl.id}` } });
     }
-  }, [isFocused, cl, isPro, router, subLoading]);
+  }, [isFocused, cl, isPro, activeEntitlements, router, subLoading]);
 
   const toggle = async (itemId: string) => {
     if (!id) return;
     const next = !checked.has(itemId);
+    if (next) {
+      Haptics.selectionAsync().catch(() => {});
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     await setChecklistItemChecked(id, itemId, next);
     await reload();
   };
@@ -185,7 +228,7 @@ export default function ChecklistDetailScreen() {
     );
   }
 
-  if (subLoading || !canAccessPack(cl.packId, isPro)) {
+  if (subLoading || !canAccessPack(cl.packId, isPro, activeEntitlements)) {
     return (
       <View style={[styles.center, { backgroundColor: palette.background }]}>
         {subLoading ? (
@@ -224,16 +267,7 @@ export default function ChecklistDetailScreen() {
                 opacity: pressed ? 0.92 : 1,
               },
             ]}>
-            <View
-              style={[
-                styles.box,
-                {
-                  borderColor: isOn ? palette.tint : palette.border,
-                  backgroundColor: isOn ? palette.tint : 'transparent',
-                },
-              ]}>
-              {isOn ? <Text style={{ color: '#fff', fontWeight: '800' }}>✓</Text> : null}
-            </View>
+            <AnimatedCheckbox isOn={isOn} tintColor={palette.tint} borderColor={palette.border} />
             <View style={{ flex: 1, backgroundColor: 'transparent' }}>
               <Text style={{ fontSize: 16, color: palette.text, lineHeight: 22 }}>{item.label}</Text>
               {item.hint ? (

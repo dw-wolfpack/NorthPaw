@@ -20,7 +20,7 @@ export default function ChecklistsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
   const router = useRouter();
-  const { isPro } = useSubscription();
+  const { isPro, activeEntitlements } = useSubscription();
   const lists = getAllChecklists();
   const heroGrad = gradientForPack('trail-basics');
   const [outings, setOutings] = useState<ChecklistOutingRow[]>([]);
@@ -136,7 +136,7 @@ export default function ChecklistsScreen() {
       ) : null}
 
       {lists.map((cl) => {
-        const locked = !canAccessPack(cl.packId, isPro);
+        const locked = !canAccessPack(cl.packId, isPro, activeEntitlements);
         return (
           <Pressable
             key={cl.id}

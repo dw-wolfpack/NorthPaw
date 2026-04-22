@@ -111,6 +111,15 @@ function RootLayoutNav() {
             }}
           />
           <Stack.Screen
+            name="tick-check"
+            options={{
+              title: 'Tick Check',
+              presentation: 'modal',
+              headerBackTitle: 'Close',
+              headerLargeTitleEnabled: false,
+            }}
+          />
+          <Stack.Screen
             name="dog-profile"
             options={{ title: 'Your dog', headerBackTitle: 'Back' }}
           />

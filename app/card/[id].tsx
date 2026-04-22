@@ -18,8 +18,8 @@ export default function CardDetailScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
-  const { isPro, loading: subLoading } = useSubscription();
-  const card = id ? getCard(id) : undefined;
+  const { isPro, activeEntitlements, loading: subLoading } = useSubscription();
+  const card = id && typeof id === 'string' ? getCard(id) : undefined;
   const [fav, setFav] = useState(false);
 
   useEffect(() => {
@@ -30,10 +30,10 @@ export default function CardDetailScreen() {
 
   useEffect(() => {
     if (!card || subLoading) return;
-    if (!canAccessPack(card.packId, isPro)) {
+    if (!canAccessPack(card.packId, isPro, activeEntitlements)) {
       router.replace({ pathname: '/paywall', params: { returnTo: `/card/${card.id}` } });
     }
-  }, [card, isPro, router, subLoading]);
+  }, [card, isPro, activeEntitlements, router, subLoading]);
 
   const toggleFav = useCallback(async () => {
     if (!id) return;
@@ -54,7 +54,7 @@ export default function CardDetailScreen() {
     );
   }
 
-  if (subLoading || !canAccessPack(card.packId, isPro)) {
+  if (subLoading || !canAccessPack(card.packId, isPro, activeEntitlements)) {
     return (
       <View style={[styles.center, { backgroundColor: palette.background }]}>
         {subLoading ? (

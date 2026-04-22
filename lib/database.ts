@@ -1,18 +1,27 @@
 import * as SQLite from 'expo-sqlite';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
 import type {
   ChecklistOutingRow,
   EntityType,
   FavoriteRow,
   HistoryRow,
+  ReadinessDayRow,
   SaveChecklistOutingInput,
 } from '@/lib/database.types';
 
 import { finalizeOutingPhotos, removeOutingFiles } from '@/lib/outingPhotoStorage';
 
-export type { ChecklistOutingRow, EntityType, FavoriteRow, HistoryRow, SaveChecklistOutingInput };
+export type {
+  ChecklistOutingRow,
+  EntityType,
+  FavoriteRow,
+  HistoryRow,
+  ReadinessDayRow,
+  SaveChecklistOutingInput,
+};
 
 let dbSingleton: SQLite.SQLiteDatabase | null = null;
 
@@ -54,7 +63,10 @@ async function migrate(db: SQLite.SQLiteDatabase) {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       onboarding_done INTEGER NOT NULL DEFAULT 0,
       dog_name TEXT NOT NULL DEFAULT '',
-      dog_photo_uri TEXT NOT NULL DEFAULT ''
+      dog_photo_uri TEXT NOT NULL DEFAULT '',
+      dog_weight_lbs INTEGER,
+      dog_coat_type TEXT NOT NULL DEFAULT '',
+      dog_color TEXT NOT NULL DEFAULT ''
     );
     INSERT OR IGNORE INTO app_profile (id, onboarding_done, dog_name, dog_photo_uri) VALUES (1, 0, '', '');
     CREATE TABLE IF NOT EXISTS med_reminders (
@@ -69,8 +81,15 @@ async function migrate(db: SQLite.SQLiteDatabase) {
       enabled INTEGER NOT NULL DEFAULT 1,
       notification_id TEXT NOT NULL DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS readiness_day (
+      local_date TEXT PRIMARY KEY NOT NULL,
+      conditions_viewed INTEGER NOT NULL DEFAULT 0,
+      primary_checklist_id TEXT NOT NULL DEFAULT '',
+      checklist_opened INTEGER NOT NULL DEFAULT 0
+    );
   `);
   await migrateChecklistOutingsV2(db);
+  await migrateAppProfileV2(db);
 }
 
 async function migrateChecklistOutingsV2(db: SQLite.SQLiteDatabase) {
@@ -88,6 +107,39 @@ async function migrateChecklistOutingsV2(db: SQLite.SQLiteDatabase) {
   }
   if (!has('photos_json')) {
     await db.execAsync(`ALTER TABLE checklist_outings ADD COLUMN photos_json TEXT NOT NULL DEFAULT '[]';`);
+  }
+}
+
+async function migrateAppProfileV2(db: SQLite.SQLiteDatabase) {
+  const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(app_profile)');
+  if (cols.length === 0) return;
+  const has = (n: string) => cols.some((c) => c.name === n);
+  if (!has('dog_breed')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN dog_breed TEXT NOT NULL DEFAULT '';`);
+  }
+  if (!has('dog_breed_mix')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN dog_breed_mix TEXT NOT NULL DEFAULT '';`);
+  }
+  if (!has('dog_age_group')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN dog_age_group TEXT NOT NULL DEFAULT '';`);
+  }
+  if (!has('dog_outing_types_json')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN dog_outing_types_json TEXT NOT NULL DEFAULT '[]';`);
+  }
+  if (!has('location_permission')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN location_permission TEXT NOT NULL DEFAULT '';`);
+  }
+  if (!has('notifications_permission')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN notifications_permission TEXT NOT NULL DEFAULT '';`);
+  }
+  if (!has('dog_weight_lbs')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN dog_weight_lbs INTEGER;`);
+  }
+  if (!has('dog_coat_type')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN dog_coat_type TEXT NOT NULL DEFAULT '';`);
+  }
+  if (!has('dog_color')) {
+    await db.execAsync(`ALTER TABLE app_profile ADD COLUMN dog_color TEXT NOT NULL DEFAULT '';`);
   }
 }
 
@@ -232,6 +284,25 @@ export async function saveChecklistOuting(input: SaveChecklistOutingInput): Prom
       photosJson,
     ]
   );
+  
+  // Behavioral Retention: Schedule a "tick check" notification for 4 hours from now
+  // since saving the checklist implies the prep is done and the outing is starting.
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Time for couch snuggles 🛋️',
+        body: 'Give your dog a quick feel for ticks or burrs after today\'s outing.',
+        sound: true,
+        data: { url: '/tick-check' },
+      },
+      trigger: {
+        seconds: 4 * 60 * 60, // 4 hours
+      },
+    });
+  } catch (err) {
+    // Ignore if permissions not granted or other notification errors
+  }
+
   return id;
 }
 
@@ -266,4 +337,21 @@ export async function deleteChecklistOuting(id: string): Promise<void> {
   await removeOutingFiles(id);
   const db = await getDb();
   await db.runAsync(`DELETE FROM checklist_outings WHERE id = ?`, [id]);
+}
+
+export async function getReadinessDay(localDate: string): Promise<ReadinessDayRow | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<ReadinessDayRow>(
+    `SELECT local_date, conditions_viewed, primary_checklist_id, checklist_opened FROM readiness_day WHERE local_date = ?`,
+    [localDate]
+  );
+  return row ?? null;
+}
+
+export async function putReadinessDay(row: ReadinessDayRow): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO readiness_day (local_date, conditions_viewed, primary_checklist_id, checklist_opened) VALUES (?, ?, ?, ?)`,
+    [row.local_date, row.conditions_viewed ? 1 : 0, row.primary_checklist_id, row.checklist_opened ? 1 : 0]
+  );
 }
