@@ -24,6 +24,8 @@ export type WeekendDayForecast = {
   precipChance: number | null;
 };
 
+export type HazardTag = 'smoke' | 'haze' | 'pollen' | 'tick';
+
 export type HomeWeatherState =
   | { status: 'loading' }
   | { status: 'permission_denied' }
@@ -37,7 +39,11 @@ export type HomeWeatherState =
       summary: string;
       windLine: string | null;
       updatedLabel: string;
+      updatedIso: string | null;
+      stationDistanceMiles: number | null;
       sourceNote: string;
+      hazardTags: HazardTag[];
+      hazardAlerts: string[];
       /** Grid forecast period (for suggestions); `summary` may come from live obs text. */
       forecastShort: string;
       precipChance: number | null;
@@ -58,6 +64,7 @@ export type HomeWeatherState =
         windSpeedMph: number;
         isDaytime: boolean;
         skyCover: number | null;
+        humidityPct: number | null;
       }>;
       /** Zero-cost approximate sunset tracking */
       sunsetTimeIso: string | null;
@@ -117,11 +124,11 @@ function utcHourKey(iso: string): string {
 
 function fallbackSkyCoverFromText(shortForecast: string, isDaytime: boolean): number {
   const txt = shortForecast.toLowerCase();
-  if (/overcast|cloudy|mostly cloud/i.test(txt)) return 85;
-  if (/partly|some clouds|scattered cloud/i.test(txt)) return 45;
-  if (/rain|storm|drizzle|snow|fog|mist/i.test(txt)) return 75;
+  if (/overcast|cloudy|mostly cloud/i.test(txt)) return 92;
+  if (/partly|some clouds|scattered cloud/i.test(txt)) return 55;
+  if (/rain|storm|drizzle|snow|fog|mist/i.test(txt)) return 88;
   if (/clear|sunny/i.test(txt)) return isDaytime ? 10 : 35;
-  return isDaytime ? 30 : 45;
+  return isDaytime ? 75 : 45;
 }
 
 function parseSkyCoverByHour(gridData: unknown): Map<string, number> {
@@ -152,6 +159,59 @@ function parseSkyCoverByHour(gridData: unknown): Map<string, number> {
   }
 
   return out;
+}
+
+function parseRelativeHumidityByHour(gridData: unknown): Map<string, number> {
+  const root = gridData as {
+    properties?: {
+      relativeHumidity?: {
+        values?: Array<{ validTime?: string; value?: number | null }>;
+      };
+    };
+  };
+  const values = root.properties?.relativeHumidity?.values;
+  const out = new Map<string, number>();
+  if (!Array.isArray(values)) return out;
+  for (const v of values) {
+    if (!v?.validTime || v.value == null || typeof v.value !== 'number') continue;
+    const slashIdx = v.validTime.indexOf('/');
+    const startIso = slashIdx >= 0 ? v.validTime.slice(0, slashIdx) : v.validTime;
+    const start = new Date(startIso);
+    if (Number.isNaN(start.getTime())) continue;
+    const durationHours = parseDurationHours(v.validTime);
+    const steps = Math.max(1, Math.round(durationHours));
+    for (let i = 0; i < steps; i++) {
+      const t = new Date(start.getTime() + i * 60 * 60 * 1000);
+      t.setUTCMinutes(0, 0, 0);
+      out.set(t.toISOString(), Math.max(0, Math.min(100, Math.round(v.value))));
+    }
+  }
+  return out;
+}
+
+function scanHazards(
+  summary: string,
+  forecastShort: string,
+  periods: NwsForecastPeriod[]
+): { tags: HazardTag[]; alerts: string[] } {
+  const corpus = [summary, forecastShort, ...periods.slice(0, 8).map((p) => p.shortForecast || '')]
+    .join('\n')
+    .toLowerCase();
+  const ordered: Array<{ tag: HazardTag; label: string; rx: RegExp }> = [
+    { tag: 'smoke', label: 'Smoke risk in local forecast text', rx: /\bsmoke\b/ },
+    { tag: 'haze', label: 'Hazy air conditions mentioned', rx: /\bhaze\b|\bhazy\b/ },
+    { tag: 'pollen', label: 'Pollen concern mentioned in forecast', rx: /\bpollen\b/ },
+    { tag: 'tick', label: 'Tick activity note in local forecast', rx: /\btick\b|\bticks\b/ },
+  ];
+  const tags: HazardTag[] = [];
+  const alerts: string[] = [];
+  for (const h of ordered) {
+    if (h.rx.test(corpus)) {
+      tags.push(h.tag);
+      alerts.push(h.label);
+    }
+  }
+  return { tags, alerts };
 }
 
 type NwsForecastPeriod = {
@@ -292,9 +352,27 @@ type LatestObs = {
   summary?: string;
   windLine: string | null;
   updatedIso?: string;
+  stationDistanceMiles?: number | null;
 };
 
-async function fetchLatestObservationFromStations(stationsUrl: string | undefined): Promise<LatestObs | null> {
+function milesBetween(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 3958.8;
+  const dLat = toRad(bLat - aLat);
+  const dLon = toRad(bLon - aLon);
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+async function fetchLatestObservationFromStations(
+  stationsUrl: string | undefined,
+  latitude: number,
+  longitude: number
+): Promise<LatestObs | null> {
   if (!stationsUrl) return null;
   try {
     const stationsData = (await nwsFetchJson(stationsUrl)) as {
@@ -302,6 +380,9 @@ async function fetchLatestObservationFromStations(stationsUrl: string | undefine
     };
     const stationUrl = stationsData.features?.[0]?.id;
     if (!stationUrl) return null;
+    const stationMeta = (await nwsFetchJson(stationUrl)) as {
+      geometry?: { coordinates?: [number, number] };
+    };
     const latest = (await nwsFetchJson(`${stationUrl}/observations/latest`)) as {
       properties?: {
         timestamp?: string;
@@ -326,11 +407,21 @@ async function fetchLatestObservationFromStations(stationsUrl: string | undefine
       const dir = wDir != null && typeof wDir === 'number' ? `${wDir}° ` : '';
       windLine = `${dir}${mph} mph`.trim();
     }
+    let stationDistanceMiles: number | null = null;
+    const coords = stationMeta.geometry?.coordinates;
+    if (Array.isArray(coords) && coords.length >= 2) {
+      const stationLon = Number(coords[0]);
+      const stationLat = Number(coords[1]);
+      if (Number.isFinite(stationLat) && Number.isFinite(stationLon)) {
+        stationDistanceMiles = milesBetween(latitude, longitude, stationLat, stationLon);
+      }
+    }
     return {
       tempF,
       summary,
       windLine: windLine && windLine.length > 0 ? windLine : null,
       updatedIso: op.timestamp,
+      stationDistanceMiles,
     };
   } catch {
     return null;
@@ -389,11 +480,12 @@ async function fetchUsWeatherAtCoordinates(
     windSpeedMph: number;
     isDaytime: boolean;
     skyCover: number | null;
+    humidityPct: number | null;
   }> = [];
   try {
     const [fj, obsResult, hourlyPack, gridPack] = await Promise.all([
       nwsFetchJson(forecastUrl) as Promise<{ properties?: { periods?: Period[]; updateTime?: string } }>,
-      fetchLatestObservationFromStations(stationsUrl),
+      fetchLatestObservationFromStations(stationsUrl, latitude, longitude),
       forecastHourlyUrl
         ? nwsFetchJson(forecastHourlyUrl).then(
             (data) => ({ ok: true as const, data }),
@@ -411,6 +503,7 @@ async function fetchUsWeatherAtCoordinates(
     obs = obsResult;
     const hourlyPeriods = hourlyPack.ok ? parseNwsHourlyPeriods(hourlyPack.data) : [];
     const skyCoverByHour = gridPack.ok ? parseSkyCoverByHour(gridPack.data) : new Map<string, number>();
+    const humidityByHour = gridPack.ok ? parseRelativeHumidityByHour(gridPack.data) : new Map<string, number>();
     hourlyForecastAvailable = hourlyPack.ok && hourlyPeriods.length > 0;
     timelineSlotsResolved =
       hourlyPeriods.length >= 3
@@ -444,12 +537,14 @@ async function fetchUsWeatherAtCoordinates(
               gridSkyCover != null
                 ? gridSkyCover
                 : fallbackSkyCoverFromText(p.shortForecast || '', inferredDaytime);
+            const humidityPct = key && humidityByHour.has(key) ? humidityByHour.get(key) ?? null : null;
             return {
               timeIso: p.startTime,
               airTempF,
               windSpeedMph: parseWindSpeedMph(p.windSpeed),
               isDaytime: inferredDaytime,
               skyCover,
+              humidityPct,
             };
           })
           .filter((v): v is NonNullable<typeof v> => !!v)
@@ -489,6 +584,7 @@ async function fetchUsWeatherAtCoordinates(
 
   const allPeriods = (forecastJson.properties?.periods ?? []) as NwsForecastPeriod[];
   const weekendOutlook = extractWeekendOutlook(allPeriods);
+  const hazards = scanHazards(summary, forecastShort, allPeriods);
 
   const ok: HomeWeatherState = {
     status: 'ok',
@@ -499,7 +595,11 @@ async function fetchUsWeatherAtCoordinates(
     summary,
     windLine: windLine.length > 0 ? windLine : null,
     updatedLabel: formatUpdated(updatedIso),
+    updatedIso: updatedIso || null,
+    stationDistanceMiles: obs?.stationDistanceMiles ?? null,
     sourceNote: 'National Weather Service · api.weather.gov',
+    hazardTags: hazards.tags,
+    hazardAlerts: hazards.alerts,
     forecastShort,
     precipChance,
     isDaytime,

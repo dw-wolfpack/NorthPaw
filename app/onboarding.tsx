@@ -1,6 +1,8 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,28 +19,54 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BlurMask, Canvas, Circle } from '@shopify/react-native-skia';
+import AnimatedReanimated, {
+  FadeIn,
+  FadeInDown,
+  useDerivedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { requestMedReminderPermissions } from '@/lib/medReminders';
 import { pickAndStoreDogPhoto, saveDogProfile } from '@/lib/profile';
-import { fetchUsWeatherForDeviceLocation, type HomeWeatherState } from '@/lib/weather/nwsWeather';
+import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
+import { type HomeWeatherState } from '@/lib/weather/nwsWeather';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
 
-type StepId =
+type SceneId =
   | 'welcome'
   | 'name'
   | 'photo'
-  | 'breed'
-  | 'biology'
+  | 'breed-snout'
+  | 'biology-activity'
   | 'age'
   | 'outings'
   | 'location'
-  | 'aha'
-  | 'notifications';
+  | 'npi-activation'
+  | 'morning-brief'
+  | 'commitment';
 
-const STEPS: StepId[] = ['welcome', 'name', 'photo', 'breed', 'biology', 'age', 'outings', 'location', 'aha', 'notifications'];
+const SCENES: SceneId[] = [
+  'welcome',
+  'name',
+  'photo',
+  'breed-snout',
+  'biology-activity',
+  'age',
+  'outings',
+  'location',
+  'npi-activation',
+  'morning-brief',
+  'commitment',
+];
 
 const BREEDS = [
   'Labrador Retriever',
@@ -61,6 +89,9 @@ const BREEDS = [
   'Great Dane',
   'Bernese Mountain Dog',
   'Shih Tzu',
+  'American Pit Bull Terrier',
+  'American Staffordshire Terrier',
+  'Staffordshire Bull Terrier',
 ];
 
 const AGE_OPTIONS: Array<{ id: string; title: string; subtitle: string }> = [
@@ -77,6 +108,25 @@ const OUTING_OPTIONS = [
   'Beach days',
   'Mountain adventures',
   'Dog parks',
+];
+
+const SNOUT_OPTIONS: Array<{ id: 'flat' | 'standard' | 'long'; title: string; subtitle: string }> = [
+  { id: 'flat', title: 'Flat / Smushed', subtitle: 'Pug, Bulldog, Boxer-style airway' },
+  { id: 'standard', title: 'Standard', subtitle: 'Balanced cooling profile' },
+  { id: 'long', title: 'Long', subtitle: 'Greyhound-style airflow advantage' },
+];
+
+const ACTIVITY_OPTIONS: Array<{ id: 'low' | 'moderate' | 'high'; title: string; subtitle: string }> = [
+  { id: 'low', title: 'Low energy', subtitle: 'Easy pace and shorter outings' },
+  { id: 'moderate', title: 'Moderate', subtitle: 'Typical daily exertion' },
+  { id: 'high', title: 'High intensity', subtitle: 'Higher metabolic heat buildup' },
+];
+
+const CALIBRATION_LINES = [
+  'Calculating THI...',
+  'Applying snout-profile offset...',
+  'Fetching local humidity...',
+  'Estimating pavement heat load...',
 ];
 
 function displaySlot(isoStart: string, isoEnd: string): string {
@@ -111,11 +161,14 @@ function buildPackList(weather: Extract<HomeWeatherState, { status: 'ok' }>, out
   return [...new Set(list)].slice(0, 5);
 }
 
+const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
 export default function OnboardingScreen() {
   const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
   const palette = Colors[colorScheme];
   const router = useRouter();
-  const [stepIdx, setStepIdx] = useState(0);
+  const [sceneIdx, setSceneIdx] = useState(0);
   const [name, setName] = useState('');
   const [pickedUri, setPickedUri] = useState<string | null>(null);
   const [breedQuery, setBreedQuery] = useState('');
@@ -126,17 +179,28 @@ export default function OnboardingScreen() {
   const [dogWeightLbs, setDogWeightLbs] = useState('');
   const [dogCoatType, setDogCoatType] = useState('');
   const [dogColor, setDogColor] = useState('');
+  const [dogSnoutProfile, setDogSnoutProfile] = useState<'flat' | 'standard' | 'long'>('standard');
+  const [dogActivityBaseline, setDogActivityBaseline] = useState<'low' | 'moderate' | 'high'>('moderate');
+  const [morningBriefTime, setMorningBriefTime] = useState('7:00 AM');
   const [outingTypes, setOutingTypes] = useState<string[]>([]);
   const [locationPermission, setLocationPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [notificationsPermission, setNotificationsPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [ahaWeather, setAhaWeather] = useState<HomeWeatherState>({ status: 'loading' });
   const [loadingAha, setLoadingAha] = useState(false);
+  const [activationReady, setActivationReady] = useState(false);
+  const [activationLineIdx, setActivationLineIdx] = useState(0);
+  const [previewInteracted, setPreviewInteracted] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const spin = useRef(new Animated.Value(0)).current;
   const displayPhoto = pickedUri;
   const dogName = name.trim() || 'your dog';
-  const step = STEPS[stepIdx];
+  const scene = SCENES[sceneIdx];
+  const cardTranslateY = useSharedValue(24);
+  const cardOpacity = useSharedValue(0);
+  const pulse = useSharedValue(0.82);
+  const screenFade = useSharedValue(1);
+  const headerFade = useSharedValue(1);
 
   const ahaTopChecklist = useMemo(() => {
     if (ahaWeather.status !== 'ok') return { id: null as string | null, reason: null as string | null };
@@ -178,22 +242,74 @@ export default function OnboardingScreen() {
     outputRange: ['0deg', '360deg'],
   });
 
+  useEffect(() => {
+    cardTranslateY.value = 24;
+    cardOpacity.value = 0;
+    cardTranslateY.value = withSpring(0, { damping: 15, stiffness: 130 });
+    cardOpacity.value = withTiming(1, { duration: 260 });
+  }, [cardOpacity, cardTranslateY, scene]);
+
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(withTiming(1, { duration: 760 }), withTiming(0.78, { duration: 760 })),
+      -1,
+      true
+    );
+  }, [pulse]);
+
+  useEffect(() => {
+    if (scene !== 'npi-activation') return;
+    setActivationReady(false);
+    setActivationLineIdx(0);
+    const lineTicker = setInterval(() => {
+      setActivationLineIdx((i) => (i + 1) % CALIBRATION_LINES.length);
+    }, 420);
+    const timer = setTimeout(() => {
+      setActivationReady(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(lineTicker);
+    };
+  }, [scene]);
+
+  const animatedCardStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: cardTranslateY.value }],
+    opacity: cardOpacity.value,
+  }));
+  const screenFadeStyle = useAnimatedStyle(() => ({ opacity: screenFade.value }));
+  const headerFadeStyle = useAnimatedStyle(() => ({ opacity: headerFade.value }));
+  const glowRadius = useDerivedValue(() => 46 + 20 * pulse.value, [pulse]);
+  const glowOpacity = useDerivedValue(() => 0.22 + 0.28 * pulse.value, [pulse]);
+
   const filteredBreeds = useMemo(() => {
     const q = breedQuery.trim().toLowerCase();
     if (!q) return BREEDS;
     return BREEDS.filter((b) => b.toLowerCase().includes(q));
   }, [breedQuery]);
 
+  const legacyStep = useMemo(() => {
+    if (scene === 'breed-snout') return 'breed';
+    if (scene === 'biology-activity') return 'biology';
+    if (scene === 'npi-activation') return 'aha';
+    if (scene === 'morning-brief' || scene === 'commitment') return 'notifications';
+    if (scene === 'welcome' || scene === 'name' || scene === 'photo' || scene === 'age' || scene === 'outings' || scene === 'location') {
+      return scene;
+    }
+    return 'welcome';
+  }, [scene]);
+
   const canAdvance = useMemo(() => {
-    if (step === 'name') return name.trim().length > 0;
-    if (step === 'breed') {
+    if (scene === 'name') return name.trim().length > 0;
+    if (legacyStep === 'breed') {
       if (isMixedBreed) return mixedPrimary.trim().length > 0;
       return breed.trim().length > 0;
     }
-    if (step === 'age') return ageGroup.length > 0;
-    if (step === 'outings') return outingTypes.length > 0;
+    if (legacyStep === 'age') return ageGroup.length > 0;
+    if (legacyStep === 'outings') return outingTypes.length > 0;
     return true;
-  }, [ageGroup, breed, isMixedBreed, mixedPrimary, name, outingTypes, step]);
+  }, [ageGroup, breed, isMixedBreed, legacyStep, mixedPrimary, name, outingTypes, scene]);
 
   const pickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -209,10 +325,19 @@ export default function OnboardingScreen() {
     }
   };
 
+  const selectionTick = () => {
+    Haptics.selectionAsync().catch(() => {});
+  };
+
+  const buildPreviewBody = (time: string): string => {
+    const start = time === 'Custom' ? 'your selected time' : time;
+    return `Good morning! ${dogName}'s safest window starts around ${start}. Check pavement before your first walk.`;
+  };
+
   const loadAha = async () => {
     setLoadingAha(true);
     try {
-      const weather = await fetchUsWeatherForDeviceLocation();
+      const weather = await fetchWeatherForDeviceLocation();
       setAhaWeather(weather);
     } catch {
       setAhaWeather({ status: 'unavailable', message: 'Could not load live conditions.' });
@@ -222,25 +347,26 @@ export default function OnboardingScreen() {
   };
 
   const advance = () => {
-    if (!canAdvance || stepIdx >= STEPS.length - 1) return;
-    setStepIdx((s) => s + 1);
+    if (!canAdvance || sceneIdx >= SCENES.length - 1) return;
+    selectionTick();
+    setSceneIdx((s) => s + 1);
   };
 
   const goBack = () => {
-    if (stepIdx <= 0 || busy) return;
-    setStepIdx((s) => s - 1);
+    if (sceneIdx <= 0 || busy) return;
+    setSceneIdx((s) => s - 1);
   };
 
   const requestLocation = async () => {
     const perm = await Location.requestForegroundPermissionsAsync();
     if (perm.status === 'granted') {
       setLocationPermission('granted');
-      setStepIdx(STEPS.indexOf('aha'));
+      setSceneIdx(SCENES.indexOf('npi-activation'));
       await loadAha();
       return;
     }
     setLocationPermission('denied');
-    setStepIdx(STEPS.indexOf('aha'));
+    setSceneIdx(SCENES.indexOf('npi-activation'));
     setAhaWeather({ status: 'permission_denied' });
   };
 
@@ -277,6 +403,9 @@ export default function OnboardingScreen() {
         dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
         dogCoatType: dogCoatType,
         dogColor: dogColor,
+        dogSnoutProfile,
+        dogActivityBaseline,
+        morningBriefTime,
       });
       if (deepLink) {
         router.replace(deepLink as any);
@@ -303,31 +432,54 @@ export default function OnboardingScreen() {
   };
 
   const renderStep = () => {
-    if (step === 'welcome') {
+    const themedCardStyle = {
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+      backgroundColor: isDark ? 'rgba(15,23,20,0.7)' : 'rgba(255,255,255,0.85)',
+      shadowColor: '#000',
+      shadowOpacity: isDark ? 0.5 : 0.1,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 8 },
+    };
+    if (scene === 'welcome') {
       return (
-        <View>
+        <AnimatedReanimated.View 
+          entering={FadeIn.duration(280)} 
+          style={[
+            styles.glassCard, 
+            styles.squircle24, 
+            animatedCardStyle,
+            { 
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', 
+              backgroundColor: isDark ? 'rgba(15,23,20,0.7)' : 'rgba(255,255,255,0.85)',
+              shadowColor: '#000',
+              shadowOpacity: isDark ? 0.5 : 0.1,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 8 },
+            }
+          ]}
+        >
           <Animated.View style={[styles.compassWrap, { transform: [{ rotate: compassSpin }] }]}>
             <MaterialCommunityIcons name="compass-rose" size={84} color={palette.tint} />
           </Animated.View>
-          <Text style={[styles.h1, { color: palette.text }]}>Your dog&apos;s outdoor life, prepared.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Calibrating {dogName}&apos;s safety engine.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            We will set up NorthPaw around your dog in under a minute.
+            Build a personalized readiness model in a few quick scenes.
           </Text>
           <Pressable
-            onPress={advance}
+            onPress={() => { hapticTap(); advance(); }}
             style={({ pressed }) => [
               styles.cta,
               { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 },
-            ]}>
-            <Text style={styles.ctaText}>Get started</Text>
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+            <Text style={styles.ctaText}>Start calibration</Text>
           </Pressable>
-        </View>
+        </AnimatedReanimated.View>
       );
     }
 
-    if (step === 'name') {
+    if (scene === 'name') {
       return (
-        <View>
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What&apos;s your dog&apos;s name?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>We will personalize every screen for your dog.</Text>
           <TextInput
@@ -351,29 +503,32 @@ export default function OnboardingScreen() {
           />
           <Pressable
             disabled={!canAdvance}
-            onPress={advance}
+            onPress={() => { hapticTap(); advance(); }}
             style={({ pressed }) => [
               styles.cta,
               {
                 backgroundColor: canAdvance ? palette.tint : palette.border,
                 opacity: pressed && canAdvance ? 0.9 : 1,
               },
-            ]}>
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
-        </View>
+        </AnimatedReanimated.View>
       );
     }
 
-    if (step === 'photo') {
+    if (scene === 'photo') {
       return (
-        <View>
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>Add a photo of {dogName}.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
             Optional. Photos stay on your device and are never uploaded.
           </Text>
           <Pressable
-            onPress={pickPhoto}
+            onPress={() => {
+              selectionTick();
+              void pickPhoto();
+            }}
             style={({ pressed }) => [
               styles.photoPreviewLarge,
               {
@@ -381,39 +536,44 @@ export default function OnboardingScreen() {
                 backgroundColor: palette.surface,
                 opacity: pressed ? 0.92 : 1,
               },
-            ]}>
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             {displayPhoto ? (
               <Image source={{ uri: displayPhoto }} style={styles.photoImg} contentFit="cover" cachePolicy="none" />
             ) : (
-              <View style={styles.photoWarmPlaceholder}>
+              <View style={[styles.photoWarmPlaceholder, { backgroundColor: palette.border + '40' }]}>
                 <MaterialCommunityIcons name="dog-side" size={74} color={palette.textSecondary} />
-                <Text style={[styles.placeholderText, { color: palette.textSecondary }]}>Warm portrait placeholder</Text>
+                <Text style={[styles.placeholderText, { color: palette.textSecondary }]}>Choose a photo of {dogName}</Text>
               </View>
             )}
           </Pressable>
           <View style={styles.rowButtons}>
-            <Pressable onPress={pickPhoto} style={[styles.ghostBtn, { borderColor: palette.border }]}>
-              <Text style={[styles.ghostText, { color: palette.text }]}>Choose photo</Text>
+            <Pressable
+              onPress={() => {
+                selectionTick();
+                void pickPhoto();
+              }}
+              style={[styles.ghostBtn, { borderColor: palette.tint, backgroundColor: palette.selectedBg }]}>
+              <Text style={[styles.ghostText, { color: palette.tint }]}>Choose photo</Text>
             </Pressable>
-            <Pressable onPress={advance} style={[styles.ghostBtn, { borderColor: palette.border }]}>
+            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, backgroundColor: palette.surface }]}>
               <Text style={[styles.ghostText, { color: palette.textSecondary }]}>Skip for now</Text>
             </Pressable>
           </View>
           <Pressable
-            onPress={advance}
-            style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }]}>
+            onPress={() => { hapticTap(); advance(); }}
+            style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
-        </View>
+        </AnimatedReanimated.View>
       );
     }
 
-    if (step === 'breed') {
+    if (scene === 'breed-snout') {
       return (
-        <View>
-          <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}?</Text>
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            We use this to set safe temperature and exertion thresholds for {dogName}.
+            We calibrate heat safety using breed context and airway profile.
           </Text>
           <TextInput
             value={breedQuery}
@@ -431,13 +591,14 @@ export default function OnboardingScreen() {
           />
           <Pressable
             onPress={() => {
+              selectionTick();
               setIsMixedBreed(!isMixedBreed);
               if (!isMixedBreed) setBreed('');
             }}
             style={({ pressed }) => [
               styles.mixedRow,
               { borderColor: palette.border, backgroundColor: isMixedBreed ? palette.surface : 'transparent', opacity: pressed ? 0.9 : 1 },
-            ]}>
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <MaterialCommunityIcons name={isMixedBreed ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={20} color={palette.tint} />
             <Text style={[styles.mixedLabel, { color: palette.text }]}>Mixed breed</Text>
           </Pressable>
@@ -465,6 +626,7 @@ export default function OnboardingScreen() {
                 <Pressable
                   key={item}
                   onPress={() => {
+                    selectionTick();
                     setIsMixedBreed(false);
                     setBreed(item);
                   }}
@@ -472,38 +634,68 @@ export default function OnboardingScreen() {
                     styles.breedCard,
                     {
                       borderColor: selected ? palette.tint : palette.border,
-                      backgroundColor: selected ? palette.surface : palette.background,
+                      backgroundColor: selected ? palette.selectedBg : palette.surface,
                       opacity: pressed ? 0.9 : 1,
                     },
-                  ]}>
+                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
                   <Text style={styles.breedIcon}>🐾</Text>
                   <Text style={[styles.breedText, { color: palette.text }]}>{item}</Text>
                 </Pressable>
               );
             })}
           </ScrollView>
+          <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>How is {dogName}&apos;s snout?</Text>
+          <View style={styles.cardList}>
+            {SNOUT_OPTIONS.map((opt) => {
+              const selected = dogSnoutProfile === opt.id;
+              return (
+                <Pressable
+                  key={opt.id}
+                  onPress={() => {
+                    selectionTick();
+                    setDogSnoutProfile(opt.id);
+                  }}
+                  style={({ pressed }) => [
+                    styles.infoCard,
+                    {
+                      borderColor: selected ? palette.tint : palette.border,
+                      backgroundColor: selected ? palette.selectedBg : palette.surface,
+                      opacity: pressed ? 0.92 : 1,
+                    },
+                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                  <Text style={[styles.cardTitle, { color: palette.text }]}>{opt.title}</Text>
+                  <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>{opt.subtitle}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <AnimatedReanimated.Text
+            entering={FadeInDown.duration(300)}
+            style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
+            Did you know? Flat-faced dogs like {dogName} can cool less efficiently through panting.
+          </AnimatedReanimated.Text>
           <Pressable
             disabled={!canAdvance}
-            onPress={advance}
+            onPress={() => { hapticTap(); advance(); }}
             style={({ pressed }) => [
               styles.cta,
               {
                 backgroundColor: canAdvance ? palette.tint : palette.border,
                 opacity: pressed && canAdvance ? 0.9 : 1,
               },
-            ]}>
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
-        </View>
+        </AnimatedReanimated.View>
       );
     }
 
-    if (step === 'biology') {
+    if (scene === 'biology-activity') {
       return (
-        <View>
-          <Text style={[styles.h1, { color: palette.text }]}>Tell us more about {dogName}.</Text>
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>Let&apos;s finish {dogName}&apos;s safety calibration.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            This adjusts heat warnings and hydration needs on packing lists.
+            Weight, coat, color, and energy tune warning thresholds and safe-window duration.
           </Text>
 
           <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>Weight (lbs)</Text>
@@ -525,8 +717,11 @@ export default function OnboardingScreen() {
             {['Single', 'Double', 'Hairless'].map(coat => (
               <Pressable
                 key={coat}
-                onPress={() => setDogCoatType(coat)}
-                style={[{ flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }, dogCoatType === coat ? { borderColor: palette.tint, backgroundColor: palette.surface } : { borderColor: palette.border }]}
+                onPress={() => {
+                  selectionTick();
+                  setDogCoatType(coat);
+                }}
+                style={[{ flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }, dogCoatType === coat ? { borderColor: palette.tint, backgroundColor: palette.selectedBg } : { borderColor: palette.border, backgroundColor: palette.surface }]}
               >
                 <Text style={[{ fontSize: 13, fontWeight: '700' }, dogCoatType === coat ? { color: palette.text } : { color: palette.textSecondary }]}>{coat}</Text>
               </Pressable>
@@ -538,29 +733,62 @@ export default function OnboardingScreen() {
             {['Light', 'Medium', 'Dark'].map(colorOpt => (
               <Pressable
                 key={colorOpt}
-                onPress={() => setDogColor(colorOpt)}
-                style={[{ flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }, dogColor === colorOpt ? { borderColor: palette.tint, backgroundColor: palette.surface } : { borderColor: palette.border }]}
+                onPress={() => {
+                  selectionTick();
+                  setDogColor(colorOpt);
+                }}
+                style={[{ flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }, dogColor === colorOpt ? { borderColor: palette.tint, backgroundColor: palette.selectedBg } : { borderColor: palette.border, backgroundColor: palette.surface }]}
               >
                 <Text style={[{ fontSize: 13, fontWeight: '700' }, dogColor === colorOpt ? { color: palette.text } : { color: palette.textSecondary }]}>{colorOpt}</Text>
               </Pressable>
             ))}
           </View>
+          <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>{dogName}&apos;s activity baseline</Text>
+          <View style={styles.cardList}>
+            {ACTIVITY_OPTIONS.map((opt) => {
+              const selected = dogActivityBaseline === opt.id;
+              return (
+                <Pressable
+                  key={opt.id}
+                  onPress={() => {
+                    selectionTick();
+                    setDogActivityBaseline(opt.id);
+                  }}
+                  style={({ pressed }) => [
+                    styles.infoCard,
+                    {
+                      borderColor: selected ? palette.tint : palette.border,
+                      backgroundColor: selected ? palette.selectedBg : palette.surface,
+                      opacity: pressed ? 0.92 : 1,
+                    },
+                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                  <Text style={[styles.cardTitle, { color: palette.text }]}>{opt.title}</Text>
+                  <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>{opt.subtitle}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <AnimatedReanimated.Text
+            entering={FadeInDown.duration(300)}
+            style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
+            Did you know? Darker coats like {dogName}&apos;s can absorb more heat in direct sun.
+          </AnimatedReanimated.Text>
 
           <View style={[styles.rowButtons, { marginTop: 10 }]}>
-            <Pressable onPress={advance} style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}>
+            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}>
                <Text style={[styles.ghostText, { color: palette.text, textAlign: 'center' }]}>Continue</Text>
             </Pressable>
-            <Pressable onPress={advance} style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}>
+            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}>
                <Text style={[styles.ghostText, { color: palette.textSecondary, textAlign: 'center' }]}>Skip for now</Text>
             </Pressable>
           </View>
-        </View>
+        </AnimatedReanimated.View>
       );
     }
 
-    if (step === 'age') {
+    if (legacyStep === 'age') {
       return (
-        <View>
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>How old is {dogName}?</Text>
           <View style={styles.cardList}>
             {AGE_OPTIONS.map((opt) => {
@@ -568,15 +796,18 @@ export default function OnboardingScreen() {
               return (
                 <Pressable
                   key={opt.id}
-                  onPress={() => setAgeGroup(opt.id)}
+                  onPress={() => {
+                    selectionTick();
+                    setAgeGroup(opt.id);
+                  }}
                   style={({ pressed }) => [
                     styles.infoCard,
                     {
                       borderColor: selected ? palette.tint : palette.border,
-                      backgroundColor: selected ? palette.surface : palette.background,
+                      backgroundColor: selected ? palette.selectedBg : palette.surface,
                       opacity: pressed ? 0.92 : 1,
                     },
-                  ]}>
+                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
                   <Text style={[styles.cardTitle, { color: palette.text }]}>{opt.title}</Text>
                   <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>{opt.subtitle}</Text>
                 </Pressable>
@@ -585,23 +816,23 @@ export default function OnboardingScreen() {
           </View>
           <Pressable
             disabled={!canAdvance}
-            onPress={advance}
+            onPress={() => { hapticTap(); advance(); }}
             style={({ pressed }) => [
               styles.cta,
               {
                 backgroundColor: canAdvance ? palette.tint : palette.border,
                 opacity: pressed && canAdvance ? 0.9 : 1,
               },
-            ]}>
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
-        </View>
+        </AnimatedReanimated.View>
       );
     }
 
-    if (step === 'outings') {
+    if (legacyStep === 'outings') {
       return (
-        <View>
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What does {dogName} love?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>These choices shape pack lists and reminders.</Text>
           <View style={styles.cardList}>
@@ -610,7 +841,10 @@ export default function OnboardingScreen() {
               return (
                 <Pressable
                   key={item}
-                  onPress={() => toggleOuting(item)}
+                  onPress={() => {
+                    selectionTick();
+                    toggleOuting(item);
+                  }}
                   style={({ pressed }) => [
                     styles.infoCard,
                     {
@@ -618,7 +852,7 @@ export default function OnboardingScreen() {
                       backgroundColor: selected ? palette.surface : palette.background,
                       opacity: pressed ? 0.92 : 1,
                     },
-                  ]}>
+                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
                   <Text style={[styles.cardTitle, { color: palette.text }]}>{item}</Text>
                 </Pressable>
               );
@@ -626,40 +860,43 @@ export default function OnboardingScreen() {
           </View>
           <Pressable
             disabled={!canAdvance}
-            onPress={advance}
+            onPress={() => { hapticTap(); advance(); }}
             style={({ pressed }) => [
               styles.cta,
               {
                 backgroundColor: canAdvance ? palette.tint : palette.border,
                 opacity: pressed && canAdvance ? 0.9 : 1,
               },
-            ]}>
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
-        </View>
+        </AnimatedReanimated.View>
       );
     }
 
-    if (step === 'location') {
+    if (legacyStep === 'location') {
       return (
-        <View>
-          <Text style={[styles.h1, { color: palette.text }]}>{dogName} is ready. NorthPaw needs to know where you are.</Text>
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>{dogName} is ready. NorthPaw needs your local conditions.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
             We only read conditions when you open the app. No background tracking.
           </Text>
+          <AnimatedReanimated.Text entering={FadeInDown.duration(300)} style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
+            Did you know? Local solar and humidity data are the most critical inputs for predicting pavement heat soak.
+          </AnimatedReanimated.Text>
           <Pressable
-            onPress={requestLocation}
-            style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }]}>
+            onPress={() => { hapticTap(); requestLocation(); }}
+            style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Allow location access</Text>
           </Pressable>
-          <Pressable onPress={() => setStepIdx(STEPS.indexOf('aha'))} style={styles.skipLink}>
+          <Pressable onPress={() => { hapticTap();  setSceneIdx(SCENES.indexOf('npi-activation')); }} style={styles.skipLink}>
             <Text style={[styles.skipText, { color: palette.textSecondary }]}>Continue without location</Text>
           </Pressable>
-        </View>
+        </AnimatedReanimated.View>
       );
     }
 
-    if (step === 'aha') {
+    if (scene === 'npi-activation') {
       const selectedBreed = isMixedBreed ? `Mixed breed (${mixedPrimary.trim() || 'primary mix'})` : breed;
       const note =
         ahaWeather.status === 'ok'
@@ -672,8 +909,8 @@ export default function OnboardingScreen() {
       const packList = ahaWeather.status === 'ok' ? buildPackList(ahaWeather, outingTypes) : ['Water and collapsible bowl', 'Waste bags', 'Leash and backup clip'];
 
       return (
-        <View>
-          <Text style={[styles.h1, { color: palette.text }]}>Here&apos;s {dogName}&apos;s day, right now.</Text>
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>Activating {dogName}&apos;s NorthPaw Index.</Text>
           {loadingAha ? (
             <View style={styles.ahaLoading}>
               <ActivityIndicator color={palette.tint} size="small" />
@@ -681,35 +918,175 @@ export default function OnboardingScreen() {
             </View>
           ) : null}
           <View style={[styles.ahaCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-            <Text style={[styles.ahaTemp, { color: palette.text }]}>
-              {ahaWeather.status === 'ok' ? `${ahaWeather.tempF}F · ${ahaWeather.place}` : 'Live weather unavailable'}
-            </Text>
-            <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>
-              {ahaWeather.status === 'ok' ? ahaWeather.summary : 'Enable location to see a live readiness read.'}
-            </Text>
-            <Text style={[styles.ahaNote, { color: palette.text }]}>{note}</Text>
-            <Text style={[styles.cardTitle, { color: palette.text, marginTop: 12 }]}>Best outing window today</Text>
-            <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>{bestWindow}</Text>
-            {ahaTopChecklist.id ? (
-              <>
-                <Text style={[styles.cardTitle, { color: palette.text, marginTop: 12 }]}>Your first dynamic checklist:</Text>
-                <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 15, marginTop: 4 }}>{ahaTopChecklist.reason}</Text>
-              </>
+            {!activationReady ? (
+              <View style={styles.activationWrap}>
+                <Canvas style={styles.activationCanvas}>
+                  <Circle cx={70} cy={70} r={glowRadius} color="#2ECC71" opacity={glowOpacity}>
+                    <BlurMask blur={14} />
+                  </Circle>
+                  <Circle cx={70} cy={70} r={26} color="#2ECC71" opacity={0.35} />
+                </Canvas>
+                <Text style={[styles.activationTitle, { color: palette.text }]}>Calculation pulse</Text>
+                <Text style={[styles.activationLine, { color: palette.textSecondary }]}>
+                  {CALIBRATION_LINES[activationLineIdx]}
+                </Text>
+              </View>
             ) : (
               <>
-                <Text style={[styles.cardTitle, { color: palette.text, marginTop: 12 }]}>Pack list for today</Text>
-                {packList.map((item) => (
-                  <Text key={item} style={[styles.packItem, { color: palette.textSecondary }]}>• {item}</Text>
-                ))}
+                <Text style={[styles.ahaTemp, { color: palette.text }]}>
+                  {ahaWeather.status === 'ok' ? `${ahaWeather.tempF}F · ${ahaWeather.place}` : 'Live weather unavailable'}
+                </Text>
+                <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>
+                  {ahaWeather.status === 'ok' ? ahaWeather.summary : 'Enable location to see a live readiness read.'}
+                </Text>
+                <Text style={[styles.ahaNote, { color: palette.text }]}>{note}</Text>
+                <Text style={[styles.cardTitle, { color: palette.text, marginTop: 12 }]}>Best outing window today</Text>
+                <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>{bestWindow}</Text>
+                {ahaTopChecklist.id ? (
+                  <>
+                    <Text style={[styles.cardTitle, { color: palette.text, marginTop: 12 }]}>Your first dynamic checklist:</Text>
+                    <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 15, marginTop: 4 }}>{ahaTopChecklist.reason}</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.cardTitle, { color: palette.text, marginTop: 12 }]}>Pack list for today</Text>
+                    {packList.map((item) => (
+                      <Text key={item} style={[styles.packItem, { color: palette.textSecondary }]}>• {item}</Text>
+                    ))}
+                  </>
+                )}
               </>
             )}
           </View>
           <Pressable
-            onPress={() => setStepIdx(STEPS.indexOf('notifications'))}
-            style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }]}>
+            disabled={!activationReady}
+            onPress={() => { hapticTap();  setSceneIdx(SCENES.indexOf('morning-brief')); }}
+            style={({ pressed }) => [
+              styles.cta,
+              { backgroundColor: activationReady ? palette.tint : palette.border, opacity: pressed ? 0.9 : 1 },
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
-        </View>
+        </AnimatedReanimated.View>
+      );
+    }
+
+    if (scene === 'morning-brief') {
+      const times = ['7:00 AM', '8:00 AM', 'Custom'];
+      return (
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>When should we send {dogName}&apos;s Morning Brief?</Text>
+          <Text style={[styles.body, { color: palette.textSecondary }]}>
+            Pick a time so NorthPaw can deliver a daily safety window before your first outing.
+          </Text>
+          <Pressable
+            onPress={() => {
+              selectionTick();
+              setPreviewInteracted(true);
+            }}
+            style={({ pressed }) => [
+              styles.notificationPreviewCard,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.95 : 1,
+              },
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+            <Text style={[styles.notificationPreviewKicker, { color: palette.textSecondary }]}>Preview notification</Text>
+            <Text style={[styles.notificationPreviewTitle, { color: palette.text }]}>NorthPaw Morning Brief</Text>
+            <Text style={[styles.notificationPreviewBody, { color: palette.textSecondary }]}>
+              {buildPreviewBody(morningBriefTime)}
+            </Text>
+          </Pressable>
+          <View style={styles.cardList}>
+            {times.map((t) => {
+              const selected = morningBriefTime === t;
+              return (
+                <Pressable
+                  key={t}
+                  onPress={() => {
+                    selectionTick();
+                    setMorningBriefTime(t);
+                    setPreviewInteracted(true);
+                  }}
+                  style={({ pressed }) => [
+                    styles.infoCard,
+                    {
+                      borderColor: selected ? palette.tint : palette.border,
+                      backgroundColor: selected ? palette.selectedBg : palette.surface,
+                      opacity: pressed ? 0.92 : 1,
+                    },
+                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                  <Text style={[styles.cardTitle, { color: palette.text }]}>{t}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Pressable
+            disabled={!previewInteracted || busy}
+            onPress={async () => {
+              selectionTick();
+              if (!previewInteracted || busy) return;
+              setBusy(true);
+              try {
+                const permission = await requestMedReminderPermissions();
+                setNotificationsPermission(permission.ok ? 'granted' : 'denied');
+                setSceneIdx(SCENES.indexOf('commitment'));
+              } finally {
+                setBusy(false);
+              }
+            }}
+            style={({ pressed }) => [
+              styles.cta,
+              {
+                backgroundColor: previewInteracted && !busy ? palette.tint : palette.border,
+                opacity: pressed && previewInteracted && !busy ? 0.9 : 1,
+              },
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>Enable Morning Brief alerts</Text>}
+          </Pressable>
+          <Text style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
+            Tap the preview or choose a time to continue.
+          </Text>
+        </AnimatedReanimated.View>
+      );
+    }
+
+    if (scene === 'commitment') {
+      return (
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>Ready to keep {dogName} safe?</Text>
+          <Text style={[styles.body, { color: palette.textSecondary }]}>
+            We will use your calibration profile to power personalized readiness and walk-window guidance.
+          </Text>
+          <Pressable
+            disabled={busy}
+            onPress={async () => {
+              const url = undefined;
+              if (busy) return;
+              setBusy(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              headerFade.value = withTiming(0, { duration: 180 });
+              screenFade.value = withTiming(0, { duration: 320 });
+              await new Promise((resolve) => setTimeout(resolve, 260));
+              await finishWithNotifications(false, url);
+            }}
+            style={({ pressed }) => [
+              styles.cta,
+              { backgroundColor: busy ? palette.border : palette.tint, opacity: pressed && !busy ? 0.9 : 1 },
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>I&apos;m ready to keep {dogName} safe</Text>}
+          </Pressable>
+          <Pressable
+            disabled={busy}
+            onPress={() => {
+              const url = undefined;
+              void skipNotifications(url);
+            }}
+            style={styles.skipLink}>
+            <Text style={[styles.skipText, { color: palette.textSecondary }]}>Not right now</Text>
+          </Pressable>
+        </AnimatedReanimated.View>
       );
     }
 
@@ -726,19 +1103,19 @@ export default function OnboardingScreen() {
         <Pressable
           disabled={busy}
           onPress={() => {
-            const url = ahaTopChecklist.id ? `/checklist/${ahaTopChecklist.id}` : undefined;
+            const url = undefined;
             finish(url);
           }}
           style={({ pressed }) => [
             styles.cta,
             { backgroundColor: busy ? palette.border : palette.tint, opacity: pressed && !busy ? 0.9 : 1 },
-          ]}>
+          , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
           {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>Allow notifications</Text>}
         </Pressable>
         <Pressable
           disabled={busy}
           onPress={() => {
-            const url = ahaTopChecklist.id ? `/checklist/${ahaTopChecklist.id}` : undefined;
+            const url = undefined;
             void skipNotifications(url);
           }}
           style={styles.skipLink}>
@@ -750,24 +1127,34 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top', 'bottom']}>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {displayPhoto ? (
+          <Image source={{ uri: displayPhoto }} style={styles.heroBg} contentFit="cover" />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colorScheme === 'dark' ? '#1D2B24' : '#DDE8DE' }]} />
+        )}
+        <BlurView intensity={20} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+      </View>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={8}>
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag">
-          <View style={styles.stepRow}>
-            <Text style={[styles.stepLabel, { color: palette.textSecondary }]}>Step {stepIdx + 1} of {STEPS.length}</Text>
-            {stepIdx > 0 ? (
-              <Pressable onPress={goBack} hitSlop={8}>
+        <AnimatedReanimated.View style={[styles.flex, screenFadeStyle]}>
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag">
+          <AnimatedReanimated.View style={[styles.stepRow, headerFadeStyle]}>
+            <Text style={[styles.stepLabel, { color: palette.textSecondary }]}>Scene {sceneIdx + 1} of {SCENES.length}</Text>
+            {sceneIdx > 0 ? (
+              <Pressable onPress={() => { hapticTap(); goBack(); }} hitSlop={8}>
                 <Text style={[styles.backText, { color: palette.tint }]}>Back</Text>
               </Pressable>
             ) : <View />}
-          </View>
+          </AnimatedReanimated.View>
           {renderStep()}
         </ScrollView>
+        </AnimatedReanimated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -776,7 +1163,13 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   flex: { flex: 1 },
+  heroBg: { width: '100%', height: '100%' },
   scroll: { padding: 24, paddingBottom: 46 },
+  glassCard: {
+    borderWidth: 1,
+    padding: 20,
+  },
+  squircle24: { borderRadius: 24 },
   stepRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
   stepLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
   backText: { fontSize: 14, fontWeight: '700' },
@@ -843,16 +1236,38 @@ const styles = StyleSheet.create({
   infoCard: { borderWidth: 1, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14 },
   cardTitle: { fontSize: 15, fontWeight: '800', lineHeight: 20 },
   cardSubtitle: { fontSize: 14, lineHeight: 20, marginTop: 4 },
+  didYouKnowCaption: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+    marginBottom: 12,
+    fontWeight: '600',
+    opacity: 0.95,
+  },
   skipLink: { alignSelf: 'center', paddingVertical: 10 },
   skipText: { fontSize: 14, fontWeight: '600' },
   ahaLoading: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   ahaCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 16 },
+  activationWrap: { alignItems: 'center', paddingVertical: 8, marginBottom: 6 },
+  activationCanvas: { width: 140, height: 140, marginBottom: 10 },
+  activationTitle: { fontSize: 16, fontWeight: '800', marginTop: 2 },
+  activationLine: { fontSize: 13, lineHeight: 18, marginTop: 6, textAlign: 'center' },
   ahaTemp: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
   ahaNote: { marginTop: 10, fontSize: 14, lineHeight: 20, fontWeight: '600' },
   packItem: { fontSize: 14, lineHeight: 20, marginTop: 4 },
   mockPush: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 16 },
   mockPushLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
   mockPushBody: { fontSize: 15, lineHeight: 22, fontWeight: '700', marginTop: 8 },
+  notificationPreviewCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  notificationPreviewKicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+  notificationPreviewTitle: { fontSize: 14, fontWeight: '800', marginTop: 4 },
+  notificationPreviewBody: { fontSize: 13, lineHeight: 19, marginTop: 6 },
   cta: { paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 8 },
   ctaText: { color: '#fff', fontWeight: '800', fontSize: 17 },
 });

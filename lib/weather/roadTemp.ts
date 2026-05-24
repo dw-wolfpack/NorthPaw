@@ -4,9 +4,12 @@ type HourlyInput = {
   windSpeedMph: number;
   isDaytime: boolean;
   skyCover: number | null;
+  /** Actual solar radiation in W/m² (Global Horizontal Irradiance) if available. */
+  solarGhi?: number | null;
 };
 
 export type RoadTempBand = 'safe' | 'warm' | 'hot' | 'danger';
+export type SurfaceType = 'asphalt' | 'concrete' | 'sand' | 'turf';
 
 export type TimelineBarPoint = {
   hour: number;
@@ -42,7 +45,7 @@ function dayOfYear(d: Date): number {
   return Math.floor(diff / 86400000);
 }
 
-function roadBandForTemp(tempF: number): RoadTempBand {
+export function roadBandForTemp(tempF: number): RoadTempBand {
   if (tempF < 77) return 'safe';
   if (tempF < 100) return 'warm';
   if (tempF < 125) return 'hot';
@@ -67,22 +70,52 @@ function solarIntensityFrom(
   const elevationDeg = Math.max(0, (Math.asin(clampedSin) * 180) / Math.PI);
   const clearSkyUV = 10 * Math.sin(toRadians(elevationDeg));
   const normalizedSkyCover = skyCover == null ? 30 : Math.max(0, Math.min(100, skyCover));
-  const cloudFactor = 1 - 0.75 * Math.pow(normalizedSkyCover / 100, 3.4);
+  
+  // Heat attenuation from clouds is roughly linear, unlike UV which penetrates clouds easily.
+  // 100% cloud cover still lets ~15% of diffuse solar radiation through.
+  const cloudFactor = 1 - (normalizedSkyCover / 100) * 0.85;
+  
   return Math.max(0, Math.min(10, clearSkyUV * cloudFactor));
 }
 
-function estimateRoadTempF(
+export function estimateRoadTempF(
   sample: HourlyInput,
   latitude: number,
   localHour: number,
-  localDate: Date
+  localDate: Date,
+  surfaceType: SurfaceType = 'asphalt'
 ): number {
   if (!sample.isDaytime) {
-    return sample.airTempF - 3;
+    // Concrete and Turf retain heat differently, but air-3 is a safe night baseline.
+    return sample.airTempF - (surfaceType === 'asphalt' ? 3 : 1);
   }
-  const solarIntensity = solarIntensityFrom(localDate, latitude, localHour, sample.skyCover);
-  const solarHeating = solarIntensity * 4.5;
-  const windCooling = sample.windSpeedMph * 0.6;
+
+  let solarIntensity: number;
+  if (sample.solarGhi != null && sample.solarGhi > 0) {
+    // Map W/m² (GHI) to our 0-10 clinical intensity scale.
+    // 1000 W/m² is a standard "full sun" clear sky peak at low latitudes.
+    solarIntensity = Math.max(0, Math.min(10, sample.solarGhi / 100));
+  } else {
+    solarIntensity = solarIntensityFrom(localDate, latitude, localHour, sample.skyCover);
+  }
+  
+  // Surface multipliers based on albedo and thermal mass
+  // Asphalt: baseline (1.0)
+  // Concrete: ~25% less heating due to higher albedo (0.75)
+  // Sand: ~15% more heating due to low thermal conductivity/high surface area (1.15)
+  // Artificial Turf: ~35% more heating due to rubber infill and poor dissipation (1.35)
+  const surfaceMultiplier = 
+    surfaceType === 'concrete' ? 0.72 :
+    surfaceType === 'sand' ? 1.15 :
+    surfaceType === 'turf' ? 1.38 : 1.0;
+
+  // Heat dissipates faster when the air is colder due to convection.
+  // At 85°F+, full solar heating applies. At 40°F, it is roughly 40% as effective.
+  const ambientScale = Math.max(0.4, Math.min(1.0, ((sample.airTempF - 40) / 45) * 0.6 + 0.4));
+  const solarHeating = solarIntensity * 5.1 * ambientScale * surfaceMultiplier;
+  
+  // Wind has a significant effect on asphalt cooling.
+  const windCooling = sample.windSpeedMph * 0.75;
   return sample.airTempF + solarHeating - windCooling;
 }
 
@@ -121,9 +154,17 @@ export function buildTimelineBarsModel(input: {
   hourly: HourlyInput[];
   latitude: number;
   now?: Date;
+  /** Risk multiplier from dog profile (e.g. flat snout + coat). Defaults to 1.0 */
+  riskWeightMultiplier?: number;
+  /** Shrink best-window duration by fraction (e.g. 0.2 for high activity). Defaults to 0 */
+  bestWindowReductionFraction?: number;
+  /** Surface type to estimate. Defaults to asphalt. */
+  surfaceType?: SurfaceType;
 }): TimelineBarsModel | null {
   if (!input.hourly.length) return null;
   const now = input.now ?? new Date();
+  const riskWeight = Math.max(0.8, Math.min(1.6, input.riskWeightMultiplier ?? 1));
+  const windowReduction = Math.max(0, Math.min(0.6, input.bestWindowReductionFraction ?? 0));
 
   const byHour = new Map<number, HourlyInput>();
   for (const sample of input.hourly) {
@@ -141,8 +182,9 @@ export function buildTimelineBarsModel(input: {
     const sample = byHour.get(h);
     if (!sample) continue;
     const localDate = new Date(sample.timeIso);
-    const roadTempF = estimateRoadTempF(sample, input.latitude, h, localDate);
-    const isBest = sample.isDaytime && roadTempF < 77;
+    const roadTempF = estimateRoadTempF(sample, input.latitude, h, localDate, input.surfaceType);
+    const effectiveRoadTemp = roadTempF * riskWeight;
+    const isBest = sample.isDaytime && effectiveRoadTemp < 77;
     if (sample.isDaytime) daylightHours.push(h);
     if (isBest) bestWindowHours.push(h);
     points.push({
@@ -160,10 +202,20 @@ export function buildTimelineBarsModel(input: {
   const currentHour = now.getHours() + now.getMinutes() / 60;
   const currentHourPosition = clamp(currentHour, AXIS_START_HOUR, AXIS_END_HOUR);
 
+  const reducedBestSegments = mergeAdjacentHours(bestWindowHours).map((seg) => {
+    if (windowReduction <= 0) return seg;
+    const duration = seg.endHour - seg.startHour;
+    const reducedDuration = Math.max(1, Math.round(duration * (1 - windowReduction)));
+    return {
+      startHour: seg.startHour,
+      endHour: Math.min(seg.endHour, seg.startHour + reducedDuration),
+    };
+  });
+
   return {
     points,
     daylightSegments: mergeAdjacentHours(daylightHours),
-    bestWindowSegments: mergeAdjacentHours(bestWindowHours),
+    bestWindowSegments: reducedBestSegments,
     currentHourPosition,
   };
 }

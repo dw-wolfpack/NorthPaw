@@ -1,8 +1,8 @@
 # NorthPaw Product + Moat Roadmap
 
-Last updated: 2026-04-21 (rev 2)
+Last updated: 2026-04-21 (rev 3)
 Owner: Product + Engineering
-Status: Draft for review
+Status: Updated to prioritize Intelligence Calibration (Onboarding)
 
 ## Purpose
 
@@ -21,30 +21,42 @@ Everything in this roadmap must strengthen that loop.
 
 | Phase | Theme | Core Deliverable | Primary Metric |
 |---|---|---|---|
-| MVP | Safety + Trust | NorthPaw Index (NPI) + live weather risk inputs | Pre-outing NPI open rate |
-| V1 | Daily Habit | Morning Brief + walk windows + pavement safety timing | L7 retention and weekly frequency |
-| V1.5 | Utility Expansion | Smart Pack recommendations + light Gear Vault toggles | Checklist completion and smart-pack adoption |
-| V2 | Emotional Moat | Paw-Print Archive + optional sharing handoff | 60/90-day retention and churn reduction |
+| MVP | Calibration + Trust | Onboarding Ritual + NPI Engine + NWS Proxies | Onboarding completion + NPI trust score |
+| V1 | Daily Habit | Morning Brief + walk windows | L7 retention |
+| V1.5 | Utility Expansion | Smart Pack + Gear Vault | Checklist adoption |
+| V2 | Emotional Moat | Paw-Print Archive + Safety Flashbacks | 90-day churn reduction |
 | Parallel Track | Design Excellence | Hero-first UI system, depth/motion/haptics polish | NPI interaction depth and premium UX sentiment |
 
 ---
 
-## Phase MVP: Safety + Trust
+## Phase MVP: Calibration + Trust
 
 ### Goal
 
-Formalize the current weather/risk logic into a named, user-facing "NorthPaw Index (NPI)" with transparent reasoning.
+Establish NorthPaw as a precision safety instrument by creating a high-fidelity onboarding calibration ritual that powers a transparent, personalized NorthPaw Index (NPI).
 
 ### Why now
 
 - Core primitives already exist (weather fetch, road temp estimation, dog modifiers, content engine).
-- This is the strongest moat and credibility anchor.
-- Trust in NPI should come before adding heavier feature layers.
+- Onboarding calibration quality determines whether NPI is perceived as bespoke or generic.
+- Trust in NPI should be earned before habit and expansion layers.
 
 ### Build scope
 
-1. **Define NPI model (v1)**
-   - Create a single score and label (example: 1-10 or 0-100 with risk bands).
+1. **Build the Intelligence Calibration (Onboarding)**
+   - Implement the full 11-scene onboarding flow from `ONBOARDING_FLOW.md`.
+   - Prioritize scientific personalization inputs:
+     - snout profile (brachycephalic)
+     - activity baseline
+     - coat and color modifiers
+   - Implement 2-second calculation pulse before NPI reveal.
+   - Apply design standards:
+     - full-screen hero layout
+     - `Glass_Base` and `Rim_Light` tokens
+     - Z-axis staggered reveal choreography
+
+2. **Define NPI model (v1)**
+   - Create a single score and label.
    - Inputs should include:
      - Air temp
      - Estimated pavement temp
@@ -63,21 +75,21 @@ Formalize the current weather/risk logic into a named, user-facing "NorthPaw Ind
    - Initial profile modifiers (v1 defaults):
      - `brachycephalic => +15%` final risk score
      - `double_thick_coat => +10%` final risk score
-   - Implementation rule: `get_npi_score()` must accept full `dog_profile` as a primary input, not a post-hoc adjustment.
+     - `activity_high => -20%` safe-window duration
+   - Implementation rule: `get_npi_score()` should be a pure function of `weather_data + dog_profile`.
 
-2. **NPI thermodynamics deep-dive (Sprint A)**
+3. **NPI thermodynamics deep-dive (Sprint A)**
    - Add a humidity multiplier policy for high-heat days:
      - Working rule for v1 calibration: for each +5F above 85F, relative humidity must drop by ~20% to maintain similar canine heat tolerance.
    - Treat this as a conservative risk model and validate against real user outcomes/feedback.
    - Document assumptions and update cadence in an internal "NPI model notes" file.
 
-3. **Replace mock signals with live data**
-   - Replace mock AQI with live AQI source.
-   - Replace mock recent-rain with real precipitation history.
+4. **Replace mock signals with NWS-only fallback logic**
+   - Implement NWS-only proxy matrix (smoke parsing, rain station proxies, UV midday heuristics).
    - Add fallback behavior when data is missing.
    - Store data timestamp + source distance metadata for confidence scoring.
 
-4. **Add NPI explanation UI**
+5. **Add NPI explanation UI**
    - "Why this score?" drill-in with plain-language factors.
    - Show confidence level (High/Medium/Low) based on data completeness/freshness.
    - Include safety phrasing and uncertainty guardrails.
@@ -85,7 +97,7 @@ Formalize the current weather/risk logic into a named, user-facing "NorthPaw Ind
    - Add a verification prompt for real-world conditions:
      - Example: "Route not shaded? Use the 5-second hand test before committing to asphalt."
 
-5. **Event instrumentation**
+6. **Event instrumentation**
    - `npi_viewed`
    - `npi_explainer_opened`
    - `npi_cta_clicked` (for checklist/card navigation)
@@ -94,6 +106,7 @@ Formalize the current weather/risk logic into a named, user-facing "NorthPaw Ind
 
 ### Exit criteria
 
+- Onboarding completion remains healthy while collecting calibration inputs.
 - Users can understand "what this means for my dog" in under 5 seconds on Home.
 - NPI explainer usage indicates trust-building behavior.
 - Mock dependencies are removed from production logic.
@@ -397,44 +410,36 @@ Make NorthPaw feel premium, tactile, and emotionally resonant while preserving f
 
 ## Recommended Immediate Next 2 Sprints
 
-### Sprint A (Foundation, NWS-first)
+### Sprint A (Calibration Sprint)
 
-1. Finalize NPI model spec (dog-centric thermodynamics, not human heat index):
-   - Inputs: air temp, humidity, sky-cover/solar, wind, pavement estimate, and dog profile modifiers.
-   - Include explicit brachycephalic and coat/color penalties.
-   - Define confidence policy and uncertainty copy rules.
-2. Implement NWS-only fallback matrix in data layer:
-   - AQI proxy via hazards + smoke/haze text parsing.
-   - Rain-history proxy via nearest-station precipitation fields, with grid-based fallback heuristics.
-   - Pollen proxy via dry/windy/seasonal heuristic.
-   - UV proxy via sky-cover + midday timing.
-   - Pavement risk confidence adjustments based on wind and data freshness.
-3. Replace mock paths with production-safe fallback logic:
-   - Remove mock AQI and mock rain from user-facing decision logic.
-   - Add freshness, source distance, and signal quality metadata to modeled outputs.
-4. Ship NPI explanation surfaces:
-   - "Why this score?" factor breakdown.
-   - Confidence badge + Sensor Status messaging.
-   - 5-second hand-test verification prompt when surface/shade uncertainty is high.
-   - Interactive "Verify Ground Temp" tool on caution bands (for example 100F to 115F pavement estimate):
-     - Tap opens a 5-second timer ritual.
-     - Completion copy: "Too hot to hold? Walk on grass."
-5. Instrument and validate:
-   - `npi_viewed`, `npi_explainer_opened`, `npi_confidence_badge_viewed`, `npi_verification_prompt_opened`
-   - Fallback usage telemetry (`aqi_proxy_used`, `rain_proxy_used`, `pollen_proxy_used`, `uv_proxy_used`)
-   - Metadata completeness telemetry: station distance + timestamp present rate.
-   - Success criteria: users understand score quickly, trust behaviors increase, no overclaiming language.
-   - Add explicit Sprint A QA checks:
-     - Rain proxy (`precipitationLast3Hours` / `precipitationLast24Hours`) can trigger muddy-paws pathways.
-     - Sensor Status transitions correctly (`High`, `Medium`, `Fair`) as data quality changes.
+1. Refactor onboarding (`app/onboarding.tsx`) into calibration-first flow:
+   - implement 11 scenes from `ONBOARDING_FLOW.md`
+   - include "Did You Know?" micro-education captions
+   - include `expo-haptics` selection/success cues
+2. Implement NPI logic layer:
+   - THI with humidity normalization
+   - snout/activity/coat multipliers
+   - pure-function scoring contract (`weather_data + dog_profile`)
+3. Replace mock weather inputs with NWS-only fallback proxies:
+   - smoke/haze parsing
+   - rain-history station proxies
+   - UV midday heuristics
+   - confidence metadata and Sensor Status mapping
+4. Build activation ritual:
+   - Skia-rendered NPI gauge on Aha scene
+   - 2-second calibration pulse prior to reveal
+5. Instrument and validate trust:
+   - onboarding completion + step drop-off
+   - `npi_explainer_open_rate`
+   - fallback usage telemetry and confidence-state distribution
 
-### Sprint B (Habit Pilot)
+### Sprint B (Habit + Ritual Polish)
 
-1. Ship Morning Brief as opt-in experiment.
-2. Add walk-window computation from day timeline.
-3. Add notification settings and disable reasons tracking.
-4. Evaluate retention lift and alert fatigue before scale-up.
-5. Enforce deadline-oriented briefing copy:
+1. Ship Morning Brief opt-in and value-first scheduling from onboarding Scene 10.
+2. Add walk-window computation from day timeline and evaluate early retention impact.
+3. Implement "Verify Ground Temp" 5-second ritual interaction.
+4. Apply `Glass_Base` + `Rim_Light` styling across Home readiness cards.
+5. Polish heartbeat pulse animation and deadline-oriented briefing copy:
    - Prefer "window closes at X" and "risk rises by Y time" over descriptive weather narration.
    - Keep mission-brief tone: actionable, dog-specific, concise.
 

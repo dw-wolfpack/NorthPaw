@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -189,7 +190,7 @@ function SchedulePickers(props: {
   const chip = (label: string, selected: boolean, onPress: () => void, key: string) => (
     <Pressable
       key={key}
-      onPress={onPress}
+      onPress={() => { hapticTap(); onPress(); }}
       style={({ pressed }) => [
         styles.chip,
         {
@@ -268,7 +269,7 @@ function SchedulePickers(props: {
               return (
                 <Pressable
                   key={`${h}-${m}`}
-                  onPress={() => onTime(h, m)}
+                  onPress={() => { hapticTap();  onTime(h, m); }}
                   style={[
                     styles.webTimeRow,
                     {
@@ -309,7 +310,7 @@ function SchedulePickers(props: {
         <View style={[styles.dateRow, { gap: 10 }]}>
           {chip('Today', firstDueDays === 0, () => onFirstDueDays(0), 'first-today')}
           <Pressable
-            onPress={openCalendar}
+            onPress={() => { hapticTap(); openCalendar(); }}
             style={({ pressed }) => [
               styles.chip,
               styles.calendarChip,
@@ -343,13 +344,13 @@ function SchedulePickers(props: {
         ) : null}
 
         <Modal visible={iosDateOpen} animationType="slide" transparent>
-          <Pressable style={styles.dateModalBackdrop} onPress={() => setIosDateOpen(false)}>
+          <Pressable style={styles.dateModalBackdrop} onPress={() => { hapticTap();  setIosDateOpen(false); }}>
             <Pressable
               onPress={(e) => e.stopPropagation()}
               style={[styles.dateModalSheet, { backgroundColor: palette.surface }]}>
               <View style={styles.dateModalHeader}>
                 <Text style={[styles.dateModalTitle, { color: palette.text }]}>First reminder date</Text>
-                <Pressable onPress={() => setIosDateOpen(false)} hitSlop={12}>
+                <Pressable onPress={() => { hapticTap();  setIosDateOpen(false); }} hitSlop={12}>
                   <Text style={{ color: palette.tint, fontWeight: '800', fontSize: 16 }}>Done</Text>
                 </Pressable>
               </View>
@@ -397,6 +398,8 @@ function SchedulePickers(props: {
     </>
   );
 }
+
+const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
 export default function RemindersScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -654,7 +657,7 @@ export default function RemindersScreen() {
       <View style={styles.presetRow}>
         <Pressable
           disabled={!!busyKind || presetBusy || hasHeartworm}
-          onPress={() => openPresetAddForm('heartworm')}
+          onPress={() => { hapticTap();  openPresetAddForm('heartworm'); }}
           style={({ pressed }) => [
             styles.presetBtn,
             {
@@ -674,7 +677,7 @@ export default function RemindersScreen() {
         </Pressable>
         <Pressable
           disabled={!!busyKind || presetBusy || hasFlea}
-          onPress={() => openPresetAddForm('flea_tick')}
+          onPress={() => { hapticTap();  openPresetAddForm('flea_tick'); }}
           style={({ pressed }) => [
             styles.presetBtn,
             {
@@ -725,14 +728,14 @@ export default function RemindersScreen() {
           />
           <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
             <Pressable
-              onPress={cancelPresetForm}
+              onPress={() => { hapticTap(); cancelPresetForm(); }}
               disabled={presetBusy}
               style={[styles.secondaryBtn, { borderColor: palette.border, opacity: presetBusy ? 0.6 : 1 }]}>
               <Text style={{ color: palette.text, fontWeight: '700' }}>Cancel</Text>
             </Pressable>
             <Pressable
               disabled={presetBusy}
-              onPress={savePresetForm}
+              onPress={() => { hapticTap(); savePresetForm(); }}
               style={[
                 styles.primaryBtn,
                 { backgroundColor: palette.tint, flex: 1, opacity: presetBusy ? 0.7 : 1 },
@@ -806,13 +809,13 @@ export default function RemindersScreen() {
             />
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
               <Pressable
-                onPress={() => setShowCustom(false)}
+                onPress={() => { hapticTap();  setShowCustom(false); }}
                 style={[styles.secondaryBtn, { borderColor: palette.border }]}>
                 <Text style={{ color: palette.text, fontWeight: '700' }}>Cancel</Text>
               </Pressable>
               <Pressable
                 disabled={busyKind === 'custom'}
-                onPress={addCustom}
+                onPress={() => { hapticTap(); addCustom(); }}
                 style={[styles.primaryBtn, { backgroundColor: palette.tint, opacity: busyKind === 'custom' ? 0.7 : 1 }]}>
                 {busyKind === 'custom' ? (
                   <ActivityIndicator color="#fff" />
@@ -872,16 +875,16 @@ export default function RemindersScreen() {
             <View style={styles.cardActions}>
               {row.kind === 'heartworm' || row.kind === 'flea_tick' ? (
                 <Pressable
-                  onPress={() => openPresetEditForm(row)}
+                  onPress={() => { hapticTap();  openPresetEditForm(row); }}
                   style={styles.actionBtn}
                   disabled={presetBusy}>
                   <Text style={{ color: palette.tint, fontWeight: '700' }}>Edit schedule</Text>
                 </Pressable>
               ) : null}
-              <Pressable onPress={() => onMarkDone(row)} style={styles.actionBtn}>
+              <Pressable onPress={() => { hapticTap();  onMarkDone(row); }} style={styles.actionBtn}>
                 <Text style={{ color: palette.tint, fontWeight: '800' }}>Mark given</Text>
               </Pressable>
-              <Pressable onPress={() => onDelete(row)} style={styles.actionBtn}>
+              <Pressable onPress={() => { hapticTap();  onDelete(row); }} style={styles.actionBtn}>
                 <Text style={{ color: palette.danger, fontWeight: '700' }}>Remove</Text>
               </Pressable>
             </View>

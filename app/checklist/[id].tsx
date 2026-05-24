@@ -27,15 +27,18 @@ import {
   clearChecklistAllLocal,
   getChecklistCheckedIds,
   recordOpen,
+  saveSnapshot,
   saveChecklistOuting,
   setChecklistItemChecked,
 } from '@/lib/database';
+import { getDogProfile } from '@/lib/profile';
 import {
   localCalendarDateString,
   markPrimaryChecklistOpenedForLocalDate,
 } from '@/lib/readiness/persistence';
 import { captureLocationForOuting, pickOutingPhotos } from '@/lib/outingCaptureHelpers';
 import { useColorScheme } from '@/components/useColorScheme';
+import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
 
 const MAX_PHOTOS = 3;
 
@@ -77,6 +80,9 @@ export default function ChecklistDetailScreen() {
   const [includeGps, setIncludeGps] = useState(false);
   const [pendingPhotoUris, setPendingPhotoUris] = useState<string[]>([]);
   const [outingBusy, setOutingBusy] = useState(false);
+  const [quickLogEnergy, setQuickLogEnergy] = useState<'low' | 'normal' | 'high' | null>(null);
+  const [quickLogBusy, setQuickLogBusy] = useState(false);
+  const [quickLogSaved, setQuickLogSaved] = useState(false);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -242,6 +248,50 @@ export default function ChecklistDetailScreen() {
 
   const total = cl.items.length;
   const done = cl.items.filter((i) => checked.has(i.id)).length;
+  const checklistComplete = total > 0 && done === total;
+
+  const onSaveQuickLog = async (energy: 'low' | 'normal' | 'high') => {
+    if (quickLogBusy) return;
+    setQuickLogBusy(true);
+    try {
+      const [weather, profile] = await Promise.all([fetchWeatherForDeviceLocation(), getDogProfile()]);
+      let npiScore = 0;
+      let weatherSummary = 'Weather unavailable';
+      if (weather.status === 'ok') {
+        const nearest =
+          weather.hourlySamples.reduce(
+            (best, sample) => {
+              const t = new Date(sample.timeIso).getTime();
+              if (!Number.isFinite(t)) return best;
+              const d = Math.abs(t - Date.now());
+              return d < best.diff ? { diff: d, sample } : best;
+            },
+            { diff: Number.MAX_SAFE_INTEGER, sample: weather.hourlySamples[0] }
+          )?.sample ?? null;
+        const humidity = Math.max(0, Math.min(100, nearest?.humidityPct ?? weather.precipChance ?? 45));
+        const skyCover = Math.max(0, Math.min(100, nearest?.skyCover ?? 35));
+        const solarLoad = weather.isDaytime ? ((100 - skyCover) / 100) * 10 : 0;
+        const thi = weather.tempF - (0.55 - 0.0055 * humidity) * (weather.tempF - 58);
+        const snoutMultiplier = profile.dogSnoutProfile === 'flat' ? 1.15 : 1;
+        const coatMultiplier = profile.dogCoatType === 'Double' ? 1.1 : 1;
+        const activityPenalty = profile.dogActivityBaseline === 'high' ? 1 : 0;
+        const baseRisk = Math.max(0, (thi - 70) / 2.2) + solarLoad * 0.35 + activityPenalty;
+        npiScore = Math.max(0, Math.min(10, Math.round(baseRisk * snoutMultiplier * coatMultiplier * 10) / 10));
+        weatherSummary = `${weather.summary} · ${weather.tempF}F`;
+      }
+      await saveSnapshot({
+        localDate: localCalendarDateString(),
+        npiScore,
+        weatherSummary,
+        energyScale: energy,
+      });
+      setQuickLogEnergy(energy);
+      setQuickLogSaved(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } finally {
+      setQuickLogBusy(false);
+    }
+  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={styles.container}>
@@ -277,6 +327,38 @@ export default function ChecklistDetailScreen() {
           </Pressable>
         );
       })}
+      {checklistComplete ? (
+        <View style={[styles.quickLogCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+          <Text style={[styles.quickLogTitle, { color: palette.text }]}>Log this outing</Text>
+          <Text style={[styles.quickLogSub, { color: palette.textSecondary }]}>
+            Mission complete. Capture energy in 3 taps to build your dog&apos;s baseline.
+          </Text>
+          <View style={styles.quickLogBtnRow}>
+            {(['low', 'normal', 'high'] as const).map((energy) => {
+              const selected = quickLogEnergy === energy;
+              return (
+                <Pressable
+                  key={energy}
+                  onPress={() => onSaveQuickLog(energy)}
+                  disabled={quickLogBusy}
+                  style={({ pressed }) => [
+                    styles.quickLogBtn,
+                    {
+                      borderColor: selected ? palette.tint : palette.border,
+                      backgroundColor: selected ? `${palette.tint}22` : palette.background,
+                      opacity: pressed || quickLogBusy ? 0.9 : 1,
+                    },
+                  ]}>
+                  <Text style={{ color: palette.text, fontWeight: '700' }}>{energy}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {quickLogSaved ? (
+            <Text style={[styles.quickLogSaved, { color: palette.tint }]}>Quick Log saved to snapshots.</Text>
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={[styles.outingCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
         <View style={styles.outingHeader}>
@@ -418,6 +500,23 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
+  quickLogCard: {
+    marginTop: 18,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+  },
+  quickLogTitle: { fontSize: 18, fontWeight: '800' },
+  quickLogSub: { marginTop: 6, fontSize: 13, lineHeight: 18 },
+  quickLogBtnRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  quickLogBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  quickLogSaved: { marginTop: 10, fontSize: 12, fontWeight: '700' },
   outingHeader: {
     flexDirection: 'row',
     alignItems: 'center',

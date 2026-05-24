@@ -4,23 +4,23 @@ const sage = '#40916C';
 const cream = '#F1FAEE';
 const ink = '#0D1B14';
 
-const tintColorLight = moss;
+const tintColorLight = '#3A7D5E';
 const tintColorDark = sage;
 
 export default {
   light: {
     text: ink,
-    textSecondary: '#3d5349',
-    background: cream,
-    /** Softer mint for Ready tab hero (Figma-style landing). */
-    readyMint: '#EEF7F3',
+    textSecondary: '#2F3E36',
+    background: '#F8FBF9',
+    readyMint: '#E8F5F0',
     surface: '#ffffff',
-    border: '#d8e2dc',
+    border: '#CFDBD5',
     tint: tintColorLight,
-    tabIconDefault: '#95a99d',
+    tabIconDefault: '#88998E',
     tabIconSelected: tintColorLight,
     accent: forest,
-    danger: '#9b2226',
+    danger: '#B91C1C',
+    selectedBg: 'rgba(58, 125, 94, 0.08)',
   },
   dark: {
     text: cream,
@@ -34,5 +34,6 @@ export default {
     tabIconSelected: tintColorDark,
     accent: sage,
     danger: '#e07a5f',
+    selectedBg: 'rgba(64, 145, 108, 0.15)',
   },
 };

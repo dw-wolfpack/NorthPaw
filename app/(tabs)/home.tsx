@@ -1,11 +1,16 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { BlurView } from 'expo-blur';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import * as FileSystem from 'expo-file-system/legacy';
+import AnimatedReanimated, { ZoomIn, FadeIn, FadeOut, withRepeat, withSequence, withTiming, useSharedValue, useDerivedValue, useAnimatedStyle, LinearTransition } from 'react-native-reanimated';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   ImageBackground,
   Linking,
   Modal,
@@ -13,9 +18,11 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Dimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BlurMask, Canvas, Circle, Path, Skia, RoundedRect, Rect, Group } from '@shopify/react-native-skia';
 
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -23,7 +30,7 @@ import { useSubscription } from '@/context/SubscriptionContext';
 import { canAccessPack, getChecklist, getLibrary } from '@/lib/content';
 import { IMAGES } from '@/lib/contentVisuals';
 import { getChecklistCheckedIds } from '@/lib/database';
-import { getDogProfile, type DogProfile } from '@/lib/profile';
+import { getDogProfile, toggleGearVaultItem, type DogProfile } from '@/lib/profile';
 import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
 import type { ReadinessPresentation } from '@/lib/readiness/types';
@@ -35,7 +42,8 @@ import {
 } from '@/lib/readiness/persistence';
 import { buildHomeTimelineSummary, type TimelineTone } from '@/lib/weather/homeTimeline';
 import { buildCompactConditionsSummaryLine } from '@/lib/weather/compactHomeSummary';
-import { fetchUsWeatherForDeviceLocation, type HomeWeatherState } from '@/lib/weather/nwsWeather';
+import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
+import { type HomeWeatherState } from '@/lib/weather/nwsWeather';
 import { currentWeatherIconName } from '@/lib/weather/currentWeatherIcon';
 import {
   WEATHER_CARD_SCRIM_COLORS,
@@ -45,10 +53,12 @@ import {
 import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundImages';
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
-import { buildTimelineBarsModel, timelineBounds, timelineHourRatio } from '@/lib/weather/roadTemp';
+import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp } from '@/lib/weather/roadTemp';
 import { useColorScheme } from '@/components/useColorScheme';
 
 const FOREST = '#1B4332';
+const SAFETY_GREEN = '#2ECC71';
+const RISK_AMBER = '#D97706';
 
 /** Weather narrative for timeline / hero — not product outing readiness (see `lib/readiness/`). */
 type WeatherDayNarrative = {
@@ -113,8 +123,33 @@ function formatClockFromHour(hour: number): string {
   return `${twelve}${suffix}`;
 }
 
+function formatClockQuarterHour(hour: number): string {
+  const normalized = ((hour % 24) + 24) % 24;
+  const totalMinutes = Math.round(normalized * 60 / 15) * 15;
+  const wrappedMinutes = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h24 = Math.floor(wrappedMinutes / 60);
+  const m = wrappedMinutes % 60;
+  const suffix = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
 function rangeLabel(startHour: number, endHour: number): string {
   return `${formatClockFromHour(startHour)} - ${formatClockFromHour(endHour)}`;
+}
+
+function npiBandLabel(score: number): string {
+  if (score <= 3.0) return 'Green (Low Risk)';
+  if (score <= 5.0) return 'Amber (Caution)';
+  if (score <= 7.5) return 'Ember (High Risk)';
+  return 'Crimson (Danger)';
+}
+
+function npiBandColor(score: number): string {
+  if (score <= 3.0) return SAFETY_GREEN;
+  if (score <= 5.0) return RISK_AMBER;
+  if (score <= 7.5) return '#E67E22'; // Ember
+  return '#C0392B'; // Crimson
 }
 
 function roadBandLabel(band: 'safe' | 'warm' | 'hot' | 'danger'): string {
@@ -135,8 +170,102 @@ function clampNum(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
 }
 
+function dogRiskMultiplier(profile: DogProfile | null): number {
+  let m = 1;
+  if (profile?.dogSnoutProfile === 'flat') m *= 1.15;
+  if (profile?.dogCoatType === 'Double') m *= 1.1;
+  return m;
+}
+
+function activityWindowReduction(profile: DogProfile | null): number {
+  return profile?.dogActivityBaseline === 'high' ? 0.2 : 0;
+}
+
+function clampUnit(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function riskBand(score: number): { label: 'Green' | 'Amber' | 'Ember'; color: string; pulseMs: number } {
+  if (score <= 3.3) return { label: 'Green', color: '#2ECC71', pulseMs: 2200 };
+  if (score <= 6.6) return { label: 'Amber', color: '#F39C12', pulseMs: 1500 };
+  return { label: 'Ember', color: '#C46A2D', pulseMs: 950 };
+}
+
+function confidenceBadge(weather: Extract<HomeWeatherState, { status: 'ok' }> | null): {
+  label: 'High' | 'Medium' | 'Fair';
+  detail: string;
+} | null {
+  if (!weather) return null;
+  const dist = weather.stationDistanceMiles;
+  const ageMinutes =
+    weather.updatedIso && Number.isFinite(new Date(weather.updatedIso).getTime())
+      ? (Date.now() - new Date(weather.updatedIso).getTime()) / 60000
+      : null;
+  if (dist != null && dist < 5 && ageMinutes != null && ageMinutes < 30) {
+    return { label: 'High', detail: '<5 mi, <30m old' };
+  }
+  if (dist != null && dist >= 5 && dist <= 15) {
+    return { label: 'Medium', detail: '5-15 mi source' };
+  }
+  return { label: 'Fair', detail: '>15 mi or stale data' };
+}
+
+function confidenceColors(label: 'High' | 'Medium' | 'Fair'): {
+  borderColor: string;
+  backgroundColor: string;
+  textColor: string;
+} {
+  if (label === 'High') {
+    return {
+      borderColor: 'rgba(46,204,113,0.38)',
+      backgroundColor: 'rgba(46,204,113,0.16)',
+      textColor: SAFETY_GREEN,
+    };
+  }
+  return {
+    borderColor: 'rgba(243,156,18,0.38)',
+    backgroundColor: 'rgba(243,156,18,0.16)',
+    textColor: RISK_AMBER,
+  };
+}
+
+function NpiRiskRing({ score }: { score: number }) {
+  const progress = clampUnit(score / 10, 0, 1);
+  const band = riskBand(score);
+  const pulse = useRef(new Animated.Value(0.76)).current;
+  const arcPath = useMemo(() => {
+    const p = Skia.Path.Make();
+    p.addArc({ x: 10, y: 10, width: 76, height: 76 }, -90, progress * 360);
+    return p;
+  }, [progress]);
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: band.pulseMs, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.76, duration: band.pulseMs, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [band.pulseMs, pulse]);
+  return (
+    <Animated.View style={{ opacity: pulse }}>
+      <Canvas style={{ width: 96, height: 96 }}>
+        <Circle cx={48} cy={48} r={39} color={band.color} opacity={0.26}>
+          <BlurMask blur={14} />
+        </Circle>
+        <Circle cx={48} cy={48} r={38} color="rgba(255,255,255,0.2)" style="stroke" strokeWidth={7} />
+        <Path path={arcPath} color={band.color} style="stroke" strokeWidth={7} strokeCap="round" />
+      </Canvas>
+    </Animated.View>
+  );
+}
+
+const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
   const palette = Colors[colorScheme];
   const router = useRouter();
   const { isPro, activeEntitlements } = useSubscription();
@@ -149,8 +278,114 @@ export default function HomeScreen() {
   const [roadDetailHour, setRoadDetailHour] = useState<number | null>(null);
   const [timelineScrubHour, setTimelineScrubHour] = useState<number | null>(null);
   const [timelineBarWidth, setTimelineBarWidth] = useState(0);
+  const [selectedSurface, setSelectedSurface] = useState<SurfaceType>('asphalt');
+  const [npiModalOpen, setNpiModalOpen] = useState(false);
+  const [verifySurfaceOpen, setVerifySurfaceOpen] = useState(false);
+  const [heroViewMode, setHeroViewMode] = useState<'now' | 'best'>('now');
+  const [verifyRunning, setVerifyRunning] = useState(false);
+  const [verifyCountdown, setVerifyCountdown] = useState(7);
+  const verifyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scrubHourHapticRef = useRef<number | null>(null);
+  const confidencePulse = useRef(new Animated.Value(1)).current;
+  const [showSecondaryHazard, setShowSecondaryHazard] = useState(false);
+  const [gearVaultBusy, setGearVaultBusy] = useState(false);
   const [dogProfile, setDogProfile] = useState<DogProfile | null>(null);
   const [readinessPresentation, setReadinessPresentation] = useState<ReadinessPresentation | null>(null);
+
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const mainScrollRef = useRef<ScrollView>(null);
+  const avatarRef = useRef<View>(null);
+  const timelineRef = useRef<View>(null);
+  const bellRef = useRef<View>(null);
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  
+  // Spotlight Shared Values
+  const spotlightX = useSharedValue(screenWidth / 2);
+  const spotlightY = useSharedValue(screenHeight / 2);
+  const spotlightR = useSharedValue(0);
+  const spotlightW = useSharedValue(0);
+  const spotlightH = useSharedValue(0);
+  const [walkthroughStep, setWalkthroughStep] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      FileSystem.getInfoAsync(FileSystem.documentDirectory + 'home_walkthrough.txt').then(info => {
+        if (!info.exists) {
+          triggerStep(0);
+        }
+      }).catch(() => {});
+    }, [])
+  );
+
+  const triggerStep = (step: number) => {
+    setWalkthroughStep(step);
+    setShowWalkthrough(true);
+    
+    if (step === 0) { // Status Ring
+      mainScrollRef.current?.scrollTo({ y: 0, animated: true });
+      setTimeout(() => {
+        avatarRef.current?.measureInWindow((x, y, w, h) => {
+          spotlightX.value = withTiming(x - 4, { duration: 500 });
+          spotlightY.value = withTiming(y - 4, { duration: 500 });
+          spotlightW.value = withTiming(w + 8, { duration: 500 });
+          spotlightH.value = withTiming(h + 8, { duration: 500 });
+          spotlightR.value = withTiming((w + 8) / 2, { duration: 500 });
+        });
+      }, 600);
+    } else if (step === 1) { // Timeline
+      mainScrollRef.current?.scrollTo({ y: 380, animated: true });
+      setTimeout(() => {
+        timelineRef.current?.measureInWindow((x, y, w, h) => {
+          spotlightX.value = withTiming(x - 4, { duration: 500 });
+          spotlightY.value = withTiming(y - 4, { duration: 500 });
+          spotlightW.value = withTiming(w + 8, { duration: 500 });
+          spotlightH.value = withTiming(h + 8, { duration: 500 });
+          spotlightR.value = withTiming(24, { duration: 500 });
+        });
+      }, 600);
+    } else if (step === 2) { // Reminder Button
+      mainScrollRef.current?.scrollTo({ y: 0, animated: true });
+      setTimeout(() => {
+        bellRef.current?.measureInWindow((x, y, w, h) => {
+          spotlightX.value = withTiming(x - 4, { duration: 500 });
+          spotlightY.value = withTiming(y - 4, { duration: 500 });
+          spotlightW.value = withTiming(w + 8, { duration: 500 });
+          spotlightH.value = withTiming(h + 8, { duration: 500 });
+          spotlightR.value = withTiming((w + 8) / 2, { duration: 500 });
+        });
+      }, 600);
+    } else if (step === 3) { // Tabs
+      mainScrollRef.current?.scrollTo({ y: 400, animated: true }); // Scroll down a bit to show tabs area if needed
+      setTimeout(() => {
+        spotlightX.value = withTiming(0, { duration: 500 });
+        spotlightY.value = withTiming(screenHeight - 85, { duration: 500 });
+        spotlightW.value = withTiming(screenWidth, { duration: 500 });
+        spotlightH.value = withTiming(85, { duration: 500 });
+        spotlightR.value = withTiming(0, { duration: 500 });
+      }, 100);
+    }
+  };
+
+  const finishWalkthrough = async () => {
+    setShowWalkthrough(false);
+    try {
+      await FileSystem.writeAsStringAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', 'done');
+    } catch {}
+  };
+
+  const currentRisk = npiScore != null ? riskBand(npiScore) : null;
+  const pulseOpacity = useSharedValue(0.4);
+  useEffect(() => {
+    const speedMs = currentRisk?.pulseMs ?? 2000;
+    pulseOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.8, { duration: speedMs }),
+        withTiming(0.4, { duration: speedMs })
+      ),
+      -1,
+      true
+    );
+  }, [currentRisk?.pulseMs, pulseOpacity]);
 
   const bgMint = palette.readyMint ?? palette.background;
 
@@ -198,7 +433,7 @@ export default function HomeScreen() {
     useCallback(() => {
       let gone = false;
       (async () => {
-        const result = await fetchUsWeatherForDeviceLocation();
+      const result = await fetchWeatherForDeviceLocation();
         if (!gone) {
           setWeather(result);
         }
@@ -298,20 +533,31 @@ export default function HomeScreen() {
 
   const timelineBars = useMemo(() => {
     if (!weatherOk || !weatherOk.hourlySamples.length) return null;
+    const riskWeightMultiplier = dogRiskMultiplier(dogProfile);
+    const bestWindowReductionFraction = activityWindowReduction(dogProfile);
     return buildTimelineBarsModel({
       hourly: weatherOk.hourlySamples,
       latitude: weatherOk.latitude,
+      riskWeightMultiplier,
+      bestWindowReductionFraction,
+      surfaceType: selectedSurface,
     });
-  }, [weatherOk]);
+  }, [weatherOk, dogProfile, selectedSurface]);
   const timelineAxis = timelineBounds();
   const roadDetailHours = useMemo(() => Array.from({ length: 24 }, (_, hour) => hour), []);
   const scrubMovedRef = useRef(false);
   const scrubStartXRef = useRef(0);
   const scrubStartTsRef = useRef(0);
   const bestWindowPrimary = timelineBars?.bestWindowSegments?.[0] ?? null;
-  const bestWindowLabel = bestWindowPrimary
-    ? rangeLabel(bestWindowPrimary.startHour, bestWindowPrimary.endHour)
-    : 'No cool daylight window';
+  const bestAmSeg = timelineBars?.bestWindowSegments?.find(s => s.startHour < 12);
+  const bestPmSeg = timelineBars?.bestWindowSegments?.find(s => s.startHour >= 12);
+
+  const bestWindowLabel = useMemo(() => {
+    if (!bestAmSeg && !bestPmSeg) return 'No cool daylight window';
+    const am = bestAmSeg ? `AM: ${formatClockFromHour(bestAmSeg.startHour)}` : '';
+    const pm = bestPmSeg ? `PM: ${formatClockFromHour(bestPmSeg.startHour)}` : '';
+    return [am, pm].filter(Boolean).join(' • ');
+  }, [bestAmSeg, bestPmSeg]);
   const daylightStart = timelineBars?.daylightSegments?.[0]?.startHour ?? null;
   const daylightEnd = timelineBars?.daylightSegments?.[timelineBars.daylightSegments.length - 1]?.endHour ?? null;
   const scrubPoint = useMemo(() => {
@@ -342,6 +588,130 @@ export default function HomeScreen() {
     }
     return best;
   }, [timelineBars, roadDetailHour]);
+  const currentRoadPoint = useMemo(() => {
+    if (!timelineBars || !timelineBars.points.length) return null;
+    const target = Math.round(timelineBars.currentHourPosition);
+    return (
+      timelineBars.points.reduce((best, p) => {
+        const bestDist = Math.abs(best.hour - target);
+        const d = Math.abs(p.hour - target);
+        return d < bestDist ? p : best;
+      }, timelineBars.points[0]) ?? null
+    );
+  }, [timelineBars]);
+  const npiScore = useMemo(() => {
+    if (!weatherOk) return null;
+    const nearestHourly =
+      weatherOk.hourlySamples.reduce((best, sample) => {
+        const t = new Date(sample.timeIso).getTime();
+        if (!Number.isFinite(t)) return best;
+        const d = Math.abs(t - Date.now());
+        return d < best.diff ? { diff: d, sample } : best;
+      }, { diff: Number.MAX_SAFE_INTEGER, sample: weatherOk.hourlySamples[0] })?.sample ?? null;
+    const humidity = clampUnit(nearestHourly?.humidityPct ?? weatherOk.precipChance ?? 45, 0, 100);
+    const skyCover = clampUnit(nearestHourly?.skyCover ?? 35, 0, 100);
+    const solarLoadRaw = weatherOk.isDaytime ? ((100 - skyCover) / 100) * 10 : 0;
+    // Scale solar risk impact by temp: full impact at 85F+, 40% impact at 40F.
+    const solarTempScale = Math.max(0.4, Math.min(1.0, ((weatherOk.tempF - 40) / 45) * 0.6 + 0.4));
+    const solarLoad = solarLoadRaw * solarTempScale;
+    // Canine Heat Stress Index (CHSI): Weights humidity as an additive risk.
+    const chsi = (weatherOk.tempF * 0.8) + (humidity * (weatherOk.tempF - 14) / 100) + 20;
+    const snoutMultiplier = dogProfile?.dogSnoutProfile === 'flat' ? 1.15 : 1;
+    const coatMultiplier = dogProfile?.dogCoatType === 'Double' ? 1.1 : 1;
+    const activityPenalty = dogProfile?.dogActivityBaseline === 'high' ? 1 : 0;
+    // Base risk: Mapping CHSI range [89, 148] to [0, 5.5] using 10.8 normalization.
+    // Anchor shifted to 89 (approx 60F) to prevent over-indexing in cool weather.
+    const baseRisk = Math.max(0, (chsi - 89) / 10.8) + solarLoad * 0.35;
+    const finalRisk = (baseRisk * snoutMultiplier * coatMultiplier) + activityPenalty;
+    return Math.round(Math.min(10, finalRisk) * 10) / 10;
+  }, [weatherOk, currentRoadPoint, dogProfile]);
+  const npiExplanation = useMemo(() => {
+    if (!weatherOk) return null;
+    const nearestHourly =
+      weatherOk.hourlySamples.reduce((best, sample) => {
+        const t = new Date(sample.timeIso).getTime();
+        if (!Number.isFinite(t)) return best;
+        const d = Math.abs(t - Date.now());
+        return d < best.diff ? { diff: d, sample } : best;
+      }, { diff: Number.MAX_SAFE_INTEGER, sample: weatherOk.hourlySamples[0] })?.sample ?? null;
+    const humidity = clampUnit(nearestHourly?.humidityPct ?? weatherOk.precipChance ?? 45, 0, 100);
+    const skyCover = clampUnit(nearestHourly?.skyCover ?? 35, 0, 100);
+    const solarLoadRaw = weatherOk.isDaytime ? ((100 - skyCover) / 100) * 10 : 0;
+    const solarTempScale = Math.max(0.4, Math.min(1.0, ((weatherOk.tempF - 40) / 45) * 0.6 + 0.4));
+    const solarLoad = solarLoadRaw * solarTempScale;
+    const chsi = (weatherOk.tempF * 0.8) + (humidity * (weatherOk.tempF - 14) / 100) + 20;
+    
+    // Calculate optimal AM and PM points (lowest risk hours)
+    const daylightPoints = timelineBars?.points.filter(p => p.isDaylight) ?? [];
+    const amPoints = daylightPoints.filter(p => p.hour < 12);
+    const pmPoints = daylightPoints.filter(p => p.hour >= 12);
+
+    const getOptimal = (pts: any[]) => {
+      if (!pts.length) return null;
+      return pts.reduce((best, p) => (p.roadTempF < best.roadTempF ? p : best), pts[0]);
+    };
+
+    const optAm = getOptimal(amPoints);
+    const optPm = getOptimal(pmPoints);
+
+    // Calculate NPIs for these points (Simplified for the hero card)
+    const getPointNpi = (p: any) => {
+      if (!p) return null;
+      // Re-run a simplified risk calc for this point
+      const base = Math.max(0, (p.airTempF - 60) / 10); // Very rough proxy for AM/PM comparison
+      return Math.round(Math.min(10, base) * 10) / 10;
+    };
+
+    const bestAmLabel = optAm ? `${formatClockFromHour(optAm.hour)}` : null;
+    const bestPmLabel = optPm ? `${formatClockFromHour(optPm.hour)}` : null;
+    const bestAmNpi = getPointNpi(optAm);
+    const bestPmNpi = getPointNpi(optPm);
+
+    let advisor = "Conditions look safe. Standard exercise recommended.";
+    const airRisk = Math.max(0, (chsi - 89) / 10.8);
+    const sunRisk = solarLoad * 0.35;
+    const roadRisk = (currentRoadPoint?.roadTempF ?? 0) > 105 ? 2.0 : 0;
+
+    if ((npiScore ?? 0) >= 3.1) {
+      if (roadRisk > 0) {
+        advisor = "Pavement is reaching safe limits. Stick to grass or shaded paths.";
+      } else if (sunRisk > airRisk && sunRisk > 1.5) {
+        advisor = "Direct sun is heating the coat. Stick to shaded routes where possible.";
+      } else if (humidity > 65 && weatherOk.tempF > 60) {
+        advisor = "Humidity is reducing panting efficiency. Bring extra water and take breaks.";
+      } else if (weatherOk.tempF > 75) {
+        advisor = "High ambient heat detected. Monitor for heavy panting and avoid intense play.";
+      } else {
+        advisor = "Environmental stress is elevated. Keep outings short and monitor your dog.";
+      }
+    }
+
+    return {
+      thi: Math.round(chsi * 10) / 10,
+      humidity,
+      solarLoad: Math.round(solarLoad * 10) / 10,
+      snoutAdj: dogProfile?.dogSnoutProfile === 'flat' ? '+15%' : '0%',
+      coatAdj: dogProfile?.dogCoatType === 'Double' ? '+10%' : '0%',
+      activityAdj: dogProfile?.dogActivityBaseline === 'high' ? '+1.0' : '0',
+      advisor,
+      bestAmLabel,
+      bestPmLabel,
+      bestAmNpi,
+      bestPmNpi,
+    };
+  }, [weatherOk, currentRoadPoint, dogProfile, npiScore, timelineBars]);
+  const confidence = useMemo(() => confidenceBadge(weatherOk), [weatherOk]);
+  const confidenceTone = useMemo(
+    () => (confidence ? confidenceColors(confidence.label) : null),
+    [confidence]
+  );
+  const shouldShowVerifySurface = (currentRoadPoint?.roadTempF ?? 0) > 100;
+  const verifyProgress = useMemo(() => clampUnit((7 - verifyCountdown) / 7, 0, 1), [verifyCountdown]);
+  const verifyArcPath = useMemo(() => {
+    const p = Skia.Path.Make();
+    p.addArc({ x: 20, y: 20, width: 176, height: 176 }, -90, verifyProgress * 360);
+    return p;
+  }, [verifyProgress]);
   const selectedRoadDetailHour = useMemo(() => {
     const fallback = timelineBars ? Math.round(timelineBars.currentHourPosition) : 12;
     const selected = roadDetailHour ?? fallback;
@@ -379,6 +749,66 @@ export default function HomeScreen() {
       body: `${hourText} is risky for paws. Try again near ${bestWindowLabel} or pick a shaded grass area.`,
     };
   }, [roadDetailPoint, dogName, selectedRoadDetailHour, bestWindowLabel]);
+  const dailyReadinessLine = useMemo(() => {
+    if (!timelineBars) return `${dogName}'s timeline is loading.`;
+    const nextBest = timelineBars.bestWindowSegments?.[0] ?? null;
+    if (nextBest) {
+      return `${dogName}'s optimal outdoor window runs until ${formatClockQuarterHour(nextBest.endHour)} today.`;
+    }
+    return `${dogName} may need grass-first routes today with shorter outdoor time.`;
+  }, [timelineBars, dogName]);
+  const hazardInfo = useMemo(() => {
+    const alerts = weatherOk?.hazardAlerts ?? [];
+    if (!alerts.length) return null;
+    return {
+      primary: alerts[0],
+      secondary: alerts[1] ?? null,
+      extraCount: Math.max(0, alerts.length - 1),
+    };
+  }, [weatherOk?.hazardAlerts]);
+  const packPreviewHint = useMemo(() => {
+    const precip = weatherOk?.precipChance ?? 0;
+    const nearestHumidity =
+      weatherOk?.hourlySamples?.reduce((best, sample) => {
+        const t = new Date(sample.timeIso).getTime();
+        if (!Number.isFinite(t)) return best;
+        const d = Math.abs(t - Date.now());
+        return d < best.diff ? { diff: d, sample } : best;
+      }, { diff: Number.MAX_SAFE_INTEGER, sample: weatherOk?.hourlySamples?.[0] })?.sample?.humidityPct ?? null;
+    if (dogProfile?.dogSnoutProfile === 'flat' && (npiScore ?? 0) > 6) {
+      return {
+        label: `Recommended for ${dogName}'s pack: Cooling spray and extra water now.`,
+        conditionKey: 'heat',
+        itemId: 'extra-water',
+      };
+    }
+    if (dogProfile?.dogCoatType === 'Double' && nearestHumidity != null && nearestHumidity > 65) {
+      return {
+        label: `Recommended for ${dogName}'s pack: Humidity fatigue watch for double-coat days.`,
+        conditionKey: 'humidity',
+        itemId: 'humidity-fatigue-check',
+      };
+    }
+    if ((npiScore ?? 0) > 7) {
+      return {
+        label: `Recommended for ${dogName}'s pack: Bring extra water.`,
+        conditionKey: 'heat',
+        itemId: 'extra-water',
+      };
+    }
+    if (precip > 20) {
+      return {
+        label: `Recommended for ${dogName}'s pack: Towel for muddy paws.`,
+        conditionKey: 'rain',
+        itemId: 'mud-towel',
+      };
+    }
+    return null;
+  }, [npiScore, weatherOk?.precipChance, weatherOk?.hourlySamples, dogName, dogProfile?.dogSnoutProfile, dogProfile?.dogCoatType]);
+  const packHintPinned = useMemo(() => {
+    if (!packPreviewHint) return false;
+    return (dogProfile?.gearVault?.[packPreviewHint.conditionKey] ?? []).includes(packPreviewHint.itemId);
+  }, [dogProfile?.gearVault, packPreviewHint]);
   const scrubPopupLeftPx = useMemo(() => {
     if (!scrubPoint || timelineBarWidth <= 0) return 0;
     const popupWidth = 132;
@@ -400,7 +830,12 @@ export default function HomeScreen() {
             timelineAxis.startHour +
             (timelineAxis.endHour - timelineAxis.startHour) *
               Math.max(0, Math.min(1, timelineBarWidth > 0 ? x / timelineBarWidth : 0));
-          setTimelineScrubHour(hour);
+          const rounded = Math.round(hour);
+          setTimelineScrubHour(rounded);
+          if (scrubHourHapticRef.current !== rounded) {
+            scrubHourHapticRef.current = rounded;
+            Haptics.selectionAsync().catch(() => {});
+          }
         },
         onPanResponderMove: (evt, gesture) => {
           if (Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6) scrubMovedRef.current = true;
@@ -409,16 +844,23 @@ export default function HomeScreen() {
             timelineAxis.startHour +
             (timelineAxis.endHour - timelineAxis.startHour) *
               Math.max(0, Math.min(1, timelineBarWidth > 0 ? x / timelineBarWidth : 0));
-          setTimelineScrubHour(hour);
+          const rounded = Math.round(hour);
+          setTimelineScrubHour(rounded);
+          if (scrubHourHapticRef.current !== rounded) {
+            scrubHourHapticRef.current = rounded;
+            Haptics.selectionAsync().catch(() => {});
+          }
         },
         onPanResponderRelease: () => {
           const tapDuration = Date.now() - scrubStartTsRef.current;
           const wasTap = !scrubMovedRef.current && tapDuration < 260;
           setTimelineScrubHour(null);
+          scrubHourHapticRef.current = null;
           if (wasTap) setRoadTempModalOpen(true);
         },
         onPanResponderTerminate: () => {
           setTimelineScrubHour(null);
+          scrubHourHapticRef.current = null;
         },
       }),
     [timelineAxis.endHour, timelineAxis.startHour, timelineBarWidth]
@@ -433,16 +875,70 @@ export default function HomeScreen() {
     }
   }, [readinessPresentation, router]);
 
+  const startVerifySurface = useCallback(() => {
+    if (verifyRunning) return;
+    setVerifyRunning(true);
+    setVerifyCountdown(7);
+    let t = 7;
+    verifyTimerRef.current = setInterval(() => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      t -= 1;
+      setVerifyCountdown(Math.max(0, t));
+      if (t <= 0) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        if (verifyTimerRef.current) {
+          clearInterval(verifyTimerRef.current);
+          verifyTimerRef.current = null;
+        }
+        setVerifyRunning(false);
+      }
+    }, 1000);
+  }, [verifyRunning]);
+  const onToggleGearVault = useCallback(async () => {
+    if (!packPreviewHint || gearVaultBusy) return;
+    setGearVaultBusy(true);
+    try {
+      const updated = await toggleGearVaultItem(packPreviewHint.conditionKey, packPreviewHint.itemId);
+      setDogProfile((prev) => (prev ? { ...prev, gearVault: updated } : prev));
+      Haptics.selectionAsync().catch(() => {});
+    } finally {
+      setGearVaultBusy(false);
+    }
+  }, [packPreviewHint, gearVaultBusy]);
+  useEffect(() => {
+    if (confidence?.label !== 'Fair') {
+      confidencePulse.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(confidencePulse, { toValue: 0.64, duration: 900, useNativeDriver: true }),
+        Animated.timing(confidencePulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [confidence?.label, confidencePulse]);
+  useEffect(() => {
+    setShowSecondaryHazard(false);
+  }, [hazardInfo?.primary, hazardInfo?.secondary]);
+  useEffect(() => {
+    return () => {
+      if (verifyTimerRef.current) clearInterval(verifyTimerRef.current);
+    };
+  }, []);
+
   return (
     <>
       <ScrollView
+        ref={mainScrollRef}
         style={{ flex: 1, backgroundColor: bgMint }}
         contentContainerStyle={styles.container}>
         {/* A. Identity strip — name + place; utilities stay quiet */}
         <View style={styles.headerRow}>
           <Pressable
-            onPress={() => router.push('/dog-profile')}
-            style={({ pressed }) => [styles.headerProfile, { opacity: pressed ? 0.88 : 1 }]}
+            onPress={() => { hapticTap();  router.push('/dog-profile'); }}
+            style={({ pressed }) => [styles.headerProfile, { opacity: pressed ? 0.88 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
             accessibilityRole="button"
             accessibilityLabel="Dog profile">
             <View style={styles.headerProfileText}>
@@ -456,8 +952,8 @@ export default function HomeScreen() {
           </Pressable>
           <View style={styles.headerRight}>
             <Pressable
-              onPress={() => router.push('/reminders')}
-              style={({ pressed }) => [styles.headerIconBtn, { opacity: pressed ? 0.75 : 1 }]}
+              ref={bellRef} onPress={() => { hapticTap();  router.push('/reminders'); }}
+              style={({ pressed }) => [styles.headerIconBtn, { opacity: pressed ? 0.75 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
               accessibilityRole="button"
               accessibilityLabel="Alerts">
               <MaterialCommunityIcons name="bell-outline" size={22} color={palette.textSecondary} />
@@ -468,7 +964,7 @@ export default function HomeScreen() {
                   ? router.push('/(tabs)/settings')
                   : router.push({ pathname: '/paywall', params: { returnTo: '/(tabs)/home' } })
               }
-              style={({ pressed }) => [styles.headerProQuiet, { opacity: pressed ? 0.75 : 1 }]}
+              style={({ pressed }) => [styles.headerProQuiet, { opacity: pressed ? 0.75 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
               accessibilityRole="button"
               accessibilityLabel={isPro ? 'Pro membership' : 'Upgrade to Pro'}>
               <Text style={[styles.headerProQuietText, { color: palette.textSecondary }]}>
@@ -480,108 +976,310 @@ export default function HomeScreen() {
 
         {/* B. Hero — one story: readiness title, one support line, one CTA */}
         <View style={styles.heroBlock}>
-          {weather.status === 'loading' ? (
-            <View style={styles.heroLoading}>
-              <ActivityIndicator size="large" color={FOREST} />
-              <Text style={[styles.heroLoadingText, { color: palette.textSecondary }]}>
-                Getting local conditions…
-              </Text>
-            </View>
-          ) : weather.status === 'permission_denied' ? (
-            <Text style={[styles.permissionText, { color: palette.text }]}>
-              Turn on location to see your timeline and weather (US).
-            </Text>
-          ) : weather.status === 'unavailable' ? (
-            <Text style={[styles.permissionText, { color: palette.text }]}>{weather.message}</Text>
-          ) : (
-            <View style={styles.heroRowSplit}>
-              <Pressable
-                onPress={() => router.push('/dog-profile')}
-                style={styles.heroPhotoCol}
-                accessibilityRole="button"
-                accessibilityLabel="Dog photo">
-                {dogProfile?.dogPhotoUri ? (
-                  <Image
-                    source={{ uri: dogProfile.dogPhotoUri }}
-                    style={[styles.heroDogCircle, { borderColor: palette.border }]}
-                    contentFit="cover"
-                    cachePolicy="none"
-                    recyclingKey={dogProfile.dogPhotoUri}
-                  />
-                ) : (
-                  <View style={[styles.heroDogCircle, styles.heroDogPh, { borderColor: palette.border }]}>
-                    <MaterialCommunityIcons name="camera-plus" size={44} color={palette.textSecondary} />
-                  </View>
-                )}
-              </Pressable>
-              {readinessPresentation ? (
-                <View style={styles.heroReadinessCol}>
-                  <Text style={[styles.readinessFieldLabel, { color: palette.textSecondary }]}>Status</Text>
-                  <Text style={[styles.readinessHeadline, { color: palette.text }]}>
-                    {readinessPresentation.title}
+          <View
+            style={[
+              styles.heroGlassShell,
+              {
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                backgroundColor: isDark ? 'rgba(15,23,20,0.7)' : 'rgba(255,255,255,0.7)',
+                shadowOpacity: isDark ? 0.5 : 0.12,
+              },
+            ]}>
+            {dogProfile?.dogPhotoUri ? (
+              <ImageBackground
+                source={{ uri: dogProfile.dogPhotoUri }}
+                blurRadius={22}
+                resizeMode="cover"
+                imageStyle={styles.heroGlassBgImage}
+                style={styles.heroGlassBg}>
+                <LinearGradient
+                  colors={isDark ? ['rgba(8,16,12,0.25)', 'rgba(8,16,12,0.58)'] : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.58)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </ImageBackground>
+            ) : null}
+            <View style={styles.heroGlassContent}>
+              {weather.status === 'loading' ? (
+                <View style={styles.heroLoading}>
+                  <ActivityIndicator size="large" color={FOREST} />
+                  <Text style={[styles.heroLoadingText, { color: palette.textSecondary }]}>
+                    Getting local conditions…
                   </Text>
-                  <Text
-                    style={[styles.readinessFieldLabel, { color: palette.textSecondary, marginTop: 8 }]}>
-                    Details
-                  </Text>
-                  <Text style={[styles.readinessSub, { color: palette.textSecondary }]}>
-                    {readinessPresentation.subtitle}
-                  </Text>
-                  {timelineBars ? (
-                    <Pressable
-                      onPress={() => setRoadTempModalOpen(true)}
-                      style={({ pressed }) => [
-                        styles.bestWindowInline,
-                        {
-                          borderColor: palette.border,
-                          backgroundColor: palette.surface,
-                          opacity: pressed ? 0.92 : 1,
-                        },
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Best window ${bestWindowLabel}. Open road temperature details`}>
-                      <Text style={[styles.bestWindowInlineLabel, { color: palette.textSecondary }]}>Best window</Text>
-                      <Text style={[styles.bestWindowInlineValue, { color: palette.text }]}>{bestWindowLabel}</Text>
-                      <FontAwesome name="chevron-right" size={12} color={palette.textSecondary} />
-                    </Pressable>
-                  ) : null}
-                  <View style={styles.readinessCtaRow}>
-                    <Pressable
-                      onPress={onReadinessPrimaryCta}
-                      style={({ pressed }) => [
-                        styles.readinessPrimaryCta,
-                        { backgroundColor: FOREST, opacity: pressed ? 0.92 : 1 },
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={readinessPresentation.ctaLabel}>
-                      <Text style={styles.readinessPrimaryCtaText}>{readinessPresentation.ctaLabel}</Text>
-                    </Pressable>
-                    {readinessPresentation.careChipLabel ? (
-                      <View
-                        style={[
-                          styles.readinessChip,
-                          { borderColor: palette.border, backgroundColor: palette.surface },
-                        ]}>
-                        <Text style={[styles.readinessChipText, { color: palette.textSecondary }]}>
-                          {readinessPresentation.careChipLabel}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
                 </View>
+              ) : weather.status === 'permission_denied' ? (
+                <View style={[styles.heroGlassShell, { shadowOpacity: isDark ? 0.5 : 0.12, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', backgroundColor: isDark ? 'rgba(15,23,20,0.7)' : 'rgba(255,255,255,0.7)', alignItems: 'center' }]}>
+                  <MaterialCommunityIcons name="map-marker-off-outline" size={48} color={palette.textSecondary} style={{ marginBottom: 12 }} />
+                  <Text style={[styles.h2, { color: palette.text, textAlign: 'center', marginBottom: 8 }]}>Unlock Your Environment</Text>
+                  <Text style={[styles.body, { color: palette.textSecondary, textAlign: 'center', marginBottom: 20 }]}>
+                    NorthPaw needs your location to generate safety timelines and calculate pavement temperatures.
+                  </Text>
+                  <Pressable
+                    onPress={() => { hapticTap();  Linking.openSettings(); }}
+                    style={({ pressed }) => [
+                      styles.readinessPrimaryCta,
+                      { backgroundColor: FOREST, opacity: pressed ? 0.9 : 1, width: '100%' },
+                    , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                    <Text style={styles.readinessPrimaryCtaText}>Open Settings</Text>
+                  </Pressable>
+                </View>
+              ) : weather.status === 'unavailable' ? (
+                <Text style={[styles.permissionText, { color: palette.text }]}>{weather.message}</Text>
               ) : (
-                <View style={[styles.heroReadinessCol, styles.heroReadinessPlaceholder]}>
-                  <ActivityIndicator size="small" color={FOREST} />
+                <View style={{ width: '100%', flexDirection: 'column' }}>
+                  <View style={styles.heroRowSplit}>
+                    <Pressable
+                    onPress={() => { hapticTap();  router.push('/dog-profile'); }}
+                    ref={avatarRef} style={styles.heroPhotoCol}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dog photo">
+                    {dogProfile?.dogPhotoUri ? (
+                      <Image
+                        source={{ uri: dogProfile.dogPhotoUri }}
+                        style={[styles.heroDogCircle, { borderColor: currentRisk?.color ?? palette.border }]}
+                        contentFit="cover"
+                        cachePolicy="none"
+                        recyclingKey={dogProfile.dogPhotoUri}
+                      />
+                    ) : (
+                      <View style={[styles.heroDogCircle, styles.heroDogPh, { borderColor: currentRisk?.color ?? palette.border }]}>
+                        <MaterialCommunityIcons name="camera-plus" size={44} color={palette.textSecondary} />
+                      </View>
+                    )}
+                  </Pressable>
+                  {readinessPresentation ? (
+                    <View style={styles.heroReadinessCol}>
+                      <View style={styles.heroModeToggleRow}>
+                        <Pressable 
+                          onPress={() => { hapticTap(); setHeroViewMode('now'); }}
+                          style={[styles.heroModeChip, heroViewMode === 'now' && { backgroundColor: palette.tint + '15', borderColor: palette.tint }]}>
+                          <Text style={[styles.heroModeChipText, { color: heroViewMode === 'now' ? palette.tint : palette.textSecondary }]}>Now</Text>
+                        </Pressable>
+                        <Pressable 
+                          onPress={() => { hapticTap(); setHeroViewMode('best'); }}
+                          style={[styles.heroModeChip, heroViewMode === 'best' && { backgroundColor: palette.tint + '15', borderColor: palette.tint }]}>
+                          <Text style={[styles.heroModeChipText, { color: heroViewMode === 'best' ? palette.tint : palette.textSecondary }]}>Best Window</Text>
+                        </Pressable>
+                      </View>
+                      <Text style={[styles.readinessFieldLabel, { color: palette.textSecondary }]}>{heroViewMode === 'now' ? 'Status' : heroViewMode === 'best' ? 'Projected Risk' : 'Physical Verification'}</Text>
+                      {heroViewMode === 'now' ? (
+                        <View style={styles.npiRow}>
+                          <View style={styles.npiTextCol}>
+                            <View style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                              <Text style={[styles.readinessNpi, { color: palette.text }]}>Risk {npiScore}/10</Text>
+                              {(dogProfile?.dogSnoutProfile === 'flat' || dogProfile?.dogCoatType === 'Double') && (
+                                <View style={[styles.breedBadge, { backgroundColor: palette.tint + '15', borderColor: palette.tint + '40' }]}>
+                                  <MaterialCommunityIcons name="shield-check" size={10} color={palette.tint} />
+                                  <Text style={[styles.breedBadgeText, { color: palette.tint }]}>Breed Adjusted</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={[styles.npiBandText, { color: npiBandColor(npiScore), marginTop: 2 }]}>
+                              {npiBandLabel(npiScore)}
+                            </Text>
+                            {npiExplanation?.advisor && (
+                              <Text style={[styles.heroAdvisorText, { color: palette.textSecondary }]}>
+                                {npiExplanation.advisor}
+                              </Text>
+                            )}
+                            {confidence && confidenceTone ? (
+                              <Animated.View
+                                style={[
+                                  styles.confidenceBadge,
+                                  {
+                                    borderColor: confidenceTone.borderColor,
+                                    backgroundColor: confidenceTone.backgroundColor,
+                                    opacity: confidence.label === 'Fair' ? confidencePulse : 1,
+                                  },
+                                ]}>
+                                <Text style={[styles.confidenceLabel, { color: confidenceTone.textColor }]}>
+                                  Sensor {confidence.label}
+                                </Text>
+                                <Text style={[styles.confidenceDetail, { color: palette.textSecondary }]}>{confidence.detail}</Text>
+                              </Animated.View>
+                            ) : null}
+                            <Pressable onPress={() => { hapticTap();  setNpiModalOpen(true); }} style={styles.whyScoreLink}>
+                              <Text style={[styles.whyScoreText, { color: palette.tint }]}>Why this score?</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.npiRow}>
+                          <View style={styles.npiTextCol}>
+                            <View style={{ flexDirection: 'column', gap: 10 }}>
+                              {npiExplanation?.bestAmLabel && (
+                                <View style={styles.bestWindowRow}>
+                                  <View style={[styles.bestWindowDot, { backgroundColor: npiBandColor(npiExplanation.bestAmNpi ?? 0) }]} />
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={[styles.bestWindowTime, { color: palette.text }]}>AM: {npiExplanation.bestAmLabel}</Text>
+                                    <Text style={[styles.bestWindowStatus, { color: palette.textSecondary }]}>Projected NPI: {npiExplanation.bestAmNpi}/10</Text>
+                                  </View>
+                                </View>
+                              )}
+                              {npiExplanation?.bestPmLabel && (
+                                <View style={styles.bestWindowRow}>
+                                  <View style={[styles.bestWindowDot, { backgroundColor: npiBandColor(npiExplanation.bestPmNpi ?? 0) }]} />
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={[styles.bestWindowTime, { color: palette.text }]}>PM: {npiExplanation.bestPmLabel}</Text>
+                                    <Text style={[styles.bestWindowStatus, { color: palette.textSecondary }]}>Projected NPI: {npiExplanation.bestPmNpi}/10</Text>
+                                  </View>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
+                  </View>
+
+                  {readinessPresentation ? (
+                    <View style={{ marginTop: 20 }}>
+                      <Text style={[styles.readinessHeadline, { color: palette.text }]}>
+                        {readinessPresentation.title}
+                      </Text>
+                      <Text
+                        style={[styles.readinessFieldLabel, { color: palette.textSecondary, marginTop: 8 }]}>
+                        Details
+                      </Text>
+                      <Text style={[styles.readinessSub, { color: palette.textSecondary }]}>
+                        {readinessPresentation.subtitle}
+                      </Text>
+                      {timelineBars ? (
+                        <Pressable
+                          onPress={() => { hapticTap();  setRoadTempModalOpen(true); }}
+                          style={({ pressed }) => [
+                            styles.bestWindowInline,
+                            {
+                              borderColor: palette.border,
+                              backgroundColor: palette.surface,
+                              opacity: pressed ? 0.92 : 1,
+                            },
+                          , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Best window ${bestWindowLabel}. Open road temperature details`}>
+                          <Text style={[styles.bestWindowInlineLabel, { color: palette.textSecondary }]}>Best window</Text>
+                          <Text style={[styles.bestWindowInlineValue, { color: palette.text }]}>{bestWindowLabel}</Text>
+                          <FontAwesome name="chevron-right" size={12} color={palette.textSecondary} />
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => {
+                          hapticTap();
+                          setVerifySurfaceOpen(true);
+                          // startVerifySurface(); // Remove auto-start if user just wants the modal
+                        }}
+                        style={({ pressed }) => [
+                          styles.verifySurfaceButton,
+                          { borderColor: palette.border, opacity: pressed ? 0.92 : 1 },
+                        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                        <Text style={[styles.verifySurfaceButtonText, { color: palette.text }]}>
+                          Hand Test (7s Rule)
+                        </Text>
+                        <Text style={[styles.verifySurfaceButtonSub, { color: palette.textSecondary }]}>
+                          {shouldShowVerifySurface ? 'Pavement estimate is above 100F' : 'Always verify before walking'}
+                        </Text>
+                      </Pressable>
+                      <View style={styles.readinessCtaRow}>
+                        <Pressable
+                          onPress={() => { hapticTap(); onReadinessPrimaryCta(); }}
+                          style={({ pressed }) => [
+                            styles.readinessPrimaryCta,
+                            { backgroundColor: FOREST, opacity: pressed ? 0.92 : 1 },
+                          , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+                          accessibilityRole="button"
+                          accessibilityLabel={readinessPresentation.ctaLabel}>
+                          <Text style={styles.readinessPrimaryCtaText}>{readinessPresentation.ctaLabel}</Text>
+                        </Pressable>
+                        {readinessPresentation.careChipLabel ? (
+                          <View
+                            style={[
+                              styles.readinessChip,
+                              { borderColor: palette.border, backgroundColor: palette.surface },
+                            ]}>
+                            <Text style={[styles.readinessChipText, { color: palette.textSecondary }]}>
+                              {readinessPresentation.careChipLabel}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={[styles.heroReadinessCol, styles.heroReadinessPlaceholder]}>
+                      <ActivityIndicator size="small" color={FOREST} />
+                    </View>
+                  )}
                 </View>
               )}
             </View>
-          )}
+          </View>
         </View>
+
+        {weatherOk ? (
+          <View
+            style={[
+              styles.dailyReadinessCard,
+              { 
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', 
+                backgroundColor: isDark ? 'rgba(15,23,20,0.7)' : 'rgba(255,255,255,0.7)',
+                shadowOpacity: isDark ? 0.5 : 0.08,
+                elevation: isDark ? 8 : 4,
+              },
+            ]}>
+            <View style={styles.dailyReadinessHead}>
+              <Text style={[styles.dailyReadinessLabel, { color: palette.textSecondary }]}>Daily readiness</Text>
+              {hazardInfo ? (
+                <View style={styles.hazardIconChip}>
+                  <MaterialCommunityIcons name="alert-outline" size={13} color={RISK_AMBER} />
+                  <Text style={styles.hazardIconChipText}>Hazard</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[styles.dailyReadinessBody, { color: palette.text }]}>{dailyReadinessLine}</Text>
+            {hazardInfo ? (
+              <View style={styles.hazardAlertWrap}>
+                <Text style={[styles.hazardAlertLine, { color: RISK_AMBER }]}>Hazard Alert: {hazardInfo.primary}.</Text>
+                {hazardInfo.extraCount > 0 ? (
+                  <Pressable onPress={() => { hapticTap();  setShowSecondaryHazard((prev) => !prev); }} style={styles.hazardMoreChip}>
+                    <Text style={styles.hazardMoreText}>
+                      {showSecondaryHazard ? 'Hide' : `+${hazardInfo.extraCount} alert`}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {showSecondaryHazard && hazardInfo.secondary ? (
+                  <Text style={[styles.hazardSecondaryLine, { color: palette.textSecondary }]}>
+                    Secondary: {hazardInfo.secondary}.
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            {packPreviewHint ? (
+              <View style={[styles.packHintCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+                <Text style={[styles.packPreviewHint, { color: palette.textSecondary }]}>{packPreviewHint.label}</Text>
+                <Pressable
+                  onPress={() => { hapticTap(); onToggleGearVault(); }}
+                  disabled={gearVaultBusy}
+                  style={({ pressed }) => [
+                    styles.packToggleButton,
+                    {
+                      borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)',
+                      opacity: pressed || gearVaultBusy ? 0.9 : 1,
+                    },
+                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                  <Text style={[styles.packToggleButtonText, { color: palette.text }]}>
+                    {packHintPinned ? 'In Gear Vault' : 'Got it? Add to Gear Vault'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* C. Compact conditions (opens detail — full hero imagery lives in the modal) */}
         {weatherOk ? (
           <Pressable
-            onPress={() => setWeatherModalOpen(true)}
+            onPress={() => { hapticTap();  setWeatherModalOpen(true); }}
             style={({ pressed }) => [
               styles.compactConditionsRow,
               {
@@ -589,7 +1287,7 @@ export default function HomeScreen() {
                 backgroundColor: palette.surface,
                 opacity: pressed ? 0.92 : 1,
               },
-            ]}
+            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
             accessibilityRole="button"
             accessibilityLabel="Weather details and suggestions">
             <MaterialCommunityIcons
@@ -640,7 +1338,7 @@ export default function HomeScreen() {
 
         {timelineBars ? (
           <View
-            style={[
+            ref={timelineRef} style={[
               styles.timelineBarsCard,
               {
                 borderColor: palette.border,
@@ -653,17 +1351,47 @@ export default function HomeScreen() {
               imageStyle={styles.timelineBarsBgImage}
               resizeMode="cover">
               <LinearGradient
-                colors={['rgba(8,16,12,0.22)', 'rgba(8,16,12,0.52)']}
+                colors={isDark ? ['rgba(8,16,12,0.22)', 'rgba(8,16,12,0.52)'] : ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.52)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
+              {currentRisk && (
+                <AnimatedReanimated.View style={[StyleSheet.absoluteFill, { opacity: pulseOpacity }]}>
+                  <Canvas style={StyleSheet.absoluteFill}>
+                     <RoundedRect x={0} y={0} width={2000} height={180} r={24} color={currentRisk.color}>
+                       <BlurMask blur={30} style="normal" />
+                     </RoundedRect>
+                  </Canvas>
+                </AnimatedReanimated.View>
+              )}
               <View style={styles.timelineBarsHeader}>
                 <Text style={[styles.timelineBarsTitle, { color: palette.text }]}>Today&apos;s timeline</Text>
-                <Text style={[styles.timelineDragHint, { color: palette.textSecondary }]}>Drag to inspect</Text>
+                <View style={styles.surfaceChipRow}>
+                  {(['asphalt', 'concrete', 'sand', 'turf'] as SurfaceType[]).map((s) => (
+                    <Pressable
+                      key={s}
+                      onPress={() => { hapticTap(); setSelectedSurface(s); }}
+                      style={[
+                        styles.surfaceChip,
+                        { borderColor: palette.border },
+                        selectedSurface === s && { backgroundColor: palette.tint, borderColor: palette.tint }
+                      ]}
+                    >
+                      <Text style={[
+                        styles.surfaceChipText,
+                        { color: palette.textSecondary },
+                        selectedSurface === s && { color: '#fff' }
+                      ]}>
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
               <View
                 style={styles.timelineBarsWrap}
+                pointerEvents="box-only"
                 onLayout={(e) => {
                   setTimelineBarWidth(e.nativeEvent.layout.width);
                 }}
@@ -680,7 +1408,7 @@ export default function HomeScreen() {
                   ]}>
                   <Text style={[styles.timelineScrubTime, { color: palette.text }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
                   <Text style={[styles.timelineScrubTemp, { color: palette.textSecondary }]}>
-                    Pavement {Math.round(scrubPoint.roadTempF)}F
+                    {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {Math.round(scrubPoint.roadTempF)}F
                   </Text>
                   <Text style={[styles.timelineScrubBand, { color: palette.textSecondary }]}>
                     {roadBandLabel(scrubPoint.roadBand)}
@@ -701,13 +1429,13 @@ export default function HomeScreen() {
                 style={[
                   styles.timelineNowLine,
                   {
-                    left: `${timelineHourRatio(timelineBars.currentHourPosition) * 100}%` as unknown as number,
+                    left: `${timelineHourRatio(timelineScrubHour ?? timelineBars.currentHourPosition) * 100}%` as unknown as number,
                   },
                 ]}
               />
 
               <Text style={[styles.barLabel, { color: palette.textSecondary }]}>Daylight</Text>
-              <View style={[styles.barTrack, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+              <View style={[styles.barTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
                 {timelineBars.daylightSegments.map((seg, idx) => {
                   const left = `${timelineHourRatio(seg.startHour) * 100}%`;
                   const width = `${(timelineHourRatio(seg.endHour) - timelineHourRatio(seg.startHour)) * 100}%`;
@@ -724,7 +1452,7 @@ export default function HomeScreen() {
               </View>
 
               <Text style={[styles.barLabel, { color: palette.textSecondary, marginTop: 10 }]}>Road temp</Text>
-              <View style={[styles.barTrack, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+              <View style={[styles.barTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
                 {timelineBars.points.map((p) => {
                   const left = `${timelineHourRatio(p.hour) * 100}%`;
                   const width = `${(timelineHourRatio(p.hour + 1) - timelineHourRatio(p.hour)) * 100}%`;
@@ -757,7 +1485,7 @@ export default function HomeScreen() {
                 ))}
               </View>
               <Pressable
-                onPress={() => setRoadTempModalOpen(true)}
+                onPress={() => { hapticTap();  setRoadTempModalOpen(true); }}
                 accessibilityRole="button"
                 accessibilityLabel="Open road temperature timeline details"
                 style={styles.timelineDetailLink}>
@@ -788,7 +1516,7 @@ export default function HomeScreen() {
               ))}
             </ScrollView>
             <Pressable
-              onPress={() => setWeatherModalOpen(true)}
+              onPress={() => { hapticTap();  setWeatherModalOpen(true); }}
               style={({ pressed }) => [
                 styles.suggestedSecondaryCta,
                 {
@@ -796,7 +1524,7 @@ export default function HomeScreen() {
                   backgroundColor: palette.surface,
                   opacity: pressed ? 0.92 : 1,
                 },
-              ]}
+              , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
               accessibilityRole="button"
               accessibilityLabel="Open weather and suggestions">
               <Text style={[styles.suggestedSecondaryCtaText, { color: palette.tint }]}>
@@ -810,7 +1538,7 @@ export default function HomeScreen() {
         ) : null}
 
         {weather.status === 'permission_denied' ? (
-          <Pressable onPress={() => Linking.openSettings()} style={styles.secondaryLink}>
+          <Pressable onPress={() => { hapticTap();  Linking.openSettings(); }} style={styles.secondaryLink}>
             <Text style={{ color: palette.tint, fontWeight: '700' }}>Open Settings</Text>
           </Pressable>
         ) : null}
@@ -823,6 +1551,120 @@ export default function HomeScreen() {
       </ScrollView>
 
       <Modal
+        visible={npiModalOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setNpiModalOpen(false)}>
+        <SafeAreaView style={[styles.modalRoot, { backgroundColor: palette.background }]} edges={['top', 'left', 'right', 'bottom']}>
+          <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>Why this NPI score?</Text>
+            <Pressable onPress={() => { hapticTap();  setNpiModalOpen(false); }} hitSlop={12}>
+              <FontAwesome name="close" size={22} color={palette.textSecondary} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalScroll}>
+            {npiExplanation ? (
+              <View style={[styles.npiExplainCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+                <Text style={[styles.npiExplainRow, { color: palette.text }]}>THI (canine-weighted): {npiExplanation.thi}</Text>
+                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Humidity driver: {npiExplanation.humidity}%</Text>
+                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Solar load (sky cover): {npiExplanation.solarLoad}</Text>
+                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Snout Adjustment: {npiExplanation.snoutAdj}</Text>
+                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Coat Adjustment: {npiExplanation.coatAdj}</Text>
+                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Activity Adjustment: {npiExplanation.activityAdj}</Text>
+              </View>
+            ) : (
+              <Text style={{ color: palette.textSecondary }}>NPI details unavailable until weather loads.</Text>
+            )}
+
+            <View style={[styles.detailDivider, { backgroundColor: palette.border, marginVertical: 24 }]} />
+            
+            <View style={styles.scienceSection}>
+              <Text style={[styles.scienceTitle, { color: palette.text }]}>Science & Sources</Text>
+              <Text style={[styles.scienceBody, { color: palette.textSecondary }]}>
+                NorthPaw's risk modeling is based on canine thermal physiology research and established safety guidelines:
+              </Text>
+              <View style={styles.scienceSourceRow}>
+                <MaterialCommunityIcons name="book-open-variant" size={16} color={palette.tint} />
+                <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                  <Text style={{ fontWeight: '700' }}>JAMA:</Text> Surface temperature thermodynamics and burn risk thresholds.
+                </Text>
+              </View>
+              <View style={styles.scienceSourceRow}>
+                <MaterialCommunityIcons name="dog" size={16} color={palette.tint} />
+                <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                  <Text style={{ fontWeight: '700' }}>AKC:</Text> "Hand-Test" physical ritual and brachycephalic heat sensitivity guidelines.
+                </Text>
+              </View>
+              <View style={styles.scienceSourceRow}>
+                <MaterialCommunityIcons name="weather-sunny" size={16} color={palette.tint} />
+                <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                  <Text style={{ fontWeight: '700' }}>NWS / THI:</Text> The Temperature-Humidity Index (THI) adjusted for canine panting efficiency.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={verifySurfaceOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setVerifySurfaceOpen(false);
+          setVerifyRunning(false);
+          if (verifyTimerRef.current) {
+            clearInterval(verifyTimerRef.current);
+            verifyTimerRef.current = null;
+          }
+        }}>
+        <View style={styles.verifyOverlay}>
+          <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border }]}>
+            <Text style={[styles.verifyTitle, { color: palette.text }]}>Verify Surface</Text>
+            <Text style={[styles.verifySub, { color: palette.textSecondary }]}>
+              Press your hand to the pavement for a full 7 seconds.
+            </Text>
+            <View style={styles.verifyCanvasWrap}>
+              <Canvas style={{ width: 216, height: 216 }}>
+                <Circle cx={108} cy={108} r={88} color="rgba(255,255,255,0.2)" style="stroke" strokeWidth={10} />
+                <Path path={verifyArcPath} color="#F39C12" style="stroke" strokeWidth={10} strokeCap="round" />
+                <Circle cx={108} cy={108} r={76} color="rgba(243,156,18,0.2)">
+                  <BlurMask blur={20} />
+                </Circle>
+              </Canvas>
+              <View style={styles.verifyCenterTextWrap}>
+                <Text style={[styles.verifySeconds, { color: palette.text }]}>{verifyCountdown}s</Text>
+              </View>
+            </View>
+            <Text style={[styles.verifyResolution, { color: palette.text }]}>Too hot to hold? Walk on grass.</Text>
+            {!verifyRunning ? (
+              <Pressable
+                onPress={() => { hapticTap(); startVerifySurface(); }}
+                style={({ pressed }) => [
+                  styles.verifyAction,
+                  { backgroundColor: FOREST, opacity: pressed ? 0.9 : 1 },
+                , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                <Text style={styles.verifyActionText}>{verifyCountdown === 0 ? 'Run again' : 'Start 7-second check'}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => {
+                setVerifySurfaceOpen(false);
+                setVerifyRunning(false);
+                if (verifyTimerRef.current) {
+                  clearInterval(verifyTimerRef.current);
+                  verifyTimerRef.current = null;
+                }
+              }}
+              style={styles.verifyClose}>
+              <Text style={[styles.verifyCloseText, { color: palette.textSecondary }]}>Close</Text>
+            </Pressable>
+          </AnimatedReanimated.View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={weatherModalOpen && weather.status === 'ok'}
         animationType="slide"
         presentationStyle="pageSheet"
@@ -833,7 +1675,7 @@ export default function HomeScreen() {
           <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
             <Text style={[styles.modalTitle, { color: palette.text }]}>Weather & suggestions</Text>
             <Pressable
-              onPress={() => setWeatherModalOpen(false)}
+              onPress={() => { hapticTap();  setWeatherModalOpen(false); }}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Close">
@@ -1003,7 +1845,7 @@ export default function HomeScreen() {
                       backgroundColor: palette.surface,
                       opacity: pressed ? 0.92 : 1,
                     },
-                  ]}>
+                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
                   <FontAwesome
                     name={s.kind === 'card' ? 'file-text-o' : 'list-ul'}
                     size={18}
@@ -1057,7 +1899,7 @@ export default function HomeScreen() {
           <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
             <Text style={[styles.modalTitle, { color: palette.text }]}>Road temp details</Text>
             <Pressable
-              onPress={() => setRoadTempModalOpen(false)}
+              onPress={() => { hapticTap();  setRoadTempModalOpen(false); }}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Close">
@@ -1101,7 +1943,7 @@ export default function HomeScreen() {
               imageStyle={styles.detailCardBgImage}
               resizeMode="cover">
               <LinearGradient
-                colors={weatherCardOverlay ?? ['rgba(8,16,12,0.2)', 'rgba(8,16,12,0.62)']}
+                colors={weatherCardOverlay ?? (isDark ? ['rgba(8,16,12,0.2)', 'rgba(8,16,12,0.62)'] : ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.62)'])}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -1136,13 +1978,44 @@ export default function HomeScreen() {
                       <Text style={styles.roadDetailBadgeText}>{Math.round(roadDetailPoint.roadTempF)}F</Text>
                     </View>
                     <Text style={[styles.roadDetailSelectedBand, { color: palette.textSecondary }]}>
-                      {roadBandLabel(roadDetailPoint.roadBand)}
+                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {roadBandLabel(roadDetailPoint.roadBand)}
                     </Text>
                   </View>
                 ) : null}
+
+                <View style={styles.surfaceComparisonGrid}>
+                  {(['asphalt', 'concrete', 'sand', 'turf'] as SurfaceType[]).map((st) => {
+                    // We need the sample for the selected hour to calculate others
+                    const sample = weatherOk?.hourlySamples.find(s => {
+                       const h = new Date(s.timeIso).getHours();
+                       return h === selectedRoadDetailHour;
+                    });
+                    if (!sample || !weatherOk) return null;
+                    
+                    const temp = estimateRoadTempF(sample, weatherOk.latitude, selectedRoadDetailHour, new Date(sample.timeIso), st);
+                    const band = roadBandForTemp(temp);
+                    const isActive = selectedSurface === st;
+                    
+                    return (
+                      <Pressable 
+                        key={`compare-${st}`} 
+                        onPress={() => { hapticTap(); setSelectedSurface(st); }}
+                        style={[
+                          styles.compareCard, 
+                          { borderColor: palette.border, backgroundColor: palette.surface },
+                          isActive && { borderColor: palette.tint, borderWidth: 2 }
+                        ]}
+                      >
+                        <Text style={[styles.compareLabel, { color: palette.textSecondary }]}>{st.toUpperCase()}</Text>
+                        <Text style={[styles.compareValue, { color: roadBandColor(band) }]}>{Math.round(temp)}°F</Text>
+                        <Text style={[styles.compareBand, { color: palette.textSecondary }]}>{roadBandLabel(band)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
                 <View style={[styles.roadDetailSpinner, { borderColor: palette.border }]}>
                   <Pressable
-                    onPress={() => setRoadDetailHour((selectedRoadDetailHour + 23) % 24)}
+                    onPress={() => { hapticTap();  setRoadDetailHour((selectedRoadDetailHour + 23) % 24); }}
                     style={[styles.roadDetailSpinnerBtn, { borderRightColor: palette.border }]}
                     accessibilityRole="button"
                     accessibilityLabel="Previous hour">
@@ -1157,7 +2030,7 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   <Pressable
-                    onPress={() => setRoadDetailHour((selectedRoadDetailHour + 1) % 24)}
+                    onPress={() => { hapticTap();  setRoadDetailHour((selectedRoadDetailHour + 1) % 24); }}
                     style={[styles.roadDetailSpinnerBtn, { borderLeftColor: palette.border }]}
                     accessibilityRole="button"
                     accessibilityLabel="Next hour">
@@ -1173,7 +2046,7 @@ export default function HomeScreen() {
                     return (
                       <Pressable
                         key={`hour-spin-${hour}`}
-                        onPress={() => setRoadDetailHour(hour)}
+                        onPress={() => { hapticTap();  setRoadDetailHour(hour); }}
                         style={[
                           styles.roadDetailHourPill,
                           {
@@ -1198,17 +2071,139 @@ export default function HomeScreen() {
                 <Text style={[styles.detailRuleText, { color: palette.text }]}>
                   If you cannot hold your hand on the pavement for 7 seconds, it is too hot for paws.
                 </Text>
-                <Text style={[styles.detailFormula, { color: palette.textSecondary, marginTop: 12 }]}>
-                  daytime road temp = air temp + (solar intensity x 4.5) - (wind mph x 0.6)
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 12 }]}>
+                  Estimates are calibrated using thermodynamic constants for {selectedSurface} and local solar load.
                 </Text>
-                <Text style={[styles.detailFormula, { color: palette.textSecondary, marginTop: 4 }]}>
-                  at night road temp = air temp - 3
-                </Text>
+
+                <View style={[styles.detailDivider, { backgroundColor: palette.border, marginVertical: 24 }]} />
+
+                <View style={styles.scienceSection}>
+                  <Text style={[styles.scienceTitle, { color: palette.text }]}>Science & Sources</Text>
+                  <Text style={[styles.scienceBody, { color: palette.textSecondary }]}>
+                    Our thermal model is derived from canine-specific burn thresholds and thermodynamic constants:
+                  </Text>
+                  <View style={styles.scienceSourceRow}>
+                    <MaterialCommunityIcons name="book-open-variant" size={16} color={palette.tint} />
+                    <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                      <Text style={{ fontWeight: '700' }}>JAMA Dermatology:</Text> "Thermal Injury from Hot Asphalt" — identifying 125°F as the threshold for second-degree contact burns.
+                    </Text>
+                  </View>
+                  <View style={styles.scienceSourceRow}>
+                    <MaterialCommunityIcons name="dog" size={16} color={palette.tint} />
+                    <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                      <Text style={{ fontWeight: '700' }}>AKC / Vet Med:</Text> Validating the "7-Second Rule" and the increased risk for artificial turf.
+                    </Text>
+                  </View>
+                </View>
+                <Pressable
+                  style={[styles.verifySurfaceButton, { marginTop: 16 }]}
+                  onPress={() => {
+                    setRoadTempModalOpen(false);
+                    // Use a short timeout so the first modal has time to close before opening the second
+                    setTimeout(() => {
+                      setVerifySurfaceOpen(true);
+                      startVerifySurface();
+                    }, 300);
+                  }}>
+                  <Text style={[styles.verifySurfaceButtonText, { color: palette.text }]}>
+                    Launch 7-Second Timer
+                  </Text>
+                  <Text style={[styles.verifySurfaceButtonSub, { color: palette.textSecondary }]}>
+                    Test the pavement heat manually
+                  </Text>
+                </Pressable>
               </View>
             </ImageBackground>
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      {showWalkthrough && (
+        <Modal transparent animationType="fade">
+          <View style={{ flex: 1 }}>
+            <Canvas style={StyleSheet.absoluteFill}>
+              <Group>
+                <Rect x={0} y={0} width={screenWidth} height={screenHeight} color="rgba(0,0,0,0.7)" />
+                <RoundedRect 
+                  x={spotlightX} 
+                  y={spotlightY} 
+                  width={spotlightW} 
+                  height={spotlightH} 
+                  r={spotlightR} 
+                  color="white" 
+                  blendMode="dstOut" 
+                />
+              </Group>
+            </Canvas>
+            
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => { hapticTap(); finishWalkthrough(); }} />
+            
+            <AnimatedReanimated.View 
+              layout={LinearTransition.duration(400)}
+              entering={FadeIn.duration(400)}
+              style={[
+                { position: 'absolute', left: 40, right: 40, zIndex: 9999, alignItems: 'center' },
+                walkthroughStep === 0 ? { top: 290 } :
+                walkthroughStep === 1 ? { top: 150 } : // Move tooltip above timeline
+                walkthroughStep === 2 ? { top: 150 } :
+                { bottom: 180 } // Move tooltip above tabs
+              ]}
+            >
+              <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={{ borderRadius: 20, padding: 20, borderWidth: 1, borderColor: palette.border, overflow: 'hidden', width: '100%' }}>
+                {walkthroughStep === 0 && (
+                  <>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>NPI Status Ring</Text>
+                    <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
+                      The ring around your dog's photo glows to show risk. Green is safe, Red is dangerous.
+                    </Text>
+                  </>
+                )}
+                {walkthroughStep === 1 && (
+                  <>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Safety Timeline</Text>
+                    <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
+                      Scrub here to see how pavement temps and hazards change throughout the day.
+                    </Text>
+                  </>
+                )}
+                {walkthroughStep === 2 && (
+                  <>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Smart Reminders</Text>
+                    <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
+                      Tap the bell to set morning briefs or tick-check reminders for your outings.
+                    </Text>
+                  </>
+                )}
+                {walkthroughStep === 3 && (
+                  <>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Navigation</Text>
+                    <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
+                      Switch between your checklists, the field guide, and settings here.
+                    </Text>
+                  </>
+                )}
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: palette.textSecondary }}>Step {walkthroughStep + 1} of 4</Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <Pressable onPress={() => { hapticTap(); finishWalkthrough(); }} style={{ padding: 6 }}>
+                      <Text style={{ color: palette.textSecondary, fontSize: 13, fontWeight: '600' }}>Skip</Text>
+                    </Pressable>
+                    <Pressable 
+                      onPress={() => {
+                        if (walkthroughStep < 3) triggerStep(walkthroughStep + 1);
+                        else finishWalkthrough();
+                      }} 
+                      style={{ backgroundColor: palette.tint, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{walkthroughStep < 3 ? 'Next' : 'Got it'}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </BlurView>
+            </AnimatedReanimated.View>
+          </View>
+        </Modal>
+      )}
     </>
   );
 }
@@ -1234,6 +2229,18 @@ const styles = StyleSheet.create({
   headerProQuiet: { paddingHorizontal: 8, paddingVertical: 8 },
   headerProQuietText: { fontSize: 12, fontWeight: '600' },
   heroBlock: { alignItems: 'stretch', marginBottom: 12, width: '100%' },
+  heroGlassShell: {
+    borderWidth: 1,
+    borderRadius: 24,
+    overflow: 'hidden',
+    padding: 20,
+    shadowColor: '#000',
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  heroGlassBg: { ...StyleSheet.absoluteFillObject },
+  heroGlassBgImage: { opacity: 0.85 },
+  heroGlassContent: { position: 'relative' },
   heroLoading: { alignItems: 'center', paddingVertical: 20 },
   heroLoadingText: { marginTop: 12, fontSize: 14 },
   permissionText: { textAlign: 'center', fontSize: 15, lineHeight: 22, paddingHorizontal: 8 },
@@ -1250,7 +2257,7 @@ const styles = StyleSheet.create({
     width: 144,
     height: 144,
     borderRadius: 72,
-    borderWidth: 2,
+    borderWidth: 4,
     overflow: 'hidden',
     backgroundColor: 'rgba(45,106,79,0.08)',
   },
@@ -1268,6 +2275,101 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     lineHeight: 24,
   },
+  readinessNpi: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  npiRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  npiTextCol: { flex: 1, minWidth: 0 },
+  npiBandText: { fontSize: 12, fontWeight: '700' },
+  heroModeToggleRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  heroModeChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100, borderWidth: 1, borderColor: 'transparent' },
+  heroModeChipText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  heroAdvisorText: { fontSize: 13, lineHeight: 18, marginTop: 4, fontWeight: '600' },
+  bestWindowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bestWindowDot: { width: 8, height: 8, borderRadius: 4 },
+  bestWindowTime: { fontSize: 14, fontWeight: '700' },
+  bestWindowStatus: { fontSize: 11, fontWeight: '600' },
+  heroVerifyCta: { marginTop: 12, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, alignSelf: 'flex-start' },
+  heroVerifyCtaText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  breedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  breedBadgeText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  confidenceBadge: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  confidenceLabel: { fontSize: 11, fontWeight: '800' },
+  confidenceDetail: { fontSize: 11, marginTop: 1 },
+  whyScoreLink: { marginTop: 4, alignSelf: 'flex-start' },
+  whyScoreText: { fontSize: 12, fontWeight: '800', textDecorationLine: 'underline' },
+  dailyReadinessCard: {
+    marginBottom: 14,
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    shadowColor: '#000',
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  dailyReadinessHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dailyReadinessLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  hazardIconChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(243,156,18,0.35)',
+    backgroundColor: 'rgba(243,156,18,0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  hazardIconChipText: { color: RISK_AMBER, fontSize: 10, fontWeight: '800' },
+  dailyReadinessBody: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  hazardAlertWrap: { marginTop: 8 },
+  hazardAlertLine: { marginTop: 8, fontSize: 13, lineHeight: 19, fontWeight: '700' },
+  hazardMoreChip: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  hazardMoreText: { color: '#EDEDED', fontSize: 11, fontWeight: '700' },
+  hazardSecondaryLine: { marginTop: 6, fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  packHintCard: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    paddingTop: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+  },
+  packPreviewHint: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  packToggleButton: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  packToggleButtonText: { fontSize: 12, fontWeight: '700' },
   readinessSub: {
     fontSize: 13,
     lineHeight: 18,
@@ -1295,6 +2397,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  verifySurfaceButton: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(243,156,18,0.14)',
+  },
+  verifySurfaceButtonText: { fontSize: 13, fontWeight: '800' },
+  verifySurfaceButtonSub: { fontSize: 11, marginTop: 2 },
   readinessCtaRow: {
     marginTop: 12,
     flexDirection: 'row',
@@ -1736,4 +2848,59 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   suggestIcon: { marginRight: 12, width: 22 },
+  npiExplainCard: { borderWidth: 1, borderRadius: 16, padding: 14 },
+  npiExplainRow: { fontSize: 14, lineHeight: 21, marginBottom: 6 },
+  verifyOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(7,10,8,0.48)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  verifyCard: {
+    width: '100%',
+    maxWidth: 390,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+    backgroundColor: 'rgba(15,23,20,0.7)',
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 10,
+    alignItems: 'center',
+  },
+  verifyTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  verifySub: { marginTop: 6, fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  verifyCanvasWrap: { marginTop: 18, width: 216, height: 216, alignItems: 'center', justifyContent: 'center' },
+  verifyCenterTextWrap: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  verifySeconds: { fontSize: 38, fontWeight: '900' },
+  verifyResolution: { marginTop: 16, fontSize: 18, fontWeight: '800', textAlign: 'center', lineHeight: 24 },
+  verifyAction: {
+    marginTop: 18,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    width: '100%',
+    alignItems: 'center',
+  },
+  verifyActionText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  surfaceChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
+  surfaceChipText: { fontSize: 11, fontWeight: '700' },
+  surfaceComparisonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12, marginBottom: 12 },
+  compareCard: { flex: 1, minWidth: '45%', borderRadius: 12, borderWidth: 1, padding: 12, alignItems: 'center' },
+  compareLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginBottom: 4 },
+  compareValue: { fontSize: 24, fontWeight: '800' },
+  compareBand: { fontSize: 10, fontWeight: '700', marginTop: 2 },
+  verifyClose: { marginTop: 12, paddingVertical: 6, paddingHorizontal: 12 },
+  verifyCloseText: { fontSize: 13, fontWeight: '700' },
+  scienceSection: { paddingHorizontal: 4, paddingBottom: 20 },
+  scienceTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  scienceBody: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
+  scienceSourceRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
+  scienceSourceText: { flex: 1, fontSize: 13, lineHeight: 18 },
+
+  verifyClose: { marginTop: 12, paddingVertical: 6, paddingHorizontal: 12 },
+  verifyCloseText: { fontSize: 13, fontWeight: '700' },
 });

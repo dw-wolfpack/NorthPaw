@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useRouter } from 'expo-router';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
@@ -14,6 +15,9 @@ import { useSubscription } from '@/context/SubscriptionContext';
 import { openExternalLink } from '@/lib/openExternalLink';
 import { getDogProfile, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -43,6 +47,7 @@ export default function SettingsScreen() {
                 locationPermission: p.locationPermission,
                 notificationsPermission: p.notificationsPermission,
               });
+              try { await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true }); } catch (err) {}
               router.replace('/onboarding');
             } catch (e) {
               Alert.alert('Could not reset onboarding', e instanceof Error ? e.message : 'Please try again.');
@@ -65,6 +70,7 @@ export default function SettingsScreen() {
                 locationPermission: '',
                 notificationsPermission: '',
               });
+              try { await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true }); } catch (err) {}
               router.replace('/onboarding');
             } catch (e) {
               Alert.alert('Could not reset onboarding', e instanceof Error ? e.message : 'Please try again.');
@@ -79,7 +85,7 @@ export default function SettingsScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={styles.container}>
       <Text style={styles.h1}>Your dog</Text>
       <Pressable
-        onPress={() => router.push('/dog-profile')}
+        onPress={() => { hapticTap();  router.push('/dog-profile'); }}
         style={({ pressed }) => [
           styles.linkCard,
           {
@@ -88,7 +94,7 @@ export default function SettingsScreen() {
             opacity: pressed ? 0.92 : 1,
             marginBottom: 8,
           },
-        ]}>
+        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Name &amp; photo</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
@@ -98,7 +104,7 @@ export default function SettingsScreen() {
         <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
       </Pressable>
       <Pressable
-        onPress={() => router.push('/reminders')}
+        onPress={() => { hapticTap();  router.push('/reminders'); }}
         style={({ pressed }) => [
           styles.linkCard,
           {
@@ -107,7 +113,7 @@ export default function SettingsScreen() {
             opacity: pressed ? 0.92 : 1,
             marginBottom: 8,
           },
-        ]}>
+        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Care reminders</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
@@ -116,6 +122,33 @@ export default function SettingsScreen() {
           </Text>
         </View>
         <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
+      </Pressable>
+
+      <Pressable
+        onPress={async () => {
+          try {
+            await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true });
+            router.replace('/(tabs)/home');
+          } catch (e) {
+            Alert.alert('Error', 'Could not reset walkthrough.');
+          }
+        }}
+        style={({ pressed }) => [
+          styles.linkCard,
+          {
+            borderColor: palette.border,
+            backgroundColor: palette.surface,
+            opacity: pressed ? 0.92 : 1,
+            marginBottom: 8,
+          },
+        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>App walkthrough</Text>
+          <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+            Review the guided tour of the Home screen features.
+          </Text>
+        </View>
+        <FontAwesome name="info-circle" size={16} color={palette.tint} />
       </Pressable>
 
       <Text style={[styles.h1, { marginTop: 24 }]}>Subscription</Text>
@@ -137,14 +170,14 @@ export default function SettingsScreen() {
         {error ? <Text style={{ color: palette.danger, marginTop: 10 }}>{error}</Text> : null}
         {!isPro ? (
           <Pressable
-            onPress={() => router.push('/paywall')}
+            onPress={() => { hapticTap();  router.push('/paywall'); }}
             style={[styles.cta, { backgroundColor: palette.tint, marginTop: 14 }]}>
             <Text style={styles.ctaText}>Unlock Pro</Text>
           </Pressable>
         ) : null}
         {Platform.OS === 'ios' ? (
           <Pressable
-            onPress={() => openExternalLink(APPLE_MANAGE_SUBSCRIPTIONS_URL)}
+            onPress={() => { hapticTap();  openExternalLink(APPLE_MANAGE_SUBSCRIPTIONS_URL); }}
             style={[styles.linkRow, { marginTop: 12 }]}>
             <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 15 }}>
               Manage subscription in App Store…
@@ -166,14 +199,14 @@ export default function SettingsScreen() {
         hint={PRIVACY_POLICY_URL ? PRIVACY_POLICY_URL : 'Add EXPO_PUBLIC_NORTHPAW_PRIVACY_URL'}
         disabled={!PRIVACY_POLICY_URL}
         palette={palette}
-        onPress={() => openExternalLink(PRIVACY_POLICY_URL)}
+        onPress={() => { hapticTap();  openExternalLink(PRIVACY_POLICY_URL); }}
       />
       <LinkButton
         label="Terms of Use"
         hint={TERMS_OF_USE_URL ? TERMS_OF_USE_URL : 'Add EXPO_PUBLIC_NORTHPAW_TERMS_URL'}
         disabled={!TERMS_OF_USE_URL}
         palette={palette}
-        onPress={() => openExternalLink(TERMS_OF_USE_URL)}
+        onPress={() => { hapticTap();  openExternalLink(TERMS_OF_USE_URL); }}
       />
       <LinkButton
         label="Support"
@@ -184,7 +217,7 @@ export default function SettingsScreen() {
         }
         disabled={!SUPPORT_URL}
         palette={palette}
-        onPress={() => openExternalLink(SUPPORT_URL)}
+        onPress={() => { hapticTap();  openExternalLink(SUPPORT_URL); }}
       />
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Disclaimer</Text>
@@ -206,7 +239,7 @@ export default function SettingsScreen() {
           Temporary test utility for repeating signup flow during development.
         </Text>
         <Pressable
-          onPress={resetOnboardingForTesting}
+          onPress={() => { hapticTap(); resetOnboardingForTesting(); }}
           style={({ pressed }) => [
             styles.resetBtn,
             {
@@ -214,7 +247,7 @@ export default function SettingsScreen() {
               backgroundColor: palette.background,
               opacity: pressed ? 0.9 : 1,
             },
-          ]}>
+          , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 15 }}>Reset onboarding flow</Text>
         </Pressable>
       </View>
@@ -235,7 +268,7 @@ function LinkButton(props: {
   return (
     <Pressable
       disabled={disabled}
-      onPress={onPress}
+      onPress={() => { hapticTap(); onPress(); }}
       style={({ pressed }) => [
         styles.linkCard,
         {
@@ -243,7 +276,7 @@ function LinkButton(props: {
           backgroundColor: palette.surface,
           opacity: disabled ? 0.55 : pressed ? 0.92 : 1,
         },
-      ]}>
+      , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
       <View style={{ flex: 1, backgroundColor: 'transparent' }}>
         <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>{label}</Text>
         <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }} numberOfLines={2}>
