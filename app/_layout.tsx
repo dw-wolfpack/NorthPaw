@@ -19,6 +19,7 @@ export const unstable_settings = {
 };
 
 SplashScreen.preventAutoHideAsync();
+const MIN_SPLASH_MS = 2000;
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -41,9 +42,13 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (loaded && dbReady) {
+    if (!loaded || !dbReady) return;
+
+    const timer = setTimeout(() => {
       SplashScreen.hideAsync();
-    }
+    }, MIN_SPLASH_MS);
+
+    return () => clearTimeout(timer);
   }, [loaded, dbReady]);
 
   if (!loaded || !dbReady) {
@@ -105,6 +110,15 @@ function RootLayoutNav() {
             name="paywall"
             options={{
               title: 'NorthPaw Pro',
+              presentation: 'modal',
+              headerBackTitle: 'Close',
+              headerLargeTitleEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="tick-check"
+            options={{
+              title: 'Tick Check',
               presentation: 'modal',
               headerBackTitle: 'Close',
               headerLargeTitleEnabled: false,

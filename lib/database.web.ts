@@ -7,6 +7,7 @@ import type {
   EntityType,
   FavoriteRow,
   HistoryRow,
+  ReadinessDayRow,
   SaveChecklistOutingInput,
 } from '@/lib/database.types';
 
@@ -16,6 +17,7 @@ const K_FAV = 'northpaw_favorites_v1';
 const K_HIST = 'northpaw_history_v1';
 const K_CHECKS = 'northpaw_checklists_v1';
 const K_OUTINGS = 'northpaw_outings_v1';
+const K_READINESS = 'northpaw_readiness_day_v1';
 
 /** Copied from new key on first read so legacy web installs keep local data. */
 const LEGACY_FAV = 'trailready_favorites_v1';
@@ -30,6 +32,7 @@ const mem = {
   history: [] as HistoryRow[],
   checks: {} as Record<string, Record<string, boolean>>,
   outings: [] as ChecklistOutingRow[],
+  readiness: {} as Record<string, ReadinessDayRow>,
 };
 
 function canUseStorage(): boolean {
@@ -148,12 +151,43 @@ function writeOutings(rows: ChecklistOutingRow[]) {
   }
 }
 
+function readReadiness(): Record<string, ReadinessDayRow> {
+  if (!canUseStorage()) return { ...mem.readiness };
+  try {
+    const raw = localStorage.getItem(K_READINESS);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, ReadinessDayRow>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeReadiness(data: Record<string, ReadinessDayRow>) {
+  if (!canUseStorage()) {
+    mem.readiness = data;
+    return;
+  }
+  try {
+    localStorage.setItem(K_READINESS, JSON.stringify(data));
+  } catch {
+    mem.readiness = data;
+  }
+}
+
 /** No-op on web; keeps the same API as native for app bootstrap. */
 export async function getDb(): Promise<null> {
   return null;
 }
 
-export type { ChecklistOutingRow, EntityType, FavoriteRow, HistoryRow, SaveChecklistOutingInput };
+export type {
+  ChecklistOutingRow,
+  EntityType,
+  FavoriteRow,
+  HistoryRow,
+  ReadinessDayRow,
+  SaveChecklistOutingInput,
+};
 
 function normalizeOutingRow(r: ChecklistOutingRow): ChecklistOutingRow {
   return {
@@ -265,4 +299,20 @@ export async function getChecklistOuting(id: string): Promise<ChecklistOutingRow
 export async function deleteChecklistOuting(id: string): Promise<void> {
   await removeOutingFiles(id);
   writeOutings(readOutings().filter((r) => r.id !== id));
+}
+
+export async function getReadinessDay(localDate: string): Promise<ReadinessDayRow | null> {
+  const all = readReadiness();
+  return all[localDate] ?? null;
+}
+
+export async function putReadinessDay(row: ReadinessDayRow): Promise<void> {
+  const all = readReadiness();
+  all[row.local_date] = {
+    local_date: row.local_date,
+    conditions_viewed: row.conditions_viewed ? 1 : 0,
+    primary_checklist_id: row.primary_checklist_id ?? '',
+    checklist_opened: row.checklist_opened ? 1 : 0,
+  };
+  writeReadiness(all);
 }

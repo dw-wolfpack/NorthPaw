@@ -1,11 +1,14 @@
 import { canAccessPack, getCard, getChecklist } from '@/lib/content';
 
+import type { DogProfile } from '@/lib/profile';
+
 export type WeatherSuggestion = {
   kind: 'card' | 'checklist';
   id: string;
   title: string;
   /** Short line shown under the title */
   reason: string;
+  locked: boolean;
 };
 
 type Candidate = {
@@ -21,6 +24,10 @@ export type WeatherSuggestionInput = {
   summary: string;
   precipChance: number | null;
   isDaytime: boolean;
+  dogProfile?: DogProfile | null;
+  sunsetTimeIso?: string | null;
+  mockAqi?: number; // TODO: AI AGENT - Replace this mock POC with actual parsed AQI from paid APIs like Tomorrow.io once traction permits
+  mockRecentRain?: boolean; // TODO: AI AGENT - Replace with real precipitation history
 };
 
 const RAIN_RE = /rain|shower|thunder|drizzle|storm|downpour|snow|wintry|slush|ice/i;
@@ -32,18 +39,40 @@ const FOG_RE = /\bfog/i;
  * Picks field cards and checklists from the library based on NWS-style signals.
  * Respects pack access: premium items are omitted for non-Pro users.
  */
-export function buildWeatherSuggestions(input: WeatherSuggestionInput, isPro: boolean): WeatherSuggestion[] {
+export function buildWeatherSuggestions(
+  input: WeatherSuggestionInput,
+  isPro: boolean,
+  activeEntitlements: string[] = []
+): WeatherSuggestion[] {
   const blob = `${input.forecastShort}\n${input.summary}`.toLowerCase();
   const precipN = input.precipChance ?? 0;
+  
+  let heatThreshold = 86;
+  const isDoubleCoated = input.dogProfile?.dogCoatType === 'Double';
+  const isDarkColored = input.dogProfile?.dogColor === 'Dark';
+  if (isDoubleCoated && isDarkColored) heatThreshold = 74;
+  else if (isDoubleCoated || isDarkColored) heatThreshold = 80;
+
   const looksWet = precipN >= 38 || RAIN_RE.test(blob);
   const looksHot =
-    input.tempF >= 86 || (input.tempF >= 80 && HOT_RE.test(blob)) || (input.tempF >= 84 && precipN < 15);
-  const warmISH = input.tempF >= 70 && input.tempF < 86 && !looksWet;
+    input.tempF >= heatThreshold || (input.tempF >= heatThreshold - 6 && HOT_RE.test(blob)) || (input.tempF >= heatThreshold - 2 && precipN < 15);
+  const warmISH = input.tempF >= 70 && input.tempF < heatThreshold && !looksWet;
   const coldISH = input.tempF <= 48;
   const freezingISH = input.tempF <= 36;
   const nightOut = !input.isDaytime;
   const foggy = FOG_RE.test(blob);
   const smoky = SMOKE_RE.test(blob);
+
+  // Biological + Environmental Hooks
+  const muddy = looksWet || input.mockRecentRain === true;
+  const badAqi = input.mockAqi !== undefined && input.mockAqi >= 100;
+  
+  let approachingSunset = false;
+  if (input.sunsetTimeIso) {
+    const sunsetMs = new Date(input.sunsetTimeIso).getTime();
+    const diffHours = (sunsetMs - Date.now()) / (1000 * 60 * 60);
+    if (diffHours > 0 && diffHours <= 1.5) approachingSunset = true;
+  }
 
   const candidates: Candidate[] = [];
 
@@ -58,7 +87,7 @@ export function buildWeatherSuggestions(input: WeatherSuggestionInput, isPro: bo
     add({ kind: 'card', id: 'water-on-trail', reason: 'Water planning still matters', priority: 85 });
   }
 
-  if (looksWet) {
+  if (muddy) {
     add({ kind: 'card', id: 'water-on-trail', reason: 'Hydration and soggy-trail judgment', priority: 96 });
     add({ kind: 'checklist', id: 'pre-trail-60s', reason: 'Re-check route and gear before you go', priority: 90 });
     add({ kind: 'card', id: 'paw-booties-wax', reason: 'Pads, grit, and messy surfaces', priority: 82 });
@@ -80,7 +109,7 @@ export function buildWeatherSuggestions(input: WeatherSuggestionInput, isPro: bo
     }
   }
 
-  if (nightOut) {
+  if (nightOut || approachingSunset) {
     add({ kind: 'card', id: 'night-and-visibility', reason: 'Low light and being seen', priority: 75 });
   }
 
@@ -88,7 +117,7 @@ export function buildWeatherSuggestions(input: WeatherSuggestionInput, isPro: bo
     add({ kind: 'card', id: 'coastal-fog-morning', reason: 'Fog layers and visibility shifts', priority: 86 });
   }
 
-  if (smoky && isPro) {
+  if (smoky || badAqi) {
     add({ kind: 'card', id: 'fire-smoke-season', reason: 'Air quality and exertion', priority: 94 });
   }
 
@@ -102,12 +131,16 @@ export function buildWeatherSuggestions(input: WeatherSuggestionInput, isPro: bo
     if (seen.has(key)) return;
     const packId =
       c.kind === 'card' ? getCard(c.id)?.packId : getChecklist(c.id)?.packId;
-    if (!packId || !canAccessPack(packId, isPro)) return;
+    if (!packId) return;
+    
+    // Monetization Unlock Hook: Track if it's locked to display on screen
+    const locked = !canAccessPack(packId, isPro, activeEntitlements);
+    
     const title =
       c.kind === 'card' ? getCard(c.id)?.title : getChecklist(c.id)?.title;
     if (!title) return;
     seen.add(key);
-    out.push({ kind: c.kind, id: c.id, title, reason: c.reason });
+    out.push({ kind: c.kind, id: c.id, title, reason: c.reason, locked });
   };
 
   for (const c of candidates) {

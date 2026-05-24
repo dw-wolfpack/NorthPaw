@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
@@ -14,6 +15,8 @@ Notifications.setNotificationHandler({
 });
 
 export function MedReminderNotifications() {
+  const router = useRouter();
+
   useEffect(() => {
     if (Platform.OS === 'web') return undefined;
 
@@ -25,8 +28,19 @@ export function MedReminderNotifications() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') run();
     });
-    return () => sub.remove();
-  }, []);
+
+    const routeSub = Notifications.addNotificationResponseReceivedListener(response => {
+      const url = response.notification.request.content.data?.url;
+      if (url && typeof url === 'string') {
+        router.push(url as any);
+      }
+    });
+
+    return () => {
+      sub.remove();
+      routeSub.remove();
+    };
+  }, [router]);
 
   return null;
 }

@@ -1,20 +1,54 @@
 import * as SQLite from 'expo-sqlite';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
 import type {
   ChecklistOutingRow,
   EntityType,
   FavoriteRow,
   HistoryRow,
+  ReadinessDayRow,
+  SnapshotEnergy,
+  SnapshotRow,
   SaveChecklistOutingInput,
 } from '@/lib/database.types';
 
 import { finalizeOutingPhotos, removeOutingFiles } from '@/lib/outingPhotoStorage';
 
-export type { ChecklistOutingRow, EntityType, FavoriteRow, HistoryRow, SaveChecklistOutingInput };
+export type {
+  ChecklistOutingRow,
+  EntityType,
+  FavoriteRow,
+  HistoryRow,
+  ReadinessDayRow,
+  SnapshotEnergy,
+  SnapshotRow,
+  SaveChecklistOutingInput,
+};
 
 let dbSingleton: SQLite.SQLiteDatabase | null = null;
+let dbInitPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+
+function isDuplicateColumnError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /duplicate column name/i.test(err.message);
+}
+
+async function addColumnIfMissing(
+  db: SQLite.SQLiteDatabase,
+  table: string,
+  column: string,
+  ddl: string
+): Promise<void> {
+  const cols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (cols.some((c) => c.name === column)) return;
+  try {
+    await db.execAsync(ddl);
+  } catch (err) {
+    if (!isDuplicateColumnError(err)) throw err;
+  }
+}
 
 async function migrate(db: SQLite.SQLiteDatabase) {
   await db.execAsync(`
@@ -54,7 +88,10 @@ async function migrate(db: SQLite.SQLiteDatabase) {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       onboarding_done INTEGER NOT NULL DEFAULT 0,
       dog_name TEXT NOT NULL DEFAULT '',
-      dog_photo_uri TEXT NOT NULL DEFAULT ''
+      dog_photo_uri TEXT NOT NULL DEFAULT '',
+      dog_weight_lbs INTEGER,
+      dog_coat_type TEXT NOT NULL DEFAULT '',
+      dog_color TEXT NOT NULL DEFAULT ''
     );
     INSERT OR IGNORE INTO app_profile (id, onboarding_done, dog_name, dog_photo_uri) VALUES (1, 0, '', '');
     CREATE TABLE IF NOT EXISTS med_reminders (
@@ -69,26 +106,105 @@ async function migrate(db: SQLite.SQLiteDatabase) {
       enabled INTEGER NOT NULL DEFAULT 1,
       notification_id TEXT NOT NULL DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS readiness_day (
+      local_date TEXT PRIMARY KEY NOT NULL,
+      conditions_viewed INTEGER NOT NULL DEFAULT 0,
+      primary_checklist_id TEXT NOT NULL DEFAULT '',
+      checklist_opened INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS snapshots (
+      id TEXT PRIMARY KEY NOT NULL,
+      created_at INTEGER NOT NULL,
+      local_date TEXT NOT NULL,
+      npi_score REAL NOT NULL,
+      weather_summary TEXT NOT NULL DEFAULT '',
+      energy_scale TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapshots_created_at ON snapshots (created_at DESC);
   `);
   await migrateChecklistOutingsV2(db);
+  await migrateAppProfileV2(db);
+  await migrateAppProfileV3(db);
+  await migrateAppProfileV4(db);
 }
 
 async function migrateChecklistOutingsV2(db: SQLite.SQLiteDatabase) {
-  const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(checklist_outings)');
-  if (cols.length === 0) return;
-  const has = (n: string) => cols.some((c) => c.name === n);
-  if (!has('place_label')) {
-    await db.execAsync(`ALTER TABLE checklist_outings ADD COLUMN place_label TEXT NOT NULL DEFAULT '';`);
-  }
-  if (!has('latitude')) {
-    await db.execAsync(`ALTER TABLE checklist_outings ADD COLUMN latitude REAL;`);
-  }
-  if (!has('longitude')) {
-    await db.execAsync(`ALTER TABLE checklist_outings ADD COLUMN longitude REAL;`);
-  }
-  if (!has('photos_json')) {
-    await db.execAsync(`ALTER TABLE checklist_outings ADD COLUMN photos_json TEXT NOT NULL DEFAULT '[]';`);
-  }
+  await addColumnIfMissing(
+    db,
+    'checklist_outings',
+    'place_label',
+    `ALTER TABLE checklist_outings ADD COLUMN place_label TEXT NOT NULL DEFAULT '';`
+  );
+  await addColumnIfMissing(db, 'checklist_outings', 'latitude', `ALTER TABLE checklist_outings ADD COLUMN latitude REAL;`);
+  await addColumnIfMissing(db, 'checklist_outings', 'longitude', `ALTER TABLE checklist_outings ADD COLUMN longitude REAL;`);
+  await addColumnIfMissing(
+    db,
+    'checklist_outings',
+    'photos_json',
+    `ALTER TABLE checklist_outings ADD COLUMN photos_json TEXT NOT NULL DEFAULT '[]';`
+  );
+}
+
+async function migrateAppProfileV2(db: SQLite.SQLiteDatabase) {
+  await addColumnIfMissing(db, 'app_profile', 'dog_breed', `ALTER TABLE app_profile ADD COLUMN dog_breed TEXT NOT NULL DEFAULT '';`);
+  await addColumnIfMissing(db, 'app_profile', 'dog_breed_mix', `ALTER TABLE app_profile ADD COLUMN dog_breed_mix TEXT NOT NULL DEFAULT '';`);
+  await addColumnIfMissing(db, 'app_profile', 'dog_age_group', `ALTER TABLE app_profile ADD COLUMN dog_age_group TEXT NOT NULL DEFAULT '';`);
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'dog_outing_types_json',
+    `ALTER TABLE app_profile ADD COLUMN dog_outing_types_json TEXT NOT NULL DEFAULT '[]';`
+  );
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'location_permission',
+    `ALTER TABLE app_profile ADD COLUMN location_permission TEXT NOT NULL DEFAULT '';`
+  );
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'notifications_permission',
+    `ALTER TABLE app_profile ADD COLUMN notifications_permission TEXT NOT NULL DEFAULT '';`
+  );
+  await addColumnIfMissing(db, 'app_profile', 'dog_weight_lbs', `ALTER TABLE app_profile ADD COLUMN dog_weight_lbs INTEGER;`);
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'dog_coat_type',
+    `ALTER TABLE app_profile ADD COLUMN dog_coat_type TEXT NOT NULL DEFAULT '';`
+  );
+  await addColumnIfMissing(db, 'app_profile', 'dog_color', `ALTER TABLE app_profile ADD COLUMN dog_color TEXT NOT NULL DEFAULT '';`);
+}
+
+async function migrateAppProfileV3(db: SQLite.SQLiteDatabase) {
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'dog_snout_profile',
+    `ALTER TABLE app_profile ADD COLUMN dog_snout_profile TEXT NOT NULL DEFAULT 'standard';`
+  );
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'dog_activity_baseline',
+    `ALTER TABLE app_profile ADD COLUMN dog_activity_baseline TEXT NOT NULL DEFAULT 'moderate';`
+  );
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'morning_brief_time',
+    `ALTER TABLE app_profile ADD COLUMN morning_brief_time TEXT NOT NULL DEFAULT '7:00 AM';`
+  );
+}
+
+async function migrateAppProfileV4(db: SQLite.SQLiteDatabase) {
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'gear_vault_json',
+    `ALTER TABLE app_profile ADD COLUMN gear_vault_json TEXT NOT NULL DEFAULT '{}';`
+  );
 }
 
 function renameLegacySqliteIfNeeded(): void {
@@ -108,11 +224,19 @@ function renameLegacySqliteIfNeeded(): void {
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (dbSingleton) return dbSingleton;
-  renameLegacySqliteIfNeeded();
-  const db = await SQLite.openDatabaseAsync('northpaw.db');
-  await migrate(db);
-  dbSingleton = db;
-  return db;
+  if (dbInitPromise) return dbInitPromise;
+  dbInitPromise = (async () => {
+    renameLegacySqliteIfNeeded();
+    const db = await SQLite.openDatabaseAsync('northpaw.db');
+    await migrate(db);
+    dbSingleton = db;
+    return db;
+  })();
+  try {
+    return await dbInitPromise;
+  } finally {
+    dbInitPromise = null;
+  }
 }
 
 export async function addFavorite(type: EntityType, entityId: string): Promise<void> {
@@ -232,6 +356,25 @@ export async function saveChecklistOuting(input: SaveChecklistOutingInput): Prom
       photosJson,
     ]
   );
+  
+  // Behavioral Retention: Schedule a "tick check" notification for 4 hours from now
+  // since saving the checklist implies the prep is done and the outing is starting.
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Time for couch snuggles 🛋️',
+        body: 'Give your dog a quick feel for ticks or burrs after today\'s outing.',
+        sound: true,
+        data: { url: '/tick-check' },
+      },
+      trigger: {
+        seconds: 4 * 60 * 60, // 4 hours
+      },
+    });
+  } catch (err) {
+    // Ignore if permissions not granted or other notification errors
+  }
+
   return id;
 }
 
@@ -266,4 +409,40 @@ export async function deleteChecklistOuting(id: string): Promise<void> {
   await removeOutingFiles(id);
   const db = await getDb();
   await db.runAsync(`DELETE FROM checklist_outings WHERE id = ?`, [id]);
+}
+
+export async function getReadinessDay(localDate: string): Promise<ReadinessDayRow | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<ReadinessDayRow>(
+    `SELECT local_date, conditions_viewed, primary_checklist_id, checklist_opened FROM readiness_day WHERE local_date = ?`,
+    [localDate]
+  );
+  return row ?? null;
+}
+
+export async function putReadinessDay(row: ReadinessDayRow): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO readiness_day (local_date, conditions_viewed, primary_checklist_id, checklist_opened) VALUES (?, ?, ?, ?)`,
+    [row.local_date, row.conditions_viewed ? 1 : 0, row.primary_checklist_id, row.checklist_opened ? 1 : 0]
+  );
+}
+
+function newSnapshotId(): string {
+  return `snap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export async function saveSnapshot(input: {
+  npiScore: number;
+  weatherSummary: string;
+  energyScale: SnapshotEnergy;
+  localDate: string;
+}): Promise<string> {
+  const db = await getDb();
+  const id = newSnapshotId();
+  await db.runAsync(
+    `INSERT INTO snapshots (id, created_at, local_date, npi_score, weather_summary, energy_scale) VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, Date.now(), input.localDate, input.npiScore, input.weatherSummary.trim(), input.energyScale]
+  );
+  return id;
 }

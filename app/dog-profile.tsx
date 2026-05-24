@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -21,13 +22,19 @@ import Colors from '@/constants/Colors';
 import { getDogProfile, pickAndStoreDogPhoto, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
 
+const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
 export default function DogProfileScreen() {
   const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
   const palette = Colors[colorScheme];
   const router = useRouter();
   const [name, setName] = useState('');
   const [savedPhotoUri, setSavedPhotoUri] = useState('');
   const [pickedUri, setPickedUri] = useState<string | null>(null);
+  const [dogWeightLbs, setDogWeightLbs] = useState('');
+  const [dogCoatType, setDogCoatType] = useState('');
+  const [dogColor, setDogColor] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -35,6 +42,9 @@ export default function DogProfileScreen() {
     const p = await getDogProfile();
     setName(p.dogName);
     setSavedPhotoUri(p.dogPhotoUri);
+    setDogWeightLbs(p.dogWeightLbs ? p.dogWeightLbs.toString() : '');
+    setDogCoatType(p.dogCoatType || '');
+    setDogColor(p.dogColor || '');
     setPickedUri(null);
   }, []);
 
@@ -80,6 +90,9 @@ export default function DogProfileScreen() {
         onboardingDone: true,
         dogName: trimmed,
         dogPhotoUri: photoUri,
+        dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
+        dogCoatType: dogCoatType,
+        dogColor: dogColor,
       });
       router.back();
     } catch (e) {
@@ -132,16 +145,60 @@ export default function DogProfileScreen() {
             ]}
           />
 
-          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Photo</Text>
+          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Weight (lbs)</Text>
+          <TextInput
+            value={dogWeightLbs}
+            onChangeText={setDogWeightLbs}
+            placeholder="e.g. 45"
+            placeholderTextColor={palette.textSecondary}
+            keyboardType="numeric"
+            maxLength={3}
+            style={[
+              styles.input,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                color: palette.text,
+              },
+            ]}
+          />
+
+          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Coat Type</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {['Single', 'Double', 'Hairless'].map(coat => (
+              <Pressable
+                key={coat}
+                onPress={() => { hapticTap();  setDogCoatType(coat); }}
+                style={[{ flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }, dogCoatType === coat ? { borderColor: palette.tint, backgroundColor: palette.selectedBg } : { borderColor: palette.border, backgroundColor: palette.surface }]}
+              >
+                <Text style={[{ fontSize: 13, fontWeight: '700' }, dogCoatType === coat ? { color: palette.text } : { color: palette.textSecondary }]}>{coat}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Fur Color</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {['Light', 'Medium', 'Dark'].map(colorOpt => (
+              <Pressable
+                key={colorOpt}
+                onPress={() => { hapticTap();  setDogColor(colorOpt); }}
+                style={[{ flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }, dogColor === colorOpt ? { borderColor: palette.tint, backgroundColor: palette.selectedBg } : { borderColor: palette.border, backgroundColor: palette.surface }]}
+              >
+                <Text style={[{ fontSize: 13, fontWeight: '700' }, dogColor === colorOpt ? { color: palette.text } : { color: palette.textSecondary }]}>{colorOpt}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={[styles.label, { color: palette.text, marginTop: 32 }]}>Photo</Text>
           <View style={styles.photoRow}>
             <Pressable
-              onPress={pickPhoto}
+              onPress={() => { hapticTap(); pickPhoto(); }}
               style={({ pressed }) => [
                 styles.photoPreview,
                 {
-                  borderColor: palette.border,
-                  backgroundColor: palette.surface,
-                  opacity: pressed ? 0.9 : 1,
+                  borderColor: selected ? palette.tint : palette.border,
+                  backgroundColor: selected ? palette.selectedBg : palette.surface,
+                  opacity: pressed ? 0.92 : 1,
                 },
               ]}>
               {displayPhoto ? (
@@ -158,19 +215,22 @@ export default function DogProfileScreen() {
                 </View>
               )}
             </Pressable>
-            <View style={{ flex: 1, gap: 8 }}>
-              <Pressable onPress={pickPhoto}>
-                <Text style={{ color: palette.tint, fontWeight: '700' }}>Choose photo…</Text>
+            <View style={{ flex: 1, gap: 10 }}>
+              <Pressable
+                onPress={() => { hapticTap(); pickPhoto(); }}
+                style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: palette.tint, backgroundColor: palette.selectedBg, alignSelf: 'flex-start' }}>
+                <Text style={{ color: palette.tint, fontWeight: '800', fontSize: 13 }}>Choose photo</Text>
               </Pressable>
               {(savedPhotoUri || pickedUri) && (
                 <Pressable
+                  style={{ paddingVertical: 4, paddingHorizontal: 12 }}
                   onPress={() =>
                     Alert.alert('Remove photo?', 'You can add a new one anytime.', [
                       { text: 'Cancel', style: 'cancel' },
                       { text: 'Remove', style: 'destructive', onPress: clearPhoto },
                     ])
                   }>
-                  <Text style={{ color: palette.danger, fontWeight: '600' }}>Remove photo</Text>
+                  <Text style={{ color: palette.danger, fontWeight: '700', fontSize: 13 }}>Remove photo</Text>
                 </Pressable>
               )}
             </View>
@@ -178,7 +238,7 @@ export default function DogProfileScreen() {
 
           <Pressable
             disabled={!name.trim() || busy}
-            onPress={save}
+            onPress={() => { hapticTap(); save(); }}
             style={({ pressed }) => [
               styles.cta,
               {

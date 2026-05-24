@@ -19,7 +19,7 @@ export default function PackScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
-  const { isPro, loading: subLoading } = useSubscription();
+  const { isPro, activeEntitlements, loading: subLoading } = useSubscription();
   const pack = id ? getPack(id) : undefined;
 
   useEffect(() => {
@@ -29,10 +29,10 @@ export default function PackScreen() {
 
   useEffect(() => {
     if (!pack || subLoading) return;
-    if (!canAccessPack(pack.id, isPro)) {
+    if (!canAccessPack(pack.id, isPro, activeEntitlements)) {
       router.replace({ pathname: '/paywall', params: { returnTo: `/pack/${pack.id}` } });
     }
-  }, [pack, isPro, router, subLoading]);
+  }, [pack, isPro, activeEntitlements, router, subLoading]);
 
   if (!pack) {
     return (
@@ -42,7 +42,7 @@ export default function PackScreen() {
     );
   }
 
-  if (subLoading || !canAccessPack(pack.id, isPro)) {
+  if (subLoading || !canAccessPack(pack.id, isPro, activeEntitlements)) {
     return (
       <View style={[styles.center, { backgroundColor: palette.background }]}>
         {subLoading ? (

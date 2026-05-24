@@ -22,7 +22,7 @@ export default function LibraryScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
   const router = useRouter();
-  const { isPro } = useSubscription();
+  const { isPro, activeEntitlements } = useSubscription();
   const packs = getAllPacks();
   const hazard = getCurrentHazardMonth();
   const lib = getLibrary();
@@ -85,7 +85,7 @@ export default function LibraryScreen() {
       </View>
 
       {packs.map((pack) => {
-        const locked = !canAccessPack(pack.id, isPro);
+        const locked = !canAccessPack(pack.id, isPro, activeEntitlements);
         const count = getCardsForPack(pack.id).length;
         const pg = gradientForPack(pack.id);
         return (

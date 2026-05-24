@@ -20,6 +20,14 @@ export type ChecklistOutingRow = {
   photos_json: string;
 };
 
+/** Day-scoped outing readiness signals (device-local calendar date). */
+export type ReadinessDayRow = {
+  local_date: string;
+  conditions_viewed: number;
+  primary_checklist_id: string;
+  checklist_opened: number;
+};
+
 export type SaveChecklistOutingInput = {
   checklistId: string;
   notes: string;
@@ -29,4 +37,15 @@ export type SaveChecklistOutingInput = {
   longitude: number | null;
   /** URIs from the image picker; persisted by `saveChecklistOuting`. */
   pendingPhotoUris: string[];
+};
+
+export type SnapshotEnergy = 'low' | 'normal' | 'high';
+
+export type SnapshotRow = {
+  id: string;
+  created_at: number;
+  local_date: string;
+  npi_score: number;
+  weather_summary: string;
+  energy_scale: SnapshotEnergy;
 };
