@@ -15,13 +15,14 @@ import {
   Linking,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Dimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurMask, Canvas, Circle, Path, Skia, RoundedRect, Rect, Group } from '@shopify/react-native-skia';
 
 import { Text } from '@/components/Themed';
@@ -53,7 +54,7 @@ import {
 import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundImages';
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
-import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp } from '@/lib/weather/roadTemp';
+import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment } from '@/lib/weather/roadTemp';
 import { useColorScheme } from '@/components/useColorScheme';
 
 const FOREST = '#1B4332';
@@ -185,10 +186,10 @@ function clampUnit(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-function riskBand(score: number): { label: 'Green' | 'Amber' | 'Ember'; color: string; pulseMs: number } {
-  if (score <= 3.3) return { label: 'Green', color: '#2ECC71', pulseMs: 2200 };
-  if (score <= 6.6) return { label: 'Amber', color: '#F39C12', pulseMs: 1500 };
-  return { label: 'Ember', color: '#C46A2D', pulseMs: 950 };
+function riskBand(score: number): { label: 'Green' | 'Amber' | 'Ember'; color: string; pulseMs: number; minPulse: number } {
+  if (score <= 3.3) return { label: 'Green', color: '#2ECC71', pulseMs: 2200, minPulse: 0.40 };
+  if (score <= 6.6) return { label: 'Amber', color: '#F39C12', pulseMs: 1500, minPulse: 0.40 };
+  return { label: 'Ember', color: '#C46A2D', pulseMs: 950, minPulse: 0.40 };
 }
 
 function confidenceBadge(weather: Extract<HomeWeatherState, { status: 'ok' }> | null): {
@@ -229,37 +230,208 @@ function confidenceColors(label: 'High' | 'Medium' | 'Fair'): {
   };
 }
 
-function NpiRiskRing({ score }: { score: number }) {
-  const progress = clampUnit(score / 10, 0, 1);
+type TacticalInstrumentRingProps = {
+  score: number;
+  size?: number;
+  isDark: boolean;
+};
+
+function TacticalInstrumentRing({ score, size = 180, isDark }: TacticalInstrumentRingProps) {
   const band = riskBand(score);
-  const pulse = useRef(new Animated.Value(0.76)).current;
-  const arcPath = useMemo(() => {
-    const p = Skia.Path.Make();
-    p.addArc({ x: 10, y: 10, width: 76, height: 76 }, -90, progress * 360);
-    return p;
-  }, [progress]);
+  const pulse = useRef(new Animated.Value(band.minPulse)).current;
+
+  const baseRadius = (size - 16) / 2;
+  const radiusTicks = baseRadius - 8;
+  const radiusGlow = baseRadius;
+  const radiusOuter = baseRadius + 8;
+
+  const canvasPadding = 30;
+  const canvasSize = size + canvasPadding * 2;
+  const cx = canvasSize / 2;
+  const cy = canvasSize / 2;
+
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: band.pulseMs, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.76, duration: band.pulseMs, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [band.pulseMs, pulse]);
+    let active = true;
+    pulse.setValue(band.minPulse);
+
+    const animateUpDown = (toUp: boolean) => {
+      if (!active) return;
+
+      Animated.timing(pulse, {
+        toValue: toUp ? 1 : band.minPulse,
+        duration: band.pulseMs,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && active) {
+          animateUpDown(!toUp);
+        }
+      });
+    };
+
+    animateUpDown(true);
+
+    return () => {
+      active = false;
+      pulse.stopAnimation();
+    };
+  }, [band.pulseMs, band.minPulse, pulse]);
+
+  const bezelTicks = useMemo(() => {
+    const paths: any[] = [];
+    const totalTicks = 120;
+    for (let i = 0; i < totalTicks; i++) {
+      const angleRad = (i / totalTicks) * 2 * Math.PI - Math.PI / 2;
+      const rStart = radiusTicks;
+      const rEnd = radiusTicks + 3;
+
+      const x1 = cx + rStart * Math.cos(angleRad);
+      const y1 = cy + rStart * Math.sin(angleRad);
+      const x2 = cx + rEnd * Math.cos(angleRad);
+      const y2 = cy + rEnd * Math.sin(angleRad);
+
+      const path = Skia.Path.Make();
+      path.moveTo(x1, y1);
+      path.lineTo(x2, y2);
+      paths.push(path);
+    }
+    return paths;
+  }, [cx, cy, radiusTicks]);
+
+  const crosshairTopPath = useMemo(() => {
+    const p = Skia.Path.Make();
+    p.moveTo(cx, cy - radiusOuter - 5);
+    p.lineTo(cx, cy - radiusOuter + 5);
+    return p;
+  }, [cx, cy, radiusOuter]);
+
+  const crosshairBottomPath = useMemo(() => {
+    const p = Skia.Path.Make();
+    p.moveTo(cx, cy + radiusOuter - 5);
+    p.lineTo(cx, cy + radiusOuter + 5);
+    return p;
+  }, [cx, cy, radiusOuter]);
+
+  const bezelBgColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)';
+  const bezelTickColor = isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(0, 0, 0, 0.18)';
+  const outerRingColor = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)';
+
+  const scale = pulse.interpolate({
+    inputRange: [band.minPulse, 1],
+    outputRange: [0.96, 1.04],
+  });
+
   return (
-    <Animated.View style={{ opacity: pulse }}>
-      <Canvas style={{ width: 96, height: 96 }}>
-        <Circle cx={48} cy={48} r={39} color={band.color} opacity={0.26}>
-          <BlurMask blur={14} />
-        </Circle>
-        <Circle cx={48} cy={48} r={38} color="rgba(255,255,255,0.2)" style="stroke" strokeWidth={7} />
-        <Path path={arcPath} color={band.color} style="stroke" strokeWidth={7} strokeCap="round" />
+    <View
+      style={{
+        position: 'absolute',
+        width: canvasSize,
+        height: canvasSize,
+        left: -canvasPadding,
+        top: -canvasPadding,
+        pointerEvents: 'none',
+        zIndex: 0,
+      }}
+    >
+      {/* 1. Static Bezel & Crosshairs */}
+      <Canvas style={StyleSheet.absoluteFill}>
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={radiusTicks}
+          color={bezelBgColor}
+          style="stroke"
+          strokeWidth={1}
+        />
+        {bezelTicks.map((p, idx) => (
+          <Path
+            key={`btick-${idx}`}
+            path={p}
+            color={bezelTickColor}
+            style="stroke"
+            strokeWidth={0.8}
+          />
+        ))}
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={radiusOuter}
+          color={outerRingColor}
+          style="stroke"
+          strokeWidth={1}
+        />
+        <Path
+          path={crosshairTopPath}
+          color={outerRingColor}
+          style="stroke"
+          strokeWidth={1}
+        />
+        <Path
+          path={crosshairBottomPath}
+          color={outerRingColor}
+          style="stroke"
+          strokeWidth={1}
+        />
       </Canvas>
-    </Animated.View>
+
+      {/* 2. Pulsing Glow and Color Rings */}
+      <Animated.View
+        style={{
+          ...StyleSheet.absoluteFillObject,
+          opacity: pulse,
+          transform: [{ scale }],
+        }}
+      >
+        <Canvas style={StyleSheet.absoluteFill}>
+          <Group opacity={0.45}>
+            <Circle
+              cx={cx}
+              cy={cy}
+              r={radiusGlow}
+              color={band.color}
+              style="stroke"
+              strokeWidth={14}
+            >
+              <BlurMask blur={15} style="normal" />
+            </Circle>
+          </Group>
+
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={radiusGlow}
+            color="rgba(255,255,255,0.06)"
+            style="stroke"
+            strokeWidth={4.5}
+          />
+
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={radiusGlow}
+            color={band.color}
+            style="stroke"
+            strokeWidth={4.5}
+          />
+
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={radiusGlow}
+            color="#FFF"
+            style="stroke"
+            strokeWidth={1.5}
+            opacity={0.35}
+          />
+        </Canvas>
+      </Animated.View>
+    </View>
   );
 }
+
+const { width: screenWidth } = Dimensions.get('window');
+const cardSize = screenWidth - 36;
+const avatarRingSize = Math.round(cardSize * 0.78); // increased size for dominant dog portrait
+const avatarPhotoSize = Math.round(avatarRingSize * 0.85);
 
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
@@ -267,6 +439,17 @@ export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const isDark = colorScheme === 'dark';
   const palette = Colors[colorScheme];
+
+  const textColors = useMemo(() => {
+    return {
+      primary: isDark ? 'rgba(234, 234, 234, 0.92)' : 'rgba(18, 31, 24, 0.92)',
+      secondary: isDark ? 'rgba(234, 234, 234, 0.68)' : 'rgba(18, 31, 24, 0.68)',
+      tertiary: isDark ? 'rgba(234, 234, 234, 0.46)' : 'rgba(18, 31, 24, 0.46)',
+      instrument: isDark ? 'rgba(234, 234, 234, 0.72)' : 'rgba(18, 31, 24, 0.72)',
+      accent: isDark ? '#2ECC71' : '#157A3F',
+    };
+  }, [isDark]);
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isPro, activeEntitlements } = useSubscription();
   const lib = getLibrary();
@@ -297,7 +480,7 @@ export default function HomeScreen() {
   const avatarRef = useRef<View>(null);
   const timelineRef = useRef<View>(null);
   const bellRef = useRef<View>(null);
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const { height: screenHeight } = Dimensions.get('window');
   
   // Spotlight Shared Values
   const spotlightX = useSharedValue(screenWidth / 2);
@@ -373,19 +556,7 @@ export default function HomeScreen() {
     } catch {}
   };
 
-  const currentRisk = npiScore != null ? riskBand(npiScore) : null;
-  const pulseOpacity = useSharedValue(0.4);
-  useEffect(() => {
-    const speedMs = currentRisk?.pulseMs ?? 2000;
-    pulseOpacity.value = withRepeat(
-      withSequence(
-        withTiming(0.8, { duration: speedMs }),
-        withTiming(0.4, { duration: speedMs })
-      ),
-      -1,
-      true
-    );
-  }, [currentRisk?.pulseMs, pulseOpacity]);
+
 
   const bgMint = palette.readyMint ?? palette.background;
 
@@ -553,10 +724,15 @@ export default function HomeScreen() {
   const bestPmSeg = timelineBars?.bestWindowSegments?.find(s => s.startHour >= 12);
 
   const bestWindowLabel = useMemo(() => {
-    if (!bestAmSeg && !bestPmSeg) return 'No cool daylight window';
-    const am = bestAmSeg ? `AM: ${formatClockFromHour(bestAmSeg.startHour)}` : '';
-    const pm = bestPmSeg ? `PM: ${formatClockFromHour(bestPmSeg.startHour)}` : '';
-    return [am, pm].filter(Boolean).join(' • ');
+    const formatHourShort = (h: number) => {
+      const period = h >= 12 ? 'PM' : 'AM';
+      const displayHour = h % 12 === 0 ? 12 : h % 12;
+      return `${displayHour}${period}`;
+    };
+    if (!bestAmSeg && !bestPmSeg) return 'None';
+    const am = bestAmSeg ? `${formatHourShort(bestAmSeg.startHour)}–${formatHourShort(bestAmSeg.endHour)}` : '';
+    const pm = bestPmSeg ? `${formatHourShort(bestPmSeg.startHour)}–${formatHourShort(bestPmSeg.endHour)}` : '';
+    return [am, pm].filter(Boolean).join(' & ');
   }, [bestAmSeg, bestPmSeg]);
   const daylightStart = timelineBars?.daylightSegments?.[0]?.startHour ?? null;
   const daylightEnd = timelineBars?.daylightSegments?.[timelineBars.daylightSegments.length - 1]?.endHour ?? null;
@@ -625,6 +801,9 @@ export default function HomeScreen() {
     const finalRisk = (baseRisk * snoutMultiplier * coatMultiplier) + activityPenalty;
     return Math.round(Math.min(10, finalRisk) * 10) / 10;
   }, [weatherOk, currentRoadPoint, dogProfile]);
+
+  const currentRisk = npiScore != null ? riskBand(npiScore) : null;
+
   const npiExplanation = useMemo(() => {
     if (!weatherOk) return null;
     const nearestHourly =
@@ -667,22 +846,22 @@ export default function HomeScreen() {
     const bestAmNpi = getPointNpi(optAm);
     const bestPmNpi = getPointNpi(optPm);
 
-    let advisor = "Conditions look safe. Standard exercise recommended.";
+    let advisor = "Good to go right now.";
     const airRisk = Math.max(0, (chsi - 89) / 10.8);
     const sunRisk = solarLoad * 0.35;
     const roadRisk = (currentRoadPoint?.roadTempF ?? 0) > 105 ? 2.0 : 0;
 
     if ((npiScore ?? 0) >= 3.1) {
       if (roadRisk > 0) {
-        advisor = "Pavement is reaching safe limits. Stick to grass or shaded paths.";
+        advisor = "Hot pavement. Walk on grass or shade.";
       } else if (sunRisk > airRisk && sunRisk > 1.5) {
-        advisor = "Direct sun is heating the coat. Stick to shaded routes where possible.";
+        advisor = "Direct sun heating coat. Seek shade.";
       } else if (humidity > 65 && weatherOk.tempF > 60) {
-        advisor = "Humidity is reducing panting efficiency. Bring extra water and take breaks.";
+        advisor = "High humidity. Take frequent breaks.";
       } else if (weatherOk.tempF > 75) {
-        advisor = "High ambient heat detected. Monitor for heavy panting and avoid intense play.";
+        advisor = "High ambient heat. Limit intense play.";
       } else {
-        advisor = "Environmental stress is elevated. Keep outings short and monitor your dog.";
+        advisor = "Stress elevated. Keep outings short.";
       }
     }
 
@@ -894,6 +1073,15 @@ export default function HomeScreen() {
       }
     }, 1000);
   }, [verifyRunning]);
+
+  const cycleSurface = useCallback(() => {
+    hapticTap();
+    const surfaces: SurfaceType[] = ['asphalt', 'concrete', 'sand', 'turf'];
+    setSelectedSurface((prev) => {
+      const idx = surfaces.indexOf(prev);
+      return surfaces[(idx + 1) % surfaces.length];
+    });
+  }, [setSelectedSurface]);
   const onToggleGearVault = useCallback(async () => {
     if (!packPreviewHint || gearVaultBusy) return;
     setGearVaultBusy(true);
@@ -929,11 +1117,40 @@ export default function HomeScreen() {
   }, []);
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: isDark ? '#040806' : '#EAF2EE' }}>
+      {/* Background Image using high-performance expo-image */}
+      <Image
+        source={isDark ? require('../../assets/images/backgrounds/background-dark.png') : require('../../assets/images/backgrounds/background-light.png')}
+        style={[StyleSheet.absoluteFillObject, { opacity: isDark ? 0.7 : 0.5 }]}
+        contentFit="cover"
+      />
+
+
+      {/* Blending overlay */}
+      <LinearGradient
+        colors={isDark 
+          ? ['rgba(0, 0, 0, 0.2)', 'rgba(0, 0, 0, 0.6)'] 
+          : ['rgba(255, 255, 255, 0.25)', 'rgba(255, 255, 255, 0.5)']
+        }
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* Vignette overlays */}
+      <LinearGradient
+        colors={isDark ? ['rgba(0,0,0,0.65)', 'transparent'] : ['rgba(255,255,255,0.5)', 'transparent']}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 160, zIndex: 1 }}
+        pointerEvents="none"
+      />
+      <LinearGradient
+        colors={isDark ? ['transparent', 'rgba(0,0,0,0.8)'] : ['transparent', 'rgba(0,0,0,0.15)']}
+        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 220, zIndex: 1 }}
+        pointerEvents="none"
+      />
+
       <ScrollView
         ref={mainScrollRef}
-        style={{ flex: 1, backgroundColor: bgMint }}
-        contentContainerStyle={styles.container}>
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+        contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
         {/* A. Identity strip — name + place; utilities stay quiet */}
         <View style={styles.headerRow}>
           <Pressable
@@ -942,10 +1159,43 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="Dog profile">
             <View style={styles.headerProfileText}>
-              <Text style={[styles.headerName, { color: palette.text }]} numberOfLines={1}>
-                {dogName}
-              </Text>
-              <Text style={[styles.headerPlace, { color: palette.textSecondary }]} numberOfLines={1}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={[styles.headerName, { color: textColors.primary, fontWeight: '700' }]} numberOfLines={1}>
+                  {dogName}
+                </Text>
+                <View style={[
+                  styles.statusPill,
+                  {
+                    backgroundColor: npiScore != null && npiScore > 5 
+                      ? (isDark ? 'rgba(217,119,6,0.12)' : 'rgba(217,119,6,0.14)')
+                      : (isDark ? 'rgba(46,204,113,0.12)' : 'rgba(20, 140, 72, 0.14)'),
+                    borderColor: npiScore != null && npiScore > 5 
+                      ? (isDark ? 'rgba(217,119,6,0.25)' : 'rgba(217,119,6,0.28)')
+                      : (isDark ? 'rgba(46,204,113,0.25)' : 'rgba(20, 140, 72, 0.28)'),
+                  }
+                ]}>
+                  <View style={[
+                    styles.statusDot, 
+                    { 
+                      backgroundColor: npiScore != null && npiScore > 5 
+                        ? RISK_AMBER 
+                        : (isDark ? SAFETY_GREEN : '#0F7A3B') 
+                    }
+                  ]} />
+                  <Text style={[
+                    styles.statusPillText, 
+                    { 
+                      color: npiScore != null && npiScore > 5 
+                        ? RISK_AMBER 
+                        : (isDark ? SAFETY_GREEN : '#0F7A3B'),
+                      fontWeight: '800'
+                    }
+                  ]}>
+                    {npiScore != null && npiScore > 5 ? 'Caution' : 'Ready'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.headerPlace, { color: textColors.secondary, fontWeight: '500' }]} numberOfLines={1}>
                 {placeLabel}
               </Text>
             </View>
@@ -956,50 +1206,43 @@ export default function HomeScreen() {
               style={({ pressed }) => [styles.headerIconBtn, { opacity: pressed ? 0.75 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
               accessibilityRole="button"
               accessibilityLabel="Alerts">
-              <MaterialCommunityIcons name="bell-outline" size={22} color={palette.textSecondary} />
+              <MaterialCommunityIcons name="bell-outline" size={22} color={textColors.secondary} style={{ opacity: isDark ? 0.85 : 0.60 }} />
             </Pressable>
-            <Pressable
-              onPress={() =>
-                isPro
-                  ? router.push('/(tabs)/settings')
-                  : router.push({ pathname: '/paywall', params: { returnTo: '/(tabs)/home' } })
-              }
-              style={({ pressed }) => [styles.headerProQuiet, { opacity: pressed ? 0.75 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-              accessibilityRole="button"
-              accessibilityLabel={isPro ? 'Pro membership' : 'Upgrade to Pro'}>
-              <Text style={[styles.headerProQuietText, { color: palette.textSecondary }]}>
-                {isPro ? 'Pro' : 'Go Pro'}
-              </Text>
-            </Pressable>
+            {!isPro && (
+              <Pressable
+                onPress={() => router.push({ pathname: '/paywall', params: { returnTo: '/(tabs)/home' } })}
+                style={({ pressed }) => [
+                  styles.headerProGhost,
+                  {
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.35)' : 'rgba(18, 31, 24, 0.35)',
+                    opacity: pressed ? 0.75 : (isDark ? 0.75 : 0.58)
+                  }
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Upgrade to Pro">
+                <Text style={[
+                  styles.headerProGhostText,
+                  { color: isDark ? 'rgba(255, 255, 255, 0.75)' : 'rgba(18, 31, 24, 0.75)' }
+                ]}>PRO</Text>
+              </Pressable>
+            )}
           </View>
         </View>
 
         {/* B. Hero — one story: readiness title, one support line, one CTA */}
         <View style={styles.heroBlock}>
-          <View
+          <BlurView
+            intensity={60}
+            tint={isDark ? 'dark' : 'light'}
             style={[
               styles.heroGlassShell,
               {
-                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                backgroundColor: isDark ? 'rgba(15,23,20,0.7)' : 'rgba(255,255,255,0.7)',
-                shadowOpacity: isDark ? 0.5 : 0.12,
+                borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(18, 31, 24, 0.10)',
+                backgroundColor: isDark ? 'rgba(15,23,20,0.35)' : 'rgba(242, 248, 239, 0.63)',
+                shadowOpacity: isDark ? 0.35 : 0.08,
               },
             ]}>
-            {dogProfile?.dogPhotoUri ? (
-              <ImageBackground
-                source={{ uri: dogProfile.dogPhotoUri }}
-                blurRadius={22}
-                resizeMode="cover"
-                imageStyle={styles.heroGlassBgImage}
-                style={styles.heroGlassBg}>
-                <LinearGradient
-                  colors={isDark ? ['rgba(8,16,12,0.25)', 'rgba(8,16,12,0.58)'] : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.58)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-              </ImageBackground>
-            ) : null}
+            {/* Clean frosted glass showing main background */}
             <View style={styles.heroGlassContent}>
               {weather.status === 'loading' ? (
                 <View style={styles.heroLoading}>
@@ -1027,367 +1270,172 @@ export default function HomeScreen() {
               ) : weather.status === 'unavailable' ? (
                 <Text style={[styles.permissionText, { color: palette.text }]}>{weather.message}</Text>
               ) : (
-                <View style={{ width: '100%', flexDirection: 'column' }}>
-                  <View style={styles.heroRowSplit}>
-                    <Pressable
-                    onPress={() => { hapticTap();  router.push('/dog-profile'); }}
-                    ref={avatarRef} style={styles.heroPhotoCol}
+                <View style={{ width: '100%', alignItems: 'center', height: (cardSize * 0.93) - 40, justifyContent: 'center' }}>
+                  {/* Quiet Corner Instrumentation */}
+                  <Pressable 
+                    onPress={() => { hapticTap(); setWeatherModalOpen(true); }}
+                    style={styles.hudCornerTl}
                     accessibilityRole="button"
-                    accessibilityLabel="Dog photo">
-                    {dogProfile?.dogPhotoUri ? (
-                      <Image
-                        source={{ uri: dogProfile.dogPhotoUri }}
-                        style={[styles.heroDogCircle, { borderColor: currentRisk?.color ?? palette.border }]}
-                        contentFit="cover"
-                        cachePolicy="none"
-                        recyclingKey={dogProfile.dogPhotoUri}
-                      />
-                    ) : (
-                      <View style={[styles.heroDogCircle, styles.heroDogPh, { borderColor: currentRisk?.color ?? palette.border }]}>
-                        <MaterialCommunityIcons name="camera-plus" size={44} color={palette.textSecondary} />
-                      </View>
-                    )}
-                  </Pressable>
-                  {readinessPresentation ? (
-                    <View style={styles.heroReadinessCol}>
-                      <View style={styles.heroModeToggleRow}>
-                        <Pressable 
-                          onPress={() => { hapticTap(); setHeroViewMode('now'); }}
-                          style={[styles.heroModeChip, heroViewMode === 'now' && { backgroundColor: palette.tint + '15', borderColor: palette.tint }]}>
-                          <Text style={[styles.heroModeChipText, { color: heroViewMode === 'now' ? palette.tint : palette.textSecondary }]}>Now</Text>
-                        </Pressable>
-                        <Pressable 
-                          onPress={() => { hapticTap(); setHeroViewMode('best'); }}
-                          style={[styles.heroModeChip, heroViewMode === 'best' && { backgroundColor: palette.tint + '15', borderColor: palette.tint }]}>
-                          <Text style={[styles.heroModeChipText, { color: heroViewMode === 'best' ? palette.tint : palette.textSecondary }]}>Best Window</Text>
-                        </Pressable>
-                      </View>
-                      <Text style={[styles.readinessFieldLabel, { color: palette.textSecondary }]}>{heroViewMode === 'now' ? 'Status' : heroViewMode === 'best' ? 'Projected Risk' : 'Physical Verification'}</Text>
-                      {heroViewMode === 'now' ? (
-                        <View style={styles.npiRow}>
-                          <View style={styles.npiTextCol}>
-                            <View style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-                              <Text style={[styles.readinessNpi, { color: palette.text }]}>Risk {npiScore}/10</Text>
-                              {(dogProfile?.dogSnoutProfile === 'flat' || dogProfile?.dogCoatType === 'Double') && (
-                                <View style={[styles.breedBadge, { backgroundColor: palette.tint + '15', borderColor: palette.tint + '40' }]}>
-                                  <MaterialCommunityIcons name="shield-check" size={10} color={palette.tint} />
-                                  <Text style={[styles.breedBadgeText, { color: palette.tint }]}>Breed Adjusted</Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text style={[styles.npiBandText, { color: npiBandColor(npiScore), marginTop: 2 }]}>
-                              {npiBandLabel(npiScore)}
-                            </Text>
-                            {npiExplanation?.advisor && (
-                              <Text style={[styles.heroAdvisorText, { color: palette.textSecondary }]}>
-                                {npiExplanation.advisor}
-                              </Text>
-                            )}
-                            {confidence && confidenceTone ? (
-                              <Animated.View
-                                style={[
-                                  styles.confidenceBadge,
-                                  {
-                                    borderColor: confidenceTone.borderColor,
-                                    backgroundColor: confidenceTone.backgroundColor,
-                                    opacity: confidence.label === 'Fair' ? confidencePulse : 1,
-                                  },
-                                ]}>
-                                <Text style={[styles.confidenceLabel, { color: confidenceTone.textColor }]}>
-                                  Sensor {confidence.label}
-                                </Text>
-                                <Text style={[styles.confidenceDetail, { color: palette.textSecondary }]}>{confidence.detail}</Text>
-                              </Animated.View>
-                            ) : null}
-                            <Pressable onPress={() => { hapticTap();  setNpiModalOpen(true); }} style={styles.whyScoreLink}>
-                              <Text style={[styles.whyScoreText, { color: palette.tint }]}>Why this score?</Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      ) : (
-                        <View style={styles.npiRow}>
-                          <View style={styles.npiTextCol}>
-                            <View style={{ flexDirection: 'column', gap: 10 }}>
-                              {npiExplanation?.bestAmLabel && (
-                                <View style={styles.bestWindowRow}>
-                                  <View style={[styles.bestWindowDot, { backgroundColor: npiBandColor(npiExplanation.bestAmNpi ?? 0) }]} />
-                                  <View style={{ flex: 1 }}>
-                                    <Text style={[styles.bestWindowTime, { color: palette.text }]}>AM: {npiExplanation.bestAmLabel}</Text>
-                                    <Text style={[styles.bestWindowStatus, { color: palette.textSecondary }]}>Projected NPI: {npiExplanation.bestAmNpi}/10</Text>
-                                  </View>
-                                </View>
-                              )}
-                              {npiExplanation?.bestPmLabel && (
-                                <View style={styles.bestWindowRow}>
-                                  <View style={[styles.bestWindowDot, { backgroundColor: npiBandColor(npiExplanation.bestPmNpi ?? 0) }]} />
-                                  <View style={{ flex: 1 }}>
-                                    <Text style={[styles.bestWindowTime, { color: palette.text }]}>PM: {npiExplanation.bestPmLabel}</Text>
-                                    <Text style={[styles.bestWindowStatus, { color: palette.textSecondary }]}>Projected NPI: {npiExplanation.bestPmNpi}/10</Text>
-                                  </View>
-                                </View>
-                              )}
-                            </View>
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                  ) : null}
-                  </View>
-
-                  {readinessPresentation ? (
-                    <View style={{ marginTop: 20 }}>
-                      <Text style={[styles.readinessHeadline, { color: palette.text }]}>
-                        {readinessPresentation.title}
-                      </Text>
-                      <Text
-                        style={[styles.readinessFieldLabel, { color: palette.textSecondary, marginTop: 8 }]}>
-                        Details
-                      </Text>
-                      <Text style={[styles.readinessSub, { color: palette.textSecondary }]}>
-                        {readinessPresentation.subtitle}
-                      </Text>
-                      {timelineBars ? (
-                        <Pressable
-                          onPress={() => { hapticTap();  setRoadTempModalOpen(true); }}
-                          style={({ pressed }) => [
-                            styles.bestWindowInline,
-                            {
-                              borderColor: palette.border,
-                              backgroundColor: palette.surface,
-                              opacity: pressed ? 0.92 : 1,
-                            },
-                          , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Best window ${bestWindowLabel}. Open road temperature details`}>
-                          <Text style={[styles.bestWindowInlineLabel, { color: palette.textSecondary }]}>Best window</Text>
-                          <Text style={[styles.bestWindowInlineValue, { color: palette.text }]}>{bestWindowLabel}</Text>
-                          <FontAwesome name="chevron-right" size={12} color={palette.textSecondary} />
-                        </Pressable>
-                      ) : null}
-                      <Pressable
-                        onPress={() => {
-                          hapticTap();
-                          setVerifySurfaceOpen(true);
-                          // startVerifySurface(); // Remove auto-start if user just wants the modal
-                        }}
-                        style={({ pressed }) => [
-                          styles.verifySurfaceButton,
-                          { borderColor: palette.border, opacity: pressed ? 0.92 : 1 },
-                        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-                        <Text style={[styles.verifySurfaceButtonText, { color: palette.text }]}>
-                          Hand Test (7s Rule)
-                        </Text>
-                        <Text style={[styles.verifySurfaceButtonSub, { color: palette.textSecondary }]}>
-                          {shouldShowVerifySurface ? 'Pavement estimate is above 100F' : 'Always verify before walking'}
-                        </Text>
-                      </Pressable>
-                      <View style={styles.readinessCtaRow}>
-                        <Pressable
-                          onPress={() => { hapticTap(); onReadinessPrimaryCta(); }}
-                          style={({ pressed }) => [
-                            styles.readinessPrimaryCta,
-                            { backgroundColor: FOREST, opacity: pressed ? 0.92 : 1 },
-                          , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-                          accessibilityRole="button"
-                          accessibilityLabel={readinessPresentation.ctaLabel}>
-                          <Text style={styles.readinessPrimaryCtaText}>{readinessPresentation.ctaLabel}</Text>
-                        </Pressable>
-                        {readinessPresentation.careChipLabel ? (
-                          <View
-                            style={[
-                              styles.readinessChip,
-                              { borderColor: palette.border, backgroundColor: palette.surface },
-                            ]}>
-                            <Text style={[styles.readinessChipText, { color: palette.textSecondary }]}>
-                              {readinessPresentation.careChipLabel}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={[styles.heroReadinessCol, styles.heroReadinessPlaceholder]}>
-                      <ActivityIndicator size="small" color={FOREST} />
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {weatherOk ? (
-          <View
-            style={[
-              styles.dailyReadinessCard,
-              { 
-                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', 
-                backgroundColor: isDark ? 'rgba(15,23,20,0.7)' : 'rgba(255,255,255,0.7)',
-                shadowOpacity: isDark ? 0.5 : 0.08,
-                elevation: isDark ? 8 : 4,
-              },
-            ]}>
-            <View style={styles.dailyReadinessHead}>
-              <Text style={[styles.dailyReadinessLabel, { color: palette.textSecondary }]}>Daily readiness</Text>
-              {hazardInfo ? (
-                <View style={styles.hazardIconChip}>
-                  <MaterialCommunityIcons name="alert-outline" size={13} color={RISK_AMBER} />
-                  <Text style={styles.hazardIconChipText}>Hazard</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={[styles.dailyReadinessBody, { color: palette.text }]}>{dailyReadinessLine}</Text>
-            {hazardInfo ? (
-              <View style={styles.hazardAlertWrap}>
-                <Text style={[styles.hazardAlertLine, { color: RISK_AMBER }]}>Hazard Alert: {hazardInfo.primary}.</Text>
-                {hazardInfo.extraCount > 0 ? (
-                  <Pressable onPress={() => { hapticTap();  setShowSecondaryHazard((prev) => !prev); }} style={styles.hazardMoreChip}>
-                    <Text style={styles.hazardMoreText}>
-                      {showSecondaryHazard ? 'Hide' : `+${hazardInfo.extraCount} alert`}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {showSecondaryHazard && hazardInfo.secondary ? (
-                  <Text style={[styles.hazardSecondaryLine, { color: palette.textSecondary }]}>
-                    Secondary: {hazardInfo.secondary}.
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-            {packPreviewHint ? (
-              <View style={[styles.packHintCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
-                <Text style={[styles.packPreviewHint, { color: palette.textSecondary }]}>{packPreviewHint.label}</Text>
-                <Pressable
-                  onPress={() => { hapticTap(); onToggleGearVault(); }}
-                  disabled={gearVaultBusy}
-                  style={({ pressed }) => [
-                    styles.packToggleButton,
-                    {
-                      borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)',
-                      opacity: pressed || gearVaultBusy ? 0.9 : 1,
-                    },
-                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-                  <Text style={[styles.packToggleButtonText, { color: palette.text }]}>
-                    {packHintPinned ? 'In Gear Vault' : 'Got it? Add to Gear Vault'}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
-        {/* C. Compact conditions (opens detail — full hero imagery lives in the modal) */}
-        {weatherOk ? (
-          <Pressable
-            onPress={() => { hapticTap();  setWeatherModalOpen(true); }}
-            style={({ pressed }) => [
-              styles.compactConditionsRow,
-              {
-                borderColor: palette.border,
-                backgroundColor: palette.surface,
-                opacity: pressed ? 0.92 : 1,
-              },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-            accessibilityRole="button"
-            accessibilityLabel="Weather details and suggestions">
-            <MaterialCommunityIcons
-              name={currentWeatherIconName(weatherOk)}
-              size={18}
-              color={palette.tint}
-              style={{ marginRight: 10 }}
-            />
-            <Text
-              style={[styles.compactConditionsText, { color: palette.text }]}
-              numberOfLines={2}>
-              {compactConditionsLine}
-            </Text>
-            <FontAwesome name="chevron-right" size={12} color={palette.textSecondary} style={{ marginLeft: 8 }} />
-          </Pressable>
-        ) : null}
-
-        {/* D. Interpretation — best window + next change only */}
-        {timelineSummary.length > 0 ? (
-          <View style={styles.interpretSection}>
-            <Text style={[styles.interpretSectionKicker, { color: palette.textSecondary }]}>
-              Today’s plan
-            </Text>
-            {timelineSummary.map((row, i) => (
-              <View
-                key={`${row.sectionLabel}-${i}`}
-                style={[
-                  styles.interpretRow,
-                  { borderBottomColor: palette.border },
-                  i === timelineSummary.length - 1 ? styles.interpretRowLast : null,
-                ]}>
-                <View style={styles.interpretRowLeft}>
-                  <View style={[styles.interpretDot, { backgroundColor: toneColor(row.tone, palette) }]} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[styles.interpretLabel, { color: palette.textSecondary }]}>
-                      {row.sectionLabel}
-                    </Text>
-                    <Text style={[styles.interpretRange, { color: palette.text }]}>{row.rangeLabel}</Text>
-                    <Text style={[styles.interpretBody, { color: palette.textSecondary }]} numberOfLines={3}>
-                      {row.body}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {timelineBars ? (
-          <View
-            ref={timelineRef} style={[
-              styles.timelineBarsCard,
-              {
-                borderColor: palette.border,
-                backgroundColor: palette.surface,
-              },
-            ]}>
-            <ImageBackground
-              source={weatherCardBgSource ?? undefined}
-              style={styles.timelineBarsBg}
-              imageStyle={styles.timelineBarsBgImage}
-              resizeMode="cover">
-              <LinearGradient
-                colors={isDark ? ['rgba(8,16,12,0.22)', 'rgba(8,16,12,0.52)'] : ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.52)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              {currentRisk && (
-                <AnimatedReanimated.View style={[StyleSheet.absoluteFill, { opacity: pulseOpacity }]}>
-                  <Canvas style={StyleSheet.absoluteFill}>
-                     <RoundedRect x={0} y={0} width={2000} height={180} r={24} color={currentRisk.color}>
-                       <BlurMask blur={30} style="normal" />
-                     </RoundedRect>
-                  </Canvas>
-                </AnimatedReanimated.View>
-              )}
-              <View style={styles.timelineBarsHeader}>
-                <Text style={[styles.timelineBarsTitle, { color: palette.text }]}>Today&apos;s timeline</Text>
-                <View style={styles.surfaceChipRow}>
-                  {(['asphalt', 'concrete', 'sand', 'turf'] as SurfaceType[]).map((s) => (
-                    <Pressable
-                      key={s}
-                      onPress={() => { hapticTap(); setSelectedSurface(s); }}
+                    accessibilityLabel={`Weather conditions: ${(weather as any).tempF}°F. Tap to open details.`}>
+                    <BlurView
+                      intensity={45}
+                      tint={isDark ? "dark" : "light"}
                       style={[
-                        styles.surfaceChip,
-                        { borderColor: palette.border },
-                        selectedSurface === s && { backgroundColor: palette.tint, borderColor: palette.tint }
+                        styles.heroBestWindowPill,
+                        {
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                        }
                       ]}
                     >
-                      <Text style={[
-                        styles.surfaceChipText,
-                        { color: palette.textSecondary },
-                        selectedSurface === s && { color: '#fff' }
-                      ]}>
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      <MaterialCommunityIcons
+                        name={currentWeatherIconName(weather as any)}
+                        size={12}
+                        color={isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)"}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text
+                        style={[
+                          styles.heroBestWindowPillText,
+                          { color: isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)" }
+                        ]}
+                      >
+                        {(weather as any).tempF}°F
                       </Text>
+                    </BlurView>
+                  </Pressable>
+
+                  <Pressable 
+                    onPress={() => { hapticTap(); setNpiModalOpen(true); }}
+                    style={styles.hudCornerTr}
+                    accessibilityRole="button"
+                    accessibilityLabel={`NPI score ${npiScore}. Tap for details.`}>
+                    <BlurView
+                      intensity={45}
+                      tint={isDark ? "dark" : "light"}
+                      style={[
+                        styles.heroBestWindowPill,
+                        {
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                        }
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.heroBestWindowPillText,
+                          { color: isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)", marginRight: 4 }
+                        ]}
+                      >
+                        NPI {npiScore}
+                      </Text>
+                      <MaterialCommunityIcons
+                        name="help-circle-outline"
+                        size={11}
+                        color={isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)"}
+                      />
+                    </BlurView>
+                  </Pressable>
+
+                  <Pressable 
+                    onPress={() => { hapticTap(); setRoadTempModalOpen(true); }}
+                    style={styles.hudCornerBr}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Best window: ${bestWindowLabel}. Tap for road temperature details.`}>
+                    <BlurView
+                      intensity={45}
+                      tint={isDark ? "dark" : "light"}
+                      style={[
+                        styles.heroBestWindowPill,
+                        {
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                        }
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name="clock-outline"
+                        size={12}
+                        color={isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)"}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text
+                        style={[
+                          styles.heroBestWindowPillText,
+                          { color: isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)" }
+                        ]}
+                      >
+                        {bestWindowLabel.toUpperCase()}
+                      </Text>
+                    </BlurView>
+                  </Pressable>
+
+                  {/* Centered Dog Portrait + Ring */}
+                  <View style={styles.avatarWrapper}>
+                    {npiScore != null && (
+                      <TacticalInstrumentRing
+                        score={npiScore}
+                        size={avatarRingSize}
+                        isDark={isDark}
+                      />
+                    )}
+                    <Pressable
+                      onPress={() => { hapticTap();  router.push('/dog-profile'); }}
+                      ref={avatarRef} style={styles.heroPhotoCol}
+                      accessibilityRole="button"
+                      accessibilityLabel="Dog photo">
+                      {dogProfile?.dogPhotoUri ? (
+                        <Image
+                          source={{ uri: dogProfile.dogPhotoUri }}
+                          style={styles.heroDogCircle}
+                          contentFit="cover"
+                          cachePolicy="none"
+                          recyclingKey={dogProfile.dogPhotoUri}
+                        />
+                      ) : (
+                        <View style={[styles.heroDogCircle, styles.heroDogPh]}>
+                          <MaterialCommunityIcons name="camera-plus" size={48} color="rgba(234, 234, 234, 0.4)" />
+                        </View>
+                      )}
                     </Pressable>
-                  ))}
+                  </View>
+
+                  {/* Centered Primary Readiness Sentence */}
+                  <Text 
+                    style={[
+                      styles.readinessHeadline, 
+                      { 
+                        color: isDark ? 'rgba(234, 234, 234, 0.9)' : 'rgba(18, 31, 24, 0.82)',
+                        fontWeight: isDark ? '500' : '600'
+                      }
+                    ]} 
+                    numberOfLines={2}
+                  >
+                    {npiExplanation?.advisor ?? "Good to go right now."}
+                  </Text>
                 </View>
+              )}
+            </View>
+          </BlurView>
+        </View>
+         {timelineBars ? (
+          <View
+            ref={timelineRef}
+            style={[
+              styles.timelineBarsCard,
+              {
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(18, 31, 24, 0.10)',
+                backgroundColor: isDark ? 'rgba(10, 22, 15, 0.58)' : 'rgba(242, 248, 239, 0.73)',
+              },
+            ]}>
+            <View style={styles.timelineBarsBg}>
+              <BlurView
+                intensity={60}
+                tint={isDark ? 'dark' : 'light'}
+                style={[StyleSheet.absoluteFillObject, { borderRadius: 24, overflow: 'hidden' }]}
+              />
+              <View style={styles.timelineBarsHeader}>
+                <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline</Text>
               </View>
               <View
                 style={styles.timelineBarsWrap}
@@ -1397,23 +1445,25 @@ export default function HomeScreen() {
                 }}
                 {...timelinePanResponder.panHandlers}>
               {scrubPoint ? (
-                <View
+                <BlurView
+                  intensity={90}
+                  tint={isDark ? "dark" : "light"}
                   style={[
                     styles.timelineScrubPopup,
                     {
                       left: scrubPopupLeftPx,
-                      borderColor: palette.border,
-                      backgroundColor: palette.surface,
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(18, 31, 24, 0.15)',
+                      backgroundColor: isDark ? 'rgba(15, 23, 20, 0.85)' : 'rgba(242, 248, 239, 0.85)',
                     },
                   ]}>
-                  <Text style={[styles.timelineScrubTime, { color: palette.text }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
-                  <Text style={[styles.timelineScrubTemp, { color: palette.textSecondary }]}>
+                  <Text style={[styles.timelineScrubTime, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.92)' }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
+                  <Text style={[styles.timelineScrubTemp, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
                     {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {Math.round(scrubPoint.roadTempF)}F
                   </Text>
-                  <Text style={[styles.timelineScrubBand, { color: palette.textSecondary }]}>
+                  <Text style={[styles.timelineScrubBand, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
                     {roadBandLabel(scrubPoint.roadBand)}
                   </Text>
-                </View>
+                </BlurView>
               ) : null}
               {timelineBars.bestWindowSegments.map((seg, idx) => {
                 const left = `${timelineHourRatio(seg.startHour) * 100}%`;
@@ -1433,9 +1483,20 @@ export default function HomeScreen() {
                   },
                 ]}
               />
+              <View
+                style={[
+                  styles.timelineNowThumb,
+                  {
+                    left: `${timelineHourRatio(timelineScrubHour ?? timelineBars.currentHourPosition) * 100}%` as unknown as number,
+                    borderColor: currentRisk?.color ?? FOREST,
+                  },
+                ]}
+              />
 
-              <Text style={[styles.barLabel, { color: palette.textSecondary }]}>Daylight</Text>
-              <View style={[styles.barTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+              <View 
+                accessible={true} 
+                accessibilityLabel="Timeline daylight hours track"
+                style={[styles.barTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
                 {timelineBars.daylightSegments.map((seg, idx) => {
                   const left = `${timelineHourRatio(seg.startHour) * 100}%`;
                   const width = `${(timelineHourRatio(seg.endHour) - timelineHourRatio(seg.startHour)) * 100}%`;
@@ -1451,8 +1512,10 @@ export default function HomeScreen() {
                 })}
               </View>
 
-              <Text style={[styles.barLabel, { color: palette.textSecondary, marginTop: 10 }]}>Road temp</Text>
-              <View style={[styles.barTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+              <View 
+                accessible={true} 
+                accessibilityLabel={`Timeline pavement temperature risk track for selected surface ${selectedSurface}`}
+                style={[styles.barTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', marginTop: 8 }]}>
                 {timelineBars.points.map((p) => {
                   const left = `${timelineHourRatio(p.hour) * 100}%`;
                   const width = `${(timelineHourRatio(p.hour + 1) - timelineHourRatio(p.hour)) * 100}%`;
@@ -1471,82 +1534,92 @@ export default function HomeScreen() {
                   );
                 })}
               </View>
-
-              {timelineBars.bestWindowSegments.length > 0 ? (
-                <Text style={styles.bestWindowLabel}>Best window</Text>
-              ) : null}
               </View>
 
-              <View style={styles.timelineAxisRow}>
-                {[timelineAxis.startHour, 9, 13, 17, timelineAxis.endHour].map((h) => (
-                  <Text key={`axis-${h}`} style={[styles.timelineAxisLabel, { color: palette.textSecondary }]}>
-                    {h === 13 ? '1p' : h === 17 ? '5p' : h === 9 ? '9a' : h === 22 ? '10p' : '5a'}
-                  </Text>
-                ))}
+              <View style={styles.timelineRulerTicks}>
+                {[5, 7, 9, 11, 13, 15, 17, 19, 21, 22].map((hour) => {
+                  const left = `${timelineHourRatio(hour) * 100}%`;
+                  const isMajor = hour % 3 === 0 || hour === 12 || hour === 22 || hour === 5;
+                  return (
+                    <View key={`tick-${hour}`} style={[styles.rulerTickContainer, { left: left as any }]}>
+                      <View style={[styles.rulerTickLine, { height: isMajor ? 8 : 4, backgroundColor: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }]} />
+                      {isMajor && (
+                        <Text style={[styles.rulerTickLabel, { color: textColors.tertiary }]}>
+                          {hour === 12 ? '12p' : hour > 12 ? `${hour-12}p` : `${hour}a`}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
-              <Pressable
-                onPress={() => { hapticTap();  setRoadTempModalOpen(true); }}
-                accessibilityRole="button"
-                accessibilityLabel="Open road temperature timeline details"
-                style={styles.timelineDetailLink}>
-                <Text style={[styles.timelineDetailLinkText, { color: palette.textSecondary }]}>
-                  Road temp is estimated from NWS conditions. Tap for details.
-                </Text>
-              </Pressable>
-            </ImageBackground>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
+                <Pressable
+                  onPress={cycleSurface}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Selected surface is ${selectedSurface}. Tap to cycle surface type.`}>
+                  <BlurView
+                    intensity={45}
+                    tint={isDark ? "dark" : "light"}
+                    style={[
+                      styles.heroBestWindowPill,
+                      {
+                        borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                      }
+                    ]}
+                  >
+                    <Text style={[styles.heroBestWindowPillText, { color: textColors.instrument }]}>
+                      Surface: {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)}
+                    </Text>
+                    <MaterialCommunityIcons name="cached" size={10} color={textColors.instrument} style={{ marginLeft: 4 }} />
+                  </BlurView>
+                </Pressable>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Pressable
+                    onPress={() => { hapticTap(); setVerifySurfaceOpen(true); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Start Hand Test verification">
+                    <BlurView
+                      intensity={45}
+                      tint={isDark ? "dark" : "light"}
+                      style={[
+                        styles.heroBestWindowPill,
+                        {
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                        }
+                      ]}
+                    >
+                      <Text style={[styles.heroBestWindowPillText, { color: textColors.instrument }]}>
+                        Hand Test
+                      </Text>
+                    </BlurView>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => { hapticTap(); setRoadTempModalOpen(true); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open road temperature details">
+                    <BlurView
+                      intensity={45}
+                      tint={isDark ? "dark" : "light"}
+                      style={[
+                        styles.heroBestWindowPill,
+                        {
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                        }
+                      ]}
+                    >
+                      <Text style={[styles.heroBestWindowPillText, { color: textColors.instrument }]}>
+                        Details
+                      </Text>
+                    </BlurView>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
           </View>
-        ) : null}
-
-        {/* Suggested strip + CTA */}
-        {weatherOk ? (
-          <View style={styles.sectionSuggested}>
-            <Text style={[styles.sectionKickerMuted, { color: palette.textSecondary }]}>Explore</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.stripScroll}
-              style={{ marginBottom: 10 }}>
-              {suggestedStrip.map((src, idx) => (
-                <Image
-                  key={idx}
-                  source={src}
-                  style={[styles.stripThumb, { borderColor: palette.border }]}
-                  contentFit="cover"
-                />
-              ))}
-            </ScrollView>
-            <Pressable
-              onPress={() => { hapticTap();  setWeatherModalOpen(true); }}
-              style={({ pressed }) => [
-                styles.suggestedSecondaryCta,
-                {
-                  borderColor: palette.border,
-                  backgroundColor: palette.surface,
-                  opacity: pressed ? 0.92 : 1,
-                },
-              , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-              accessibilityRole="button"
-              accessibilityLabel="Open weather and suggestions">
-              <Text style={[styles.suggestedSecondaryCtaText, { color: palette.tint }]}>
-                More suggestions in weather
-              </Text>
-            </Pressable>
-            <Text style={[styles.stripHint, { color: palette.textSecondary }]}>
-              {accessibleCards} field cards available · tailored to today’s conditions
-            </Text>
-          </View>
-        ) : null}
-
-        {weather.status === 'permission_denied' ? (
-          <Pressable onPress={() => { hapticTap();  Linking.openSettings(); }} style={styles.secondaryLink}>
-            <Text style={{ color: palette.tint, fontWeight: '700' }}>Open Settings</Text>
-          </Pressable>
-        ) : null}
-
-        {weatherDayNarrative?.followThrough && weatherOk ? (
-          <Text style={[styles.followThroughNote, { color: palette.textSecondary }]}>
-            {weatherDayNarrative.followThrough}
-          </Text>
         ) : null}
       </ScrollView>
 
@@ -1644,7 +1717,8 @@ export default function HomeScreen() {
                 style={({ pressed }) => [
                   styles.verifyAction,
                   { backgroundColor: FOREST, opacity: pressed ? 0.9 : 1 },
-                , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                  { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
+                ]}>
                 <Text style={styles.verifyActionText}>{verifyCountdown === 0 ? 'Run again' : 'Start 7-second check'}</Text>
               </Pressable>
             ) : null}
@@ -2185,7 +2259,11 @@ export default function HomeScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: palette.textSecondary }}>Step {walkthroughStep + 1} of 4</Text>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <Pressable onPress={() => { hapticTap(); finishWalkthrough(); }} style={{ padding: 6 }}>
+                    <Pressable
+                      onPress={() => { hapticTap(); finishWalkthrough(); }}
+                      style={{ padding: 6 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Skip tutorial">
                       <Text style={{ color: palette.textSecondary, fontSize: 13, fontWeight: '600' }}>Skip</Text>
                     </Pressable>
                     <Pressable 
@@ -2194,6 +2272,8 @@ export default function HomeScreen() {
                         else finishWalkthrough();
                       }} 
                       style={{ backgroundColor: palette.tint, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={walkthroughStep < 3 ? "Next tutorial step" : "Finish tutorial"}
                     >
                       <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{walkthroughStep < 3 ? 'Next' : 'Got it'}</Text>
                     </Pressable>
@@ -2204,12 +2284,12 @@ export default function HomeScreen() {
           </View>
         </Modal>
       )}
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 40 },
+  container: { paddingHorizontal: 18, paddingBottom: 140 },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2226,9 +2306,70 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
   },
-  headerProQuiet: { paddingHorizontal: 8, paddingVertical: 8 },
-  headerProQuietText: { fontSize: 12, fontWeight: '600' },
-  heroBlock: { alignItems: 'stretch', marginBottom: 12, width: '100%' },
+  headerProGhost: {
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 6,
+  },
+  headerProGhostText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: 'rgba(255, 255, 255, 0.75)',
+    letterSpacing: 0.5,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  heroClockButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  heroClockHandHour: {
+    position: 'absolute',
+    width: 1,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    top: 5,
+    left: 9.5,
+  },
+  heroClockHandMinute: {
+    position: 'absolute',
+    width: 4,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    top: 9.5,
+    left: 9.5,
+  },
+  statusPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  heroBlock: { alignItems: 'stretch', marginBottom: 28, width: '100%' },
   heroGlassShell: {
     borderWidth: 1,
     borderRadius: 24,
@@ -2237,8 +2378,9 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 8 },
+    height: cardSize * 0.93,
   },
-  heroGlassBg: { ...StyleSheet.absoluteFillObject },
+  heroGlassBg: StyleSheet.absoluteFillObject,
   heroGlassBgImage: { opacity: 0.85 },
   heroGlassContent: { position: 'relative' },
   heroLoading: { alignItems: 'center', paddingVertical: 20 },
@@ -2246,22 +2388,104 @@ const styles = StyleSheet.create({
   permissionText: { textAlign: 'center', fontSize: 15, lineHeight: 22, paddingHorizontal: 8 },
   heroRowSplit: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     width: '100%',
     gap: 12,
   },
-  heroPhotoCol: { flexShrink: 0 },
+  avatarWrapper: {
+    width: avatarRingSize,
+    height: avatarRingSize,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    flexShrink: 0,
+    backgroundColor: 'transparent',
+  },
+  heroPhotoCol: {
+    width: avatarPhotoSize,
+    height: avatarPhotoSize,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   heroReadinessCol: { flex: 1, minWidth: 0, paddingTop: 2 },
   heroReadinessPlaceholder: { justifyContent: 'center', minHeight: 144 },
   heroDogCircle: {
-    width: 144,
-    height: 144,
-    borderRadius: 72,
-    borderWidth: 4,
+    width: avatarPhotoSize,
+    height: avatarPhotoSize,
+    borderRadius: avatarPhotoSize / 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     overflow: 'hidden',
     backgroundColor: 'rgba(45,106,79,0.08)',
   },
   heroDogPh: { alignItems: 'center', justifyContent: 'center' },
+  hudCornerTl: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hudCornerTr: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hudCornerBl: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+  },
+  hudCornerBr: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    alignItems: 'flex-end',
+  },
+  hudLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    marginTop: 2,
+  },
+  hudKicker: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    textTransform: 'uppercase',
+  },
+  hudValue: {
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    color: '#EAEAEA',
+    fontWeight: '700',
+  },
+  heroBestWindow: {
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    color: 'rgba(234, 234, 234, 0.6)',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  heroBestWindowPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    overflow: 'hidden',
+  },
+  heroBestWindowPillText: {
+    fontSize: 9,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontWeight: '700',
+  },
   readinessFieldLabel: {
     fontSize: 10,
     fontWeight: '800',
@@ -2270,10 +2494,13 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   readinessHeadline: {
-    fontSize: 18,
-    fontWeight: '800',
-    textAlign: 'left',
-    lineHeight: 24,
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(234, 234, 234, 0.9)',
+    textAlign: 'center',
+    marginTop: 16,
+    paddingHorizontal: 20,
+    lineHeight: 20,
   },
   readinessNpi: {
     fontSize: 16,
@@ -2464,18 +2691,14 @@ const styles = StyleSheet.create({
   interpretBody: { fontSize: 13, lineHeight: 18, marginTop: 3 },
   timelineBarsCard: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    borderRadius: 24,
     marginBottom: 14,
   },
   timelineBarsBg: {
-    borderRadius: 10,
-    overflow: 'visible',
-    padding: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   timelineBarsBgImage: {
-    borderRadius: 10,
     opacity: 0.95,
   },
   timelineBarsHeader: { marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -2484,41 +2707,63 @@ const styles = StyleSheet.create({
   timelineBarsWrap: { position: 'relative' },
   timelineScrubPopup: {
     position: 'absolute',
-    top: -68,
+    top: -52,
     width: 132,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     zIndex: 8,
-    backgroundColor: 'rgba(13,31,23,0.95)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 4 },
+    overflow: 'hidden',
   },
   timelineScrubTime: { fontSize: 13, fontWeight: '800' },
   timelineScrubTemp: { fontSize: 12, fontWeight: '700', marginTop: 2 },
   timelineScrubBand: { fontSize: 11, marginTop: 2, lineHeight: 14 },
   timelineBestOverlay: {
     position: 'absolute',
-    top: 8,
-    bottom: 28,
-    borderRadius: 7,
-    backgroundColor: 'rgba(45,106,79,0.18)',
+    top: 0,
+    bottom: 0,
+    borderRadius: 8,
+    backgroundColor: 'rgba(46, 204, 113, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(46, 204, 113, 0.25)',
     zIndex: 1,
   },
   timelineNowLine: {
     position: 'absolute',
-    top: 6,
-    bottom: 24,
-    width: 1.5,
+    top: 0,
+    bottom: 0,
+    width: 2,
     backgroundColor: 'rgba(255,255,255,0.95)',
     zIndex: 4,
   },
-  barLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' as const, marginBottom: 6 },
+  timelineNowThumb: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    top: '50%',
+    transform: [{ translateY: -6 }, { translateX: -5 }],
+    zIndex: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  barLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' as const, marginBottom: 4, marginTop: 6 },
   barTrack: {
-    height: 14,
-    borderRadius: 7,
+    height: 8,
+    borderRadius: 4,
     overflow: 'hidden',
     position: 'relative',
     zIndex: 2,
+    marginBottom: 6,
   },
   barSegment: {
     position: 'absolute',
@@ -2532,23 +2777,45 @@ const styles = StyleSheet.create({
     color: '#2D6A4F',
     zIndex: 5,
   },
-  timelineAxisRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  timelineRulerTicks: {
+    height: 20,
+    position: 'relative',
     marginTop: 10,
+    width: '100%',
   },
-  timelineAxisLabel: {
-    fontSize: 11,
+  rulerTickContainer: {
+    position: 'absolute',
+    alignItems: 'center',
+    width: 30,
+    marginLeft: -15,
+  },
+  rulerTickLine: {
+    width: 1,
+    height: 6,
+    marginBottom: 4,
+  },
+  rulerTickLabel: {
+    fontSize: 9,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
     fontWeight: '700',
   },
-  timelineDetailLink: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
+  surfaceCycleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
   },
-  timelineDetailLinkText: {
-    fontSize: 11,
-    lineHeight: 15,
-    textDecorationLine: 'underline',
+  surfaceCycleText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(234, 234, 234, 0.5)',
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+  },
+  timelineSecondaryLink: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(234, 234, 234, 0.5)',
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
   detailCard: {
     borderWidth: 1,
@@ -2893,14 +3160,20 @@ const styles = StyleSheet.create({
   compareLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginBottom: 4 },
   compareValue: { fontSize: 24, fontWeight: '800' },
   compareBand: { fontSize: 10, fontWeight: '700', marginTop: 2 },
-  verifyClose: { marginTop: 12, paddingVertical: 6, paddingHorizontal: 12 },
-  verifyCloseText: { fontSize: 13, fontWeight: '700' },
   scienceSection: { paddingHorizontal: 4, paddingBottom: 20 },
   scienceTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
   scienceBody: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
   scienceSourceRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
   scienceSourceText: { flex: 1, fontSize: 13, lineHeight: 18 },
-
+  surfaceChipRow: { flexDirection: 'row', gap: 6 },
+  h2: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  body: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
   verifyClose: { marginTop: 12, paddingVertical: 6, paddingHorizontal: 12 },
   verifyCloseText: { fontSize: 13, fontWeight: '700' },
 });

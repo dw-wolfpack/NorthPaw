@@ -196,8 +196,8 @@ export default function DogProfileScreen() {
               style={({ pressed }) => [
                 styles.photoPreview,
                 {
-                  borderColor: selected ? palette.tint : palette.border,
-                  backgroundColor: selected ? palette.selectedBg : palette.surface,
+                  borderColor: displayPhoto ? palette.tint : palette.border,
+                  backgroundColor: displayPhoto ? palette.selectedBg : palette.surface,
                   opacity: pressed ? 0.92 : 1,
                 },
               ]}>

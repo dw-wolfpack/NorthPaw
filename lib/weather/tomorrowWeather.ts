@@ -83,7 +83,14 @@ export async function fetchTomorrowWeatherAtCoordinates(
 
     const weekendOutlook: WeekendDayForecast[] = []; // TODO: Extract weekend if needed
 
-    const timelineSlotsResolved = buildTimelineSlotsFromHourly(hourlySamples);
+    const timelineSlotsResolved = buildTimelineSlotsFromHourly(
+      hourlySamples.map((h) => ({
+        startTime: h.timeIso,
+        endTime: new Date(new Date(h.timeIso).getTime() + 60 * 60 * 1000).toISOString(),
+        shortForecast: '',
+        precipChance: null,
+      }))
+    );
 
     const ok: HomeWeatherState = {
       status: 'ok',

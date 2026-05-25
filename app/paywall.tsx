@@ -87,7 +87,7 @@ export default function PaywallScreen() {
   };
 
   const packages = currentOffering?.availablePackages ?? [];
-  const OVERLAY_COLORS = ['rgba(13,31,23,0.35)', 'rgba(13,31,23,0.92)', '#0A1A12'];
+  const OVERLAY_COLORS = ['rgba(13,31,23,0.35)', 'rgba(13,31,23,0.92)', '#0A1A12'] as const;
 
   return (
     <ImageBackground
