@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   ImageBackground,
   Linking,
   Modal,
@@ -23,7 +24,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurMask, Canvas, Circle, Path, Skia, RoundedRect, Rect, Group } from '@shopify/react-native-skia';
+import { BlurMask, Canvas, Circle, Path, Skia, RoundedRect, Rect, Group, SweepGradient } from '@shopify/react-native-skia';
 
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -186,10 +187,10 @@ function clampUnit(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-function riskBand(score: number): { label: 'Green' | 'Amber' | 'Ember'; color: string; pulseMs: number; minPulse: number } {
-  if (score <= 3.3) return { label: 'Green', color: '#2ECC71', pulseMs: 2200, minPulse: 0.40 };
-  if (score <= 6.6) return { label: 'Amber', color: '#F39C12', pulseMs: 1500, minPulse: 0.40 };
-  return { label: 'Ember', color: '#C46A2D', pulseMs: 950, minPulse: 0.40 };
+function riskBand(score: number): { label: 'Green' | 'Amber' | 'Ember'; color: string; dimColor: string; pulseMs: number; minPulse: number } {
+  if (score <= 3.3) return { label: 'Green', color: '#2ECC71', dimColor: 'rgba(46, 204, 113, 0.15)', pulseMs: 2200, minPulse: 0.40 };
+  if (score <= 6.6) return { label: 'Amber', color: '#F39C12', dimColor: 'rgba(243, 156, 18, 0.15)', pulseMs: 1500, minPulse: 0.40 };
+  return { label: 'Ember', color: '#C46A2D', dimColor: 'rgba(196, 106, 45, 0.15)', pulseMs: 950, minPulse: 0.40 };
 }
 
 function confidenceBadge(weather: Extract<HomeWeatherState, { status: 'ok' }> | null): {
@@ -239,6 +240,7 @@ type TacticalInstrumentRingProps = {
 function TacticalInstrumentRing({ score, size = 180, isDark }: TacticalInstrumentRingProps) {
   const band = riskBand(score);
   const pulse = useRef(new Animated.Value(band.minPulse)).current;
+  const sweep = useRef(new Animated.Value(0)).current;
 
   const baseRadius = (size - 16) / 2;
   const radiusTicks = baseRadius - 8;
@@ -276,6 +278,19 @@ function TacticalInstrumentRing({ score, size = 180, isDark }: TacticalInstrumen
     };
   }, [band.pulseMs, band.minPulse, pulse]);
 
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(sweep, {
+        toValue: 1,
+        duration: band.pulseMs * 2.5,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [sweep, band.pulseMs]);
+
   const bezelTicks = useMemo(() => {
     const paths: any[] = [];
     const totalTicks = 120;
@@ -312,7 +327,6 @@ function TacticalInstrumentRing({ score, size = 180, isDark }: TacticalInstrumen
   }, [cx, cy, radiusOuter]);
 
   const bezelBgColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)';
-  const bezelTickColor = isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(0, 0, 0, 0.18)';
   const outerRingColor = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)';
 
   const scale = pulse.interpolate({
@@ -342,15 +356,6 @@ function TacticalInstrumentRing({ score, size = 180, isDark }: TacticalInstrumen
           style="stroke"
           strokeWidth={1}
         />
-        {bezelTicks.map((p, idx) => (
-          <Path
-            key={`btick-${idx}`}
-            path={p}
-            color={bezelTickColor}
-            style="stroke"
-            strokeWidth={0.8}
-          />
-        ))}
         <Circle
           cx={cx}
           cy={cy}
@@ -423,6 +428,44 @@ function TacticalInstrumentRing({ score, size = 180, isDark }: TacticalInstrumen
             opacity={0.35}
           />
         </Canvas>
+
+        {/* Rotating Bezel Ticks with Sweep Gradient */}
+        <Animated.View
+          style={{
+            ...StyleSheet.absoluteFillObject,
+            transform: [
+              {
+                rotate: sweep.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', '360deg'],
+                }),
+              },
+            ],
+          }}
+        >
+          <Canvas style={StyleSheet.absoluteFill}>
+            <Group>
+              <SweepGradient
+                c={{ x: cx, y: cy }}
+                colors={[
+                  band.color,
+                  band.dimColor,
+                  band.dimColor,
+                  band.color,
+                ]}
+                positions={[0, 0.15, 0.85, 1.0]}
+              />
+              {bezelTicks.map((p, idx) => (
+                <Path
+                  key={`btick-${idx}`}
+                  path={p}
+                  style="stroke"
+                  strokeWidth={1.25}
+                />
+              ))}
+            </Group>
+          </Canvas>
+        </Animated.View>
       </Animated.View>
     </View>
   );
