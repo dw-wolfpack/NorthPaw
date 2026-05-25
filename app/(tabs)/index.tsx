@@ -4,6 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { HeroImage } from '@/components/HeroImage';
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -26,13 +28,14 @@ export default function LibraryScreen() {
   const packs = getAllPacks();
   const hazard = getCurrentHazardMonth();
   const lib = getLibrary();
+  const insets = useSafeAreaInsets();
 
   const homeGrad = gradientForPack('trail-basics');
 
   return (
     <ScrollView
       style={[styles.scroll, { backgroundColor: palette.background }]}
-      contentContainerStyle={styles.container}>
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
       <HeroImage height={168} source={IMAGES.homeHero} gradient={homeGrad} scrimOpacity={0.88}>
         <View style={styles.heroLabelRow}>
           <MaterialCommunityIcons name="paw" size={18} color="rgba(255,255,255,0.95)" />

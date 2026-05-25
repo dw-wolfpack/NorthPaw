@@ -17,6 +17,8 @@ import { getDogProfile, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
 export default function SettingsScreen() {
@@ -24,6 +26,7 @@ export default function SettingsScreen() {
   const palette = Colors[colorScheme];
   const { isPro, configured, expoGo, loading, error } = useSubscription();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const resetOnboardingForTesting = () => {
     Alert.alert(
@@ -82,7 +85,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={styles.container}>
+    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
       <Text style={styles.h1}>Your dog</Text>
       <Pressable
         onPress={() => { hapticTap();  router.push('/dog-profile'); }}
