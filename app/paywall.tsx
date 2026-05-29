@@ -10,6 +10,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { IMAGES } from '@/lib/contentVisuals';
 import { trackEvent } from '@/lib/analytics';
+import { useSubscription } from '@/context/SubscriptionContext';
 
 const BENEFITS = [
   {
@@ -34,6 +35,7 @@ export default function PaywallScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
+  const { isPro } = useSubscription();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -43,13 +45,13 @@ export default function PaywallScreen() {
 
   const onClose = useCallback(() => {
     trackEvent('pro_paywall_closed', { returnTo });
-    if (returnTo && typeof returnTo === 'string') {
+    if (isPro && returnTo && typeof returnTo === 'string') {
       router.replace(returnTo as Parameters<typeof router.replace>[0]);
       return;
     }
     if (router.canGoBack()) router.back();
     else router.replace('/(tabs)');
-  }, [returnTo, router]);
+  }, [returnTo, router, isPro]);
 
   const registerInterest = async (pkgName: string, priceString: string) => {
     setBusy(true);
