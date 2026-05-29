@@ -1995,7 +1995,7 @@ export default function HomeScreen() {
               ))
             ) : (
               <Text style={{ color: palette.textSecondary, fontSize: 14, lineHeight: 20 }}>
-                No picks yet — open the Field guide for full packs.
+                No picks yet. Open the Field guide for full packs.
               </Text>
             )}
           </ScrollView>
@@ -2204,7 +2204,7 @@ export default function HomeScreen() {
                   <View style={styles.scienceSourceRow}>
                     <MaterialCommunityIcons name="book-open-variant" size={16} color={palette.tint} />
                     <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
-                      <Text style={{ fontWeight: '700' }}>JAMA Dermatology:</Text> "Thermal Injury from Hot Asphalt" — identifying 125°F as the threshold for second-degree contact burns.
+                      <Text style={{ fontWeight: '700' }}>JAMA Dermatology:</Text> "Thermal Injury from Hot Asphalt" (identifying 125°F as the threshold for second-degree contact burns).
                     </Text>
                   </View>
                   <View style={styles.scienceSourceRow}>

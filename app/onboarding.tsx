@@ -124,10 +124,10 @@ const ACTIVITY_OPTIONS: Array<{ id: 'low' | 'moderate' | 'high'; title: string; 
 ];
 
 const CALIBRATION_LINES = [
-  'Calculating THI...',
-  'Applying snout-profile offset...',
-  'Fetching local humidity...',
-  'Estimating pavement heat load...',
+  'Checking temperature and humidity...',
+  'Adjusting for snout length...',
+  'Fetching local conditions...',
+  'Checking pavement warmth...',
 ];
 
 function displaySlot(isoStart: string, isoEnd: string): string {
@@ -476,9 +476,9 @@ export default function OnboardingScreen() {
           <Animated.View style={[styles.compassWrap, { transform: [{ rotate: compassSpin }] }]}>
             <MaterialCommunityIcons name="compass-rose" size={84} color={palette.tint} />
           </Animated.View>
-          <Text style={[styles.h1, { color: palette.text }]}>Calibrating {dogName}&apos;s safety engine.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Getting {dogName} ready for the trail.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Build a personalized readiness model in a few quick scenes.
+            Set up a custom profile to get personalized safety checklists.
           </Text>
           <Pressable
             onPress={() => { hapticTap(); advance(); }}
@@ -486,7 +486,7 @@ export default function OnboardingScreen() {
               styles.cta,
               { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 },
             , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            <Text style={styles.ctaText}>Start calibration</Text>
+            <Text style={styles.ctaText}>Let&apos;s get started</Text>
           </Pressable>
         </AnimatedReanimated.View>
       );
@@ -588,7 +588,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            We calibrate heat safety using breed context and airway profile.
+            We customize temperature guides using breed context and airway profile.
           </Text>
           <TextInput
             value={breedQuery}
@@ -708,9 +708,9 @@ export default function OnboardingScreen() {
     if (scene === 'biology-activity') {
       return (
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>Let&apos;s finish {dogName}&apos;s safety calibration.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Let&apos;s finish {dogName}&apos;s custom profile.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Weight, coat, color, and energy tune warning thresholds and safe-window duration.
+            Weight, coat, color, and energy help build safe outing guides and checklists.
           </Text>
 
           <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>Weight (lbs)</Text>
@@ -925,7 +925,7 @@ export default function OnboardingScreen() {
 
       return (
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>Activating {dogName}&apos;s NorthPaw Index.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Setting up {dogName}&apos;s personalized guides.</Text>
           {loadingAha ? (
             <View style={styles.ahaLoading}>
               <ActivityIndicator color={palette.tint} size="small" />
@@ -941,7 +941,7 @@ export default function OnboardingScreen() {
                   </Circle>
                   <Circle cx={70} cy={70} r={26} color="#2ECC71" opacity={0.35} />
                 </Canvas>
-                <Text style={[styles.activationTitle, { color: palette.text }]}>Calculation pulse</Text>
+                <Text style={[styles.activationTitle, { color: palette.text }]}>Reviewing conditions</Text>
                 <Text style={[styles.activationLine, { color: palette.textSecondary }]}>
                   {CALIBRATION_LINES[activationLineIdx]}
                 </Text>
@@ -1072,7 +1072,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>Ready to keep {dogName} safe?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            We will use your calibration profile to power personalized readiness and walk-window guidance.
+            We will use this profile to create personalized safety checklists and safe walking times.
           </Text>
           <Pressable
             disabled={busy}
@@ -1090,7 +1090,7 @@ export default function OnboardingScreen() {
               styles.cta,
               { backgroundColor: busy ? palette.border : palette.tint, opacity: pressed && !busy ? 0.9 : 1 },
             , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>I&apos;m ready to keep {dogName} safe</Text>}
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>I&apos;m ready to go</Text>}
           </Pressable>
           <Pressable
             disabled={busy}
