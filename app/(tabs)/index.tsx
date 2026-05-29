@@ -583,10 +583,12 @@ export default function HomeScreen() {
     } else if (step === 3) { // Tabs
       mainScrollRef.current?.scrollTo({ y: 400, animated: true }); // Scroll down a bit to show tabs area if needed
       setTimeout(() => {
+        const bottomPadding = insets.bottom > 0 ? insets.bottom : 12;
+        const tabHighlightHeight = 64 + bottomPadding + 28;
         spotlightX.value = withTiming(0, { duration: 500 });
-        spotlightY.value = withTiming(screenHeight - 85, { duration: 500 });
+        spotlightY.value = withTiming(screenHeight - tabHighlightHeight, { duration: 500 });
         spotlightW.value = withTiming(screenWidth, { duration: 500 });
-        spotlightH.value = withTiming(85, { duration: 500 });
+        spotlightH.value = withTiming(tabHighlightHeight, { duration: 500 });
         spotlightR.value = withTiming(0, { duration: 500 });
       }, 100);
     }

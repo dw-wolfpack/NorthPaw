@@ -67,7 +67,7 @@ export default function SettingsScreen() {
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Care reminders</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
             Heartworm and flea & tick alerts on your device. Custom schedules with Pro. Alerts are scheduled
-            locally—no server.
+            locally with no server required.
           </Text>
         </View>
         <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
@@ -102,28 +102,25 @@ export default function SettingsScreen() {
 
       <Text style={[styles.h1, { marginTop: 24 }]}>Subscription</Text>
       <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-        <Text style={{ color: palette.text, fontWeight: '600' }}>
-          {loading ? 'Checking…' : isPro ? 'NorthPaw Pro active' : 'Free library + locked Pro packs'}
+        <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+          {loading ? 'Checking Status...' : isPro ? 'NorthPaw Pro Active' : 'Free Library + Locked Pro Packs'}
         </Text>
-        {expoGo ? (
-          <Text style={{ color: palette.textSecondary, marginTop: 10, lineHeight: 20 }}>
-            Running in Expo Go, Pro packs stay locked here. Use EXPO_PUBLIC_NORTHPAW_DEV_PRO=1 in .env to
-            preview all content locally, or build a dev client (npm run dev:client) for real StoreKit.
-          </Text>
-        ) : !configured ? (
-          <Text style={{ color: palette.textSecondary, marginTop: 10, lineHeight: 20 }}>
-            Add EXPO_PUBLIC_REVENUECAT_IOS_API_KEY for StoreKit. Until then, Pro lessons stay locked (unless you
-            set EXPO_PUBLIC_NORTHPAW_DEV_PRO=1 in development only).
-          </Text>
-        ) : null}
+        <Text style={{ color: palette.textSecondary, marginTop: 8, lineHeight: 20, fontSize: 14 }}>
+          {loading
+            ? 'Verifying subscription details...'
+            : isPro
+              ? 'Thank you for testing the NorthPaw Pro beta! You have access to all premium checklists and offline reference cards.'
+              : 'NorthPaw Pro is currently in beta. Unlock custom safety checklists, offline regional guide packs, and location logging.'}
+        </Text>
         {error ? <Text style={{ color: palette.danger, marginTop: 10 }}>{error}</Text> : null}
-        {!isPro ? (
+        {!loading && !isPro ? (
           <Pressable
             onPress={() => { hapticTap();  router.push('/paywall'); }}
             style={[styles.cta, { backgroundColor: palette.tint, marginTop: 14 }]}>
             <Text style={styles.ctaText}>Unlock Pro</Text>
           </Pressable>
         ) : null}
+        {/* Commented out for beta release - restore when StoreKit subscriptions go live
         {Platform.OS === 'ios' ? (
           <Pressable
             onPress={() => { hapticTap();  openExternalLink(APPLE_MANAGE_SUBSCRIPTIONS_URL); }}
@@ -134,6 +131,7 @@ export default function SettingsScreen() {
             <FontAwesome name="external-link" size={14} color={palette.tint} style={{ marginLeft: 8 }} />
           </Pressable>
         ) : null}
+        */}
       </View>
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Legal &amp; listing</Text>

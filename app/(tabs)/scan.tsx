@@ -1,112 +1,202 @@
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Dimensions } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
-import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
-import { trailPathFromQrData } from '@/lib/deeplink';
 import { useColorScheme } from '@/components/useColorScheme';
+import { trackEvent } from '@/lib/analytics';
+
+const { width: screenWidth } = Dimensions.get('window');
+
+const BENEFITS = [
+  {
+    icon: 'tag-outline',
+    title: 'Scan Gear Tags',
+    desc: "Scan a tag on your dog's harness or collar to instantly log a current location snapshot.",
+  },
+  {
+    icon: 'account-group',
+    title: 'Social Boards',
+    desc: 'Scan community flyers or local boards to connect with other dog owners and get updates.',
+  },
+  {
+    icon: 'share-variant',
+    title: 'Personalized Checklist Sharing',
+    desc: 'Share your custom checklists with other owners using dynamic QR codes.',
+  },
+  {
+    icon: 'plus-circle-outline',
+    title: 'Plus More',
+    desc: 'Additional features including offline guides and personalized tags are planned for the upcoming release.',
+  },
+] as const;
 
 export default function ScanScreen() {
-  const [permission, requestPermission] = useCameraPermissions();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
-  const [message, setMessage] = useState<string | null>(null);
-  const lastScanAt = useRef(0);
+  const insets = useSafeAreaInsets();
+  const hasShownAlert = useRef(false);
+  const [busy, setBusy] = useState(false);
 
-  const onBarcodeScanned = useCallback(
-    ({ data }: { data: string }) => {
-      const now = Date.now();
-      if (now - lastScanAt.current < 2000) return;
-      lastScanAt.current = now;
-      const path = trailPathFromQrData(data);
-      if (path) {
-        setMessage(null);
-        router.push(path as Parameters<typeof router.push>[0]);
-        return;
-      }
-      setMessage(
-        'This QR is not a NorthPaw link. Use northpaw://card/… (or legacy trailready://…) in your QR generator.'
+  useEffect(() => {
+    trackEvent('scan_screen_viewed');
+    
+    // Automatically trigger the excited alert on first mount
+    if (!hasShownAlert.current) {
+      hasShownAlert.current = true;
+      const timer = setTimeout(() => {
+        triggerExcitedAlert();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const triggerExcitedAlert = async () => {
+    setBusy(true);
+    try {
+      await trackEvent('scan_interest_registered');
+      Alert.alert(
+        'Real-Life QR Sync Coming!',
+        "Get ready to connect NorthPaw directly with the physical world! Soon you will be able to scan tags on your dog's gear, community flyers, and shared checklists to instantly sync location snapshots and custom lists. We are super excited to launch this in our upcoming Pro release!",
+        [
+          {
+            text: 'Awesome!',
+            onPress: () => {
+              // Redirect back to index (Home) after acknowledging
+              router.replace('/(tabs)');
+            },
+          },
+        ]
       );
-    },
-    [router]
-  );
-
-  if (!permission) {
-    return (
-      <View style={[styles.center, { backgroundColor: palette.background }]}>
-        <Text style={{ color: palette.textSecondary }}>Loading camera…</Text>
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <View style={[styles.center, { backgroundColor: palette.background, padding: 24 }]}>
-        <Text style={[styles.permTitle, { color: palette.text }]}>Camera access</Text>
-        <Text style={[styles.permBody, { color: palette.textSecondary }]}>
-          NorthPaw uses the camera only to read QR codes that open a field card, checklist, or pack inside
-          this app.
-        </Text>
-        <Pressable
-          onPress={() => requestPermission()}
-          style={[styles.button, { backgroundColor: palette.tint }]}>
-          <Text style={styles.buttonLabel}>Allow camera</Text>
-        </Pressable>
-      </View>
-    );
-  }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <View style={styles.fill}>
-      <CameraView
-        style={StyleSheet.absoluteFill}
-        facing="back"
-        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={onBarcodeScanned}
-      />
-      <View style={styles.overlay} pointerEvents="none">
-        <View style={[styles.frame, { borderColor: palette.tint }]} />
-      </View>
-      <View style={[styles.footer, { backgroundColor: palette.surface }]}>
-        <Text style={{ color: palette.text, fontWeight: '600' }}>Scan a NorthPaw QR</Text>
-        <Text style={{ color: palette.textSecondary, marginTop: 6, fontSize: 13, lineHeight: 18 }}>
-          Encode northpaw://card/heat-stress-signals or northpaw://checklist/pre-trail-60s. Older codes may use
-          trailready://…
+    <ScrollView
+      style={[styles.scroll, { backgroundColor: palette.background }]}
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 96 }]}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: palette.text }]}>Real-Life Sync</Text>
+        <Text style={[styles.desc, { color: palette.textSecondary }]}>
+          Bring physical gear tags, social boards, and custom lists straight into your app.
         </Text>
-        {message ? (
-          <Text style={{ color: palette.danger, marginTop: 10, fontSize: 13 }}>{message}</Text>
-        ) : null}
       </View>
-    </View>
+
+      {/* Visual QR Code Scanner Mockup */}
+      <View style={[styles.scannerContainer, { backgroundColor: colorScheme === 'dark' ? '#0F2015' : '#E8F5EC', borderColor: palette.border }]}>
+        <LinearGradient
+          colors={colorScheme === 'dark' ? ['rgba(46,204,113,0.15)', 'transparent'] : ['rgba(21,122,63,0.06)', 'transparent']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.scannerCorner, styles.topLeft, { borderColor: palette.tint }]} />
+        <View style={[styles.scannerCorner, styles.topRight, { borderColor: palette.tint }]} />
+        <View style={[styles.scannerCorner, styles.bottomLeft, { borderColor: palette.tint }]} />
+        <View style={[styles.scannerCorner, styles.bottomRight, { borderColor: palette.tint }]} />
+        
+        <MaterialCommunityIcons name="qrcode-scan" size={80} color={palette.tint} />
+        
+        {/* Simulated laser line */}
+        <View style={[styles.laser, { backgroundColor: palette.tint }]} />
+      </View>
+
+      {/* Benefits Block */}
+      <View style={styles.benefitsWrap}>
+        {BENEFITS.map((b) => (
+          <View key={b.icon} style={styles.benefitRow}>
+            <View style={[styles.iconCircle, { backgroundColor: `${palette.tint}18` }]}>
+              <MaterialCommunityIcons name={b.icon as any} size={22} color={palette.tint} />
+            </View>
+            <View style={styles.benefitTextWrap}>
+              <Text style={[styles.benefitTitle, { color: palette.text }]}>{b.title}</Text>
+              <Text style={[styles.benefitDesc, { color: palette.textSecondary }]}>{b.desc}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Primary Action Button */}
+      <Pressable
+        disabled={busy}
+        onPress={triggerExcitedAlert}
+        style={({ pressed }) => [
+          styles.scanBtn,
+          { backgroundColor: palette.tint, opacity: pressed || busy ? 0.85 : 1 },
+        ]}
+      >
+        <MaterialCommunityIcons name="camera" size={20} color="#FFF" style={{ marginRight: 8 }} />
+        <Text style={styles.scanBtnText}>Try QR Scanner</Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  permTitle: { fontSize: 20, fontWeight: '700', marginBottom: 12, textAlign: 'center' },
-  permBody: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: 20 },
-  button: { paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12 },
-  buttonLabel: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  overlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  frame: {
-    width: 240,
-    height: 240,
-    borderWidth: 3,
-    borderRadius: 16,
-    backgroundColor: 'transparent',
+  scroll: { flex: 1 },
+  container: { padding: 24 },
+  header: { marginBottom: 28 },
+  title: { fontSize: 32, fontWeight: '800', letterSpacing: -0.6, marginBottom: 8 },
+  desc: { fontSize: 16, lineHeight: 22 },
+  scannerContainer: {
+    height: 200,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  footer: {
+  scannerCorner: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: 20,
-    paddingBottom: 32,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.1)',
+    width: 20,
+    height: 20,
+    borderWidth: 4,
   },
+  topLeft: { top: 16, left: 16, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 8 },
+  topRight: { top: 16, right: 16, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 8 },
+  bottomLeft: { bottom: 16, left: 16, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 8 },
+  bottomRight: { bottom: 16, right: 16, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 8 },
+  laser: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    height: 2,
+    top: '55%',
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  benefitsWrap: { marginBottom: 32 },
+  benefitRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20, gap: 16 },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  benefitTextWrap: { flex: 1, marginTop: 2 },
+  benefitTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  benefitDesc: { fontSize: 14, lineHeight: 20 },
+  scanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  scanBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });
