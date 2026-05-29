@@ -31,7 +31,7 @@ export default function SettingsScreen() {
 
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
+    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 96 }]}>
       <Text style={styles.h1}>Your dog</Text>
       <Pressable
         onPress={() => { hapticTap();  router.push('/dog-profile'); }}
@@ -150,13 +150,7 @@ export default function SettingsScreen() {
         palette={palette}
         onPress={() => { hapticTap();  openExternalLink(PRIVACY_POLICY_URL); }}
       />
-      <LinkButton
-        label="Terms of Use"
-        hint={TERMS_OF_USE_URL ? TERMS_OF_USE_URL : 'Add EXPO_PUBLIC_NORTHPAW_TERMS_URL'}
-        disabled={!TERMS_OF_USE_URL}
-        palette={palette}
-        onPress={() => { hapticTap();  openExternalLink(TERMS_OF_USE_URL); }}
-      />
+
       <LinkButton
         label="Support"
         hint={
