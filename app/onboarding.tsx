@@ -425,7 +425,7 @@ export default function OnboardingScreen() {
       if (deepLink) {
         router.replace(deepLink as any);
       } else {
-        router.replace('/(tabs)/home');
+        router.replace('/(tabs)');
       }
     } catch (e) {
       console.error('[Onboarding] save failed', e);

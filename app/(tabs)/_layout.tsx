@@ -25,10 +25,10 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      initialRouteName="home"
+      initialRouteName="index"
       screenOptions={({ route }) => {
-        const title = route.name === 'home' ? TAB_HOME_TITLE :
-                      route.name === 'index' ? TAB_LIBRARY_TITLE :
+        const title = route.name === 'index' ? TAB_HOME_TITLE :
+                      route.name === 'library' ? TAB_LIBRARY_TITLE :
                       route.name === 'checklists' ? 'Checklists' :
                       route.name === 'scan' ? 'Scan' :
                       route.name === 'settings' ? 'Settings' : '';
@@ -85,7 +85,7 @@ export default function TabLayout() {
         };
       }}>
       <Tabs.Screen
-        name="home"
+        name="index"
         options={{
           title: TAB_HOME_TITLE,
           headerShown: false,
@@ -93,7 +93,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="index"
+        name="library"
         options={{
           title: TAB_LIBRARY_TITLE,
           tabBarIcon: ({ color }) => <TabBarIcon name="book" color={color} />,

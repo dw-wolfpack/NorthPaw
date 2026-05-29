@@ -131,7 +131,7 @@ export default function SettingsScreen() {
         onPress={async () => {
           try {
             await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true });
-            router.replace('/(tabs)/home');
+            router.replace('/(tabs)');
           } catch (e) {
             Alert.alert('Error', 'Could not reset walkthrough.');
           }

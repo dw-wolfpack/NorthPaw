@@ -3,13 +3,10 @@ import { ImageBackground } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
-import { ENTITLEMENT_PRO } from '@/constants/Purchases';
-import { useSubscription } from '@/context/SubscriptionContext';
-import Purchases, { type PurchasesPackage } from 'react-native-purchases';
 import { useColorScheme } from '@/components/useColorScheme';
 import { IMAGES } from '@/lib/contentVisuals';
 import { trackEvent } from '@/lib/analytics';
@@ -37,8 +34,6 @@ export default function PaywallScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
-  const { configured, expoGo, currentOffering, purchasePackage, restorePurchases, loading } =
-    useSubscription();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -56,60 +51,25 @@ export default function PaywallScreen() {
     else router.replace('/(tabs)');
   }, [returnTo, router]);
 
-  const buy = async (pkg: PurchasesPackage) => {
-    trackEvent('pro_upgrade_started', {
-      packageId: pkg.identifier,
-      productId: pkg.product.identifier,
-      price: pkg.product.price,
-      currencyCode: pkg.product.currencyCode,
-    });
+  const registerInterest = async (pkgName: string, priceString: string) => {
     setBusy(true);
-    setMsg(null);
     try {
-      await purchasePackage(pkg);
-      trackEvent('pro_upgrade_completed', {
-        packageId: pkg.identifier,
-        productId: pkg.product.identifier,
-      });
-      onClose();
-    } catch (e: unknown) {
-      const err = e as { code?: unknown; userCancelled?: boolean };
-      const cancelled =
-        err?.userCancelled === true ||
-        err?.code === Purchases.PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
-      if (cancelled) {
-        trackEvent('pro_upgrade_cancelled', { packageId: pkg.identifier });
-        setMsg(null);
-      } else {
-        const errorMsg = e instanceof Error ? e.message : 'Purchase failed';
-        trackEvent('pro_upgrade_failed', { packageId: pkg.identifier, error: errorMsg });
-        setMsg(errorMsg);
-      }
+      await trackEvent('pro_interest_registered', { packageName: pkgName, price: priceString });
+      Alert.alert(
+        'Coming Soon!',
+        'NorthPaw Pro is currently in beta. We are actively polishing our premium features and will notify you when Pro is available. Thank you for your interest!',
+        [{ text: 'Great!', onPress: onClose }]
+      );
     } finally {
       setBusy(false);
     }
   };
 
   const restore = async () => {
-    trackEvent('pro_restore_started');
-    setBusy(true);
-    setMsg(null);
-    try {
-      const info = await restorePurchases();
-      const hasPro = info.entitlements.active[ENTITLEMENT_PRO] != null;
-      trackEvent('pro_restore_completed', { hasPro });
-      if (hasPro) onClose();
-      else setMsg('No active subscription found for this Apple ID.');
-    } catch (e: unknown) {
-      const errorMsg = e instanceof Error ? e.message : 'Restore failed';
-      trackEvent('pro_restore_failed', { error: errorMsg });
-      setMsg(errorMsg);
-    } finally {
-      setBusy(false);
-    }
+    await trackEvent('pro_restore_tapped');
+    Alert.alert('Beta Mode', 'NorthPaw Pro is currently in beta. No subscriptions are active to restore.');
   };
 
-  const packages = currentOffering?.availablePackages ?? [];
   const OVERLAY_COLORS = ['rgba(13,31,23,0.35)', 'rgba(13,31,23,0.92)', '#0A1A12'] as const;
 
   return (
@@ -152,60 +112,48 @@ export default function PaywallScreen() {
         </View>
 
         <View style={styles.packagesWrap}>
-          {expoGo ? (
-            <View style={styles.banner}>
-              <Text style={styles.bannerTitle}>Development Mode</Text>
-              <Text style={styles.bannerBody}>
-                You are running Expo Go where RevCat bindings are unavailable. Please build with a dev client, or use `EXPO_PUBLIC_NORTHPAW_DEV_PRO=1` to simulate Pro access.
-              </Text>
-            </View>
-          ) : null}
-
-          {!expoGo && !configured ? (
-            <View style={styles.banner}>
-              <Text style={styles.bannerTitle}>Store Disconnected</Text>
-              <Text style={styles.bannerBody}>
-                Missing RevenueCat API Key. Connect the store dashboard to view packages.
-              </Text>
-            </View>
-          ) : null}
-
-          {loading || busy ? (
+          {busy ? (
             <ActivityIndicator style={{ marginVertical: 32 }} color="#4ADE80" size="large" />
-          ) : null}
-
-          {!expoGo && configured && packages.length === 0 ? (
-            <Text style={{ color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>
-              No subscriptions offered right now. Check back soon.
-            </Text>
-          ) : null}
-
-          {!expoGo &&
-            packages.map((pkg) => (
-            <Pressable
-              key={pkg.identifier}
-              disabled={busy}
-              onPress={() => buy(pkg)}
-              style={({ pressed }) => [
-                styles.pkgBtn,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}>
-              <View style={styles.pkgRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.pkgTitle}>{pkg.product.title}</Text>
-                  <Text style={styles.pkgDesc}>{pkg.product.description}</Text>
+          ) : (
+            <>
+              <Pressable
+                disabled={busy}
+                onPress={() => registerInterest('Pro Monthly', '$1.99')}
+                style={({ pressed }) => [
+                  styles.pkgBtn,
+                  { opacity: pressed ? 0.8 : 1 },
+                ]}>
+                <View style={styles.pkgRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pkgTitle}>Pro Monthly</Text>
+                    <Text style={styles.pkgDesc}>Unlock all checklist templates and offline guides.</Text>
+                  </View>
+                  <Text style={styles.pkgPrice}>$1.99</Text>
                 </View>
-                <Text style={styles.pkgPrice}>{pkg.product.priceString}</Text>
-              </View>
-            </Pressable>
-          ))}
+              </Pressable>
+
+              <Pressable
+                disabled={busy}
+                onPress={() => registerInterest('Pro Annual', '$12.99')}
+                style={({ pressed }) => [
+                  styles.pkgBtn,
+                  { opacity: pressed ? 0.8 : 1 },
+                ]}>
+                <View style={styles.pkgRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pkgTitle}>Pro Annual</Text>
+                    <Text style={styles.pkgDesc}>Save 45% · Full access for a year.</Text>
+                  </View>
+                  <Text style={styles.pkgPrice}>$12.99</Text>
+                </View>
+              </Pressable>
+            </>
+          )}
         </View>
 
-        {!expoGo ? (
-          <Pressable onPress={restore} disabled={busy || !configured} style={styles.restoreBtn}>
-            <Text style={styles.restoreText}>Restore purchases</Text>
-          </Pressable>
-        ) : null}
+        <Pressable onPress={restore} style={styles.restoreBtn}>
+          <Text style={styles.restoreText}>Restore purchases</Text>
+        </Pressable>
 
         {msg ? <Text style={styles.errorMsg}>{msg}</Text> : null}
 

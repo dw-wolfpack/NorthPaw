@@ -82,11 +82,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
     const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY ?? '';
     if (!apiKey) {
-      if (__DEV__) {
-        console.warn(
-          '[NorthPaw] Set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY, Pro content stays locked until configured.'
-        );
-      }
       setConfigured(false);
       setLoading(false);
       setIsProInternal(false);
