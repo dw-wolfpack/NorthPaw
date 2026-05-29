@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
+import Constants from 'expo-constants';
 
 const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN || '';
 
@@ -35,6 +36,9 @@ export async function trackEvent(eventName: string, properties: Record<string, a
 
   try {
     const distinctId = await getDistinctId();
+    const osName = Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : 'Web';
+    const appVersion = Constants.expoConfig?.version || '1.0.0';
+
     await fetch('https://api.mixpanel.com/track', {
       method: 'POST',
       headers: {
@@ -47,6 +51,9 @@ export async function trackEvent(eventName: string, properties: Record<string, a
           properties: {
             token: MIXPANEL_TOKEN,
             distinct_id: distinctId,
+            $os: osName,
+            $os_version: String(Platform.Version),
+            $app_version_string: appVersion,
             platform: Platform.OS,
             ...properties,
           },
