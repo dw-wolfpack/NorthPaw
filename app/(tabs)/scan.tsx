@@ -90,22 +90,18 @@ export default function ScanScreen() {
         </Text>
       </View>
 
-      {/* Visual QR Code Scanner Mockup */}
-      <View style={[styles.scannerContainer, { backgroundColor: colorScheme === 'dark' ? '#0F2015' : '#E8F5EC', borderColor: palette.border }]}>
-        <LinearGradient
-          colors={colorScheme === 'dark' ? ['rgba(46,204,113,0.15)', 'transparent'] : ['rgba(21,122,63,0.06)', 'transparent']}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={[styles.scannerCorner, styles.topLeft, { borderColor: palette.tint }]} />
-        <View style={[styles.scannerCorner, styles.topRight, { borderColor: palette.tint }]} />
-        <View style={[styles.scannerCorner, styles.bottomLeft, { borderColor: palette.tint }]} />
-        <View style={[styles.scannerCorner, styles.bottomRight, { borderColor: palette.tint }]} />
-        
-        <MaterialCommunityIcons name="qrcode-scan" size={80} color={palette.tint} />
-        
-        {/* Simulated laser line */}
-        <View style={[styles.laser, { backgroundColor: palette.tint }]} />
-      </View>
+      {/* Primary Action Button */}
+      <Pressable
+        disabled={busy}
+        onPress={triggerExcitedAlert}
+        style={({ pressed }) => [
+          styles.scanBtn,
+          { backgroundColor: palette.tint, opacity: pressed || busy ? 0.85 : 1, marginBottom: 32 },
+        ]}
+      >
+        <MaterialCommunityIcons name="camera" size={20} color="#FFF" style={{ marginRight: 8 }} />
+        <Text style={styles.scanBtnText}>Try QR Scanner</Text>
+      </Pressable>
 
       {/* Benefits Block */}
       <View style={styles.benefitsWrap}>
@@ -122,18 +118,22 @@ export default function ScanScreen() {
         ))}
       </View>
 
-      {/* Primary Action Button */}
-      <Pressable
-        disabled={busy}
-        onPress={triggerExcitedAlert}
-        style={({ pressed }) => [
-          styles.scanBtn,
-          { backgroundColor: palette.tint, opacity: pressed || busy ? 0.85 : 1 },
-        ]}
-      >
-        <MaterialCommunityIcons name="camera" size={20} color="#FFF" style={{ marginRight: 8 }} />
-        <Text style={styles.scanBtnText}>Try QR Scanner</Text>
-      </Pressable>
+      {/* Visual QR Code Scanner Mockup */}
+      <View style={[styles.scannerContainer, { backgroundColor: colorScheme === 'dark' ? '#0F2015' : '#E8F5EC', borderColor: palette.border }]}>
+        <LinearGradient
+          colors={colorScheme === 'dark' ? ['rgba(46,204,113,0.15)', 'transparent'] : ['rgba(21,122,63,0.06)', 'transparent']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.scannerCorner, styles.topLeft, { borderColor: palette.tint }]} />
+        <View style={[styles.scannerCorner, styles.topRight, { borderColor: palette.tint }]} />
+        <View style={[styles.scannerCorner, styles.bottomLeft, { borderColor: palette.tint }]} />
+        <View style={[styles.scannerCorner, styles.bottomRight, { borderColor: palette.tint }]} />
+        
+        <MaterialCommunityIcons name="qrcode-scan" size={80} color={palette.tint} />
+        
+        {/* Simulated laser line */}
+        <View style={[styles.laser, { backgroundColor: palette.tint }]} />
+      </View>
     </ScrollView>
   );
 }
