@@ -40,6 +40,7 @@ import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
 import { type HomeWeatherState } from '@/lib/weather/nwsWeather';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
+import { trackEvent } from '@/lib/analytics';
 
 type SceneId =
   | 'welcome'
@@ -407,6 +408,20 @@ export default function OnboardingScreen() {
         dogActivityBaseline,
         morningBriefTime,
       });
+
+      trackEvent('onboarding_completed', {
+        dogBreed: resolvedBreed,
+        dogAgeGroup: ageGroup,
+        dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
+        dogCoatType: dogCoatType,
+        dogColor: dogColor,
+        dogSnoutProfile,
+        dogActivityBaseline,
+        hasPhoto: !!pickedUri,
+        notificationsPermission: finalNotif,
+        locationPermission,
+      });
+
       if (deepLink) {
         router.replace(deepLink as any);
       } else {

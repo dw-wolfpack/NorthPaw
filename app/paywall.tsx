@@ -2,7 +2,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ImageBackground } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
@@ -12,6 +12,7 @@ import { useSubscription } from '@/context/SubscriptionContext';
 import Purchases, { type PurchasesPackage } from 'react-native-purchases';
 import { useColorScheme } from '@/components/useColorScheme';
 import { IMAGES } from '@/lib/contentVisuals';
+import { trackEvent } from '@/lib/analytics';
 
 const BENEFITS = [
   {
@@ -41,7 +42,12 @@ export default function PaywallScreen() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    trackEvent('pro_paywall_viewed', { returnTo });
+  }, [returnTo]);
+
   const onClose = useCallback(() => {
+    trackEvent('pro_paywall_closed', { returnTo });
     if (returnTo && typeof returnTo === 'string') {
       router.replace(returnTo as Parameters<typeof router.replace>[0]);
       return;
@@ -51,10 +57,20 @@ export default function PaywallScreen() {
   }, [returnTo, router]);
 
   const buy = async (pkg: PurchasesPackage) => {
+    trackEvent('pro_upgrade_started', {
+      packageId: pkg.identifier,
+      productId: pkg.product.identifier,
+      price: pkg.product.price,
+      currencyCode: pkg.product.currencyCode,
+    });
     setBusy(true);
     setMsg(null);
     try {
       await purchasePackage(pkg);
+      trackEvent('pro_upgrade_completed', {
+        packageId: pkg.identifier,
+        productId: pkg.product.identifier,
+      });
       onClose();
     } catch (e: unknown) {
       const err = e as { code?: unknown; userCancelled?: boolean };
@@ -62,9 +78,12 @@ export default function PaywallScreen() {
         err?.userCancelled === true ||
         err?.code === Purchases.PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
       if (cancelled) {
+        trackEvent('pro_upgrade_cancelled', { packageId: pkg.identifier });
         setMsg(null);
       } else {
-        setMsg(e instanceof Error ? e.message : 'Purchase failed');
+        const errorMsg = e instanceof Error ? e.message : 'Purchase failed';
+        trackEvent('pro_upgrade_failed', { packageId: pkg.identifier, error: errorMsg });
+        setMsg(errorMsg);
       }
     } finally {
       setBusy(false);
@@ -72,15 +91,19 @@ export default function PaywallScreen() {
   };
 
   const restore = async () => {
+    trackEvent('pro_restore_started');
     setBusy(true);
     setMsg(null);
     try {
       const info = await restorePurchases();
       const hasPro = info.entitlements.active[ENTITLEMENT_PRO] != null;
+      trackEvent('pro_restore_completed', { hasPro });
       if (hasPro) onClose();
       else setMsg('No active subscription found for this Apple ID.');
     } catch (e: unknown) {
-      setMsg(e instanceof Error ? e.message : 'Restore failed');
+      const errorMsg = e instanceof Error ? e.message : 'Restore failed';
+      trackEvent('pro_restore_failed', { error: errorMsg });
+      setMsg(errorMsg);
     } finally {
       setBusy(false);
     }

@@ -39,6 +39,7 @@ import {
 import { captureLocationForOuting, pickOutingPhotos } from '@/lib/outingCaptureHelpers';
 import { useColorScheme } from '@/components/useColorScheme';
 import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
+import { trackEvent } from '@/lib/analytics';
 
 const MAX_PHOTOS = 3;
 
@@ -95,6 +96,7 @@ export default function ChecklistDetailScreen() {
     recordOpen('checklist', id).catch(() => {});
     reload().catch(() => {});
     markPrimaryChecklistOpenedForLocalDate(localCalendarDateString(), id).catch(() => {});
+    trackEvent('checklist_opened', { checklistId: id, title: cl.title });
   }, [id, cl, reload]);
 
   useFocusEffect(
@@ -182,6 +184,13 @@ export default function ChecklistDetailScreen() {
         latitude,
         longitude,
         pendingPhotoUris,
+      });
+      trackEvent('outing_saved', {
+        checklistId: id,
+        itemCount: ids.length,
+        photoCount: pendingPhotoUris.length,
+        hasNotes: !!outingNotes.trim(),
+        hasGps: includeGps,
       });
       setOutingNotes('');
       setPlaceLabel('');
@@ -284,6 +293,11 @@ export default function ChecklistDetailScreen() {
         npiScore,
         weatherSummary,
         energyScale: energy,
+      });
+      trackEvent('quick_log_saved', {
+        checklistId: id,
+        energyScale: energy,
+        npiScore,
       });
       setQuickLogEnergy(energy);
       setQuickLogSaved(true);
