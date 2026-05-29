@@ -28,61 +28,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const resetOnboardingForTesting = () => {
-    Alert.alert(
-      'Reset onboarding?',
-      'This will reopen onboarding on next launch. You can keep current dog details or clear them.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Keep details',
-          onPress: async () => {
-            try {
-              const p = await getDogProfile();
-              await saveDogProfile({
-                onboardingDone: false,
-                dogName: p.dogName,
-                dogPhotoUri: p.dogPhotoUri,
-                dogBreed: p.dogBreed,
-                dogBreedMix: p.dogBreedMix,
-                dogAgeGroup: p.dogAgeGroup,
-                dogOutingTypes: p.dogOutingTypes,
-                locationPermission: p.locationPermission,
-                notificationsPermission: p.notificationsPermission,
-              });
-              try { await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true }); } catch (err) {}
-              router.replace('/onboarding');
-            } catch (e) {
-              Alert.alert('Could not reset onboarding', e instanceof Error ? e.message : 'Please try again.');
-            }
-          },
-        },
-        {
-          text: 'Clear all',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await saveDogProfile({
-                onboardingDone: false,
-                dogName: '',
-                dogPhotoUri: '',
-                dogBreed: '',
-                dogBreedMix: '',
-                dogAgeGroup: '',
-                dogOutingTypes: [],
-                locationPermission: '',
-                notificationsPermission: '',
-              });
-              try { await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true }); } catch (err) {}
-              router.replace('/onboarding');
-            } catch (e) {
-              Alert.alert('Could not reset onboarding', e instanceof Error ? e.message : 'Please try again.');
-            }
-          },
-        },
-      ]
-    );
-  };
+
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
@@ -235,25 +181,6 @@ export default function SettingsScreen() {
         optional GPS), and open history stay on your device. Subscription status is verified through Apple and
         RevenueCat when configured. Opening Privacy Policy or Support may use an in-app browser or your mail app.
       </Text>
-
-      <Text style={[styles.h1, { marginTop: 28 }]}>Developer</Text>
-      <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-        <Text style={[styles.body, { color: palette.textSecondary }]}>
-          Temporary test utility for repeating signup flow during development.
-        </Text>
-        <Pressable
-          onPress={() => { hapticTap(); resetOnboardingForTesting(); }}
-          style={({ pressed }) => [
-            styles.resetBtn,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.background,
-              opacity: pressed ? 0.9 : 1,
-            },
-          , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 15 }}>Reset onboarding flow</Text>
-        </Pressable>
-      </View>
     </ScrollView>
   );
 }

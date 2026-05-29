@@ -30,7 +30,6 @@ export default function TabLayout() {
         const title = route.name === 'index' ? TAB_HOME_TITLE :
                       route.name === 'library' ? TAB_LIBRARY_TITLE :
                       route.name === 'checklists' ? 'Checklists' :
-                      route.name === 'scan' ? 'Scan' :
                       route.name === 'settings' ? 'Settings' : '';
         return {
           tabBarActiveTintColor: colorScheme === 'dark' ? '#EAEAEA' : '#0F7A3B',
@@ -104,13 +103,6 @@ export default function TabLayout() {
         options={{
           title: 'Checklists',
           tabBarIcon: ({ color }) => <TabBarIcon name="list-ul" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="scan"
-        options={{
-          title: 'Scan',
-          tabBarIcon: ({ color }) => <TabBarIcon name="qrcode" color={color} />,
         }}
       />
       <Tabs.Screen
