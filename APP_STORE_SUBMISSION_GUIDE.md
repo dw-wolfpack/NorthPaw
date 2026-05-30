@@ -87,3 +87,36 @@ Once build `5` finishes processing in your TestFlight dashboard:
    * Under **Pricing and Availability**, select **Free** (since the base app is completely free, and Pro purchases are coming in a future update).
 5. **Submit**:
    * Once screenshots are uploaded and descriptions are filled out, click **Save** at the top right, then click **Submit for Review**.
+
+---
+
+## 5. Marketing & Promotion Playbook
+
+Here are high-impact, low-cost marketing strategies to drive downloads for NorthPaw:
+
+### 1. Real-World QR Code Flyers (Trailheads & Parks)
+Since NorthPaw focuses on outdoor safety, put marketing where your audience is:
+* **Community Boards**: Print flyers to pin on community bulletin boards at local dog parks, pet shops, and trail entrances.
+* **Catchy Wording**: Use a headline like: *"Is the ground too hot for their paws? Scan to double-check local pavement safety guidelines."*
+* **QR Codes**: Place a large QR code in the center linking directly to your App Store download page.
+
+### 2. Social Media Micro-Demos (Instagram, TikTok, YouTube Shorts)
+Create quick, highly shareable video content:
+* **The Hand Test Demo**: Film yourself placing your hand on hot pavement for 7 seconds, then open the NorthPaw app to show how it calculates the thermodynamic temperature and safety window.
+* **Breed Spotlights**: Create clips explaining how flat-faced (brachycephalic) dogs absorb heat differently and show how NorthPaw customizes safety alerts based on snout profile and coat color.
+* **Trail Gear Checks**: Show the dynamic checklists in action as you pack water, boots, and towels before a hike.
+
+### 3. Hyper-Local Community Outreach
+Leverage existing communities of dog owners:
+* **Local Hiking Groups**: Join local Facebook groups or subreddits focused on dog walks or hiking (e.g., "Hiking with Dogs in [Your City]").
+* **Highlight the Privacy Model**: Share the app as a free tool built by a fellow dog owner to keep pups safe on trails. Emphasize that the app is completely free, has no ads, requires no login, and does not track location in the background.
+
+### 4. Partnerships with Local Pet Businesses
+Build relationships with local small business owners:
+* **Groomers & Pet Boutiques**: Leave business-card-sized flyers at checkout counters of local groomers, dog daycares, and pet boutiques.
+* **Value Add**: Pitch the app to them as a free, value-add safety checklist tool they can recommend to their customers for summer or winter outings.
+
+### 5. Website Content SEO
+Drive search traffic to your landing page:
+* Write simple, informative articles on your website (such as "What temperature is asphalt too hot for dogs?") and link them directly to the App Store download buttons.
+
