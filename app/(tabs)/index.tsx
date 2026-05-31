@@ -36,6 +36,7 @@ import { getDogProfile, toggleGearVaultItem, type DogProfile } from '@/lib/profi
 import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
 import type { ReadinessPresentation } from '@/lib/readiness/types';
+import { trackEvent } from '@/lib/analytics';
 import {
   loadReadinessDaySignals,
   localCalendarDateString,
@@ -55,7 +56,7 @@ import {
 import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundImages';
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
-import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment } from '@/lib/weather/roadTemp';
+import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand } from '@/lib/weather/roadTemp';
 import { useColorScheme } from '@/components/useColorScheme';
 
 const FOREST = '#1B4332';
@@ -235,10 +236,26 @@ type TacticalInstrumentRingProps = {
   score: number;
   size?: number;
   isDark: boolean;
+  roadBand?: RoadTempBand | null;
 };
 
-function TacticalInstrumentRing({ score, size = 180, isDark }: TacticalInstrumentRingProps) {
-  const band = riskBand(score);
+function TacticalInstrumentRing({ score, size = 180, isDark, roadBand }: TacticalInstrumentRingProps) {
+  const band = useMemo(() => {
+    if (roadBand === 'safe') {
+      return { label: 'Green' as const, color: '#2D6A4F', dimColor: 'rgba(45, 106, 79, 0.15)', pulseMs: 2200, minPulse: 0.40 };
+    }
+    if (roadBand === 'warm') {
+      return { label: 'Amber' as const, color: '#D4A017', dimColor: 'rgba(212, 160, 23, 0.15)', pulseMs: 1500, minPulse: 0.40 };
+    }
+    if (roadBand === 'hot') {
+      return { label: 'Ember' as const, color: '#C46A2D', dimColor: 'rgba(196, 106, 45, 0.15)', pulseMs: 1200, minPulse: 0.40 };
+    }
+    if (roadBand === 'danger') {
+      return { label: 'Danger' as const, color: '#B5443A', dimColor: 'rgba(181, 68, 58, 0.15)', pulseMs: 800, minPulse: 0.40 };
+    }
+    return riskBand(score);
+  }, [score, roadBand]);
+
   const pulse = useRef(new Animated.Value(band.minPulse)).current;
   const sweep = useRef(new Animated.Value(0)).current;
 
@@ -535,6 +552,7 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      trackEvent('screen_viewed', { screenName: 'Ready (Home)' });
       FileSystem.getInfoAsync(FileSystem.documentDirectory + 'home_walkthrough.txt').then(info => {
         if (!info.exists) {
           triggerStep(0);
@@ -649,9 +667,15 @@ export default function HomeScreen() {
     useCallback(() => {
       let gone = false;
       (async () => {
-      const result = await fetchWeatherForDeviceLocation();
+        const result = await fetchWeatherForDeviceLocation();
         if (!gone) {
           setWeather(result);
+          if (result.status === 'ok') {
+            trackEvent('readiness_viewed', {
+              tempF: result.tempF,
+              forecast: result.forecastShort,
+            });
+          }
         }
       })();
       return () => {
@@ -820,6 +844,41 @@ export default function HomeScreen() {
       }, timelineBars.points[0]) ?? null
     );
   }, [timelineBars]);
+
+  const statusBadge = useMemo(() => {
+    const band = currentRoadPoint?.roadBand ?? 'safe';
+    if (band === 'warm') {
+      return {
+        label: 'Caution',
+        color: '#D4A017',
+        bg: isDark ? 'rgba(212,160,23,0.12)' : 'rgba(212,160,23,0.14)',
+        border: isDark ? 'rgba(212,160,23,0.25)' : 'rgba(212,160,23,0.28)',
+      };
+    }
+    if (band === 'hot') {
+      return {
+        label: 'Caution',
+        color: '#C46A2D',
+        bg: isDark ? 'rgba(196,106,45,0.12)' : 'rgba(196,106,45,0.14)',
+        border: isDark ? 'rgba(196,106,45,0.25)' : 'rgba(196,106,45,0.28)',
+      };
+    }
+    if (band === 'danger') {
+      return {
+        label: 'Danger',
+        color: '#C1121F',
+        bg: isDark ? 'rgba(193,18,31,0.12)' : 'rgba(193,18,31,0.14)',
+        border: isDark ? 'rgba(193,18,31,0.25)' : 'rgba(193,18,31,0.28)',
+      };
+    }
+    // safe / default
+    return {
+      label: 'Ready',
+      color: isDark ? SAFETY_GREEN : '#0F7A3B',
+      bg: isDark ? 'rgba(46,204,113,0.12)' : 'rgba(20, 140, 72, 0.14)',
+      border: isDark ? 'rgba(46,204,113,0.25)' : 'rgba(20, 140, 72, 0.28)',
+    };
+  }, [currentRoadPoint, isDark]);
   const npiScore = useMemo(() => {
     if (!weatherOk) return null;
     const nearestHourly =
@@ -1046,6 +1105,7 @@ export default function HomeScreen() {
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
+          trackEvent('walk_window_viewed', { action: 'scrub_timeline' });
           const x = evt.nativeEvent.locationX;
           scrubMovedRef.current = false;
           scrubStartXRef.current = x;
@@ -1080,7 +1140,10 @@ export default function HomeScreen() {
           const wasTap = !scrubMovedRef.current && tapDuration < 260;
           setTimelineScrubHour(null);
           scrubHourHapticRef.current = null;
-          if (wasTap) setRoadTempModalOpen(true);
+          if (wasTap) {
+            setRoadTempModalOpen(true);
+            trackEvent('walk_window_viewed', { action: 'open_road_temp_details' });
+          }
         },
         onPanResponderTerminate: () => {
           setTimelineScrubHour(null);
@@ -1101,6 +1164,7 @@ export default function HomeScreen() {
 
   const startVerifySurface = useCallback(() => {
     if (verifyRunning) return;
+    trackEvent('hand_test_started', { surface: selectedSurface });
     setVerifyRunning(true);
     setVerifyCountdown(7);
     let t = 7;
@@ -1109,6 +1173,7 @@ export default function HomeScreen() {
       t -= 1;
       setVerifyCountdown(Math.max(0, t));
       if (t <= 0) {
+        trackEvent('hand_test_completed', { surface: selectedSurface, duration: 7 });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         if (verifyTimerRef.current) {
           clearInterval(verifyTimerRef.current);
@@ -1117,7 +1182,22 @@ export default function HomeScreen() {
         setVerifyRunning(false);
       }
     }, 1000);
-  }, [verifyRunning]);
+  }, [verifyRunning, selectedSurface]);
+
+  const closeVerifySurface = useCallback(() => {
+    setVerifySurfaceOpen(false);
+    if (verifyRunning) {
+      trackEvent('hand_test_cancelled', {
+        surface: selectedSurface,
+        remainingSeconds: verifyCountdown,
+      });
+    }
+    setVerifyRunning(false);
+    if (verifyTimerRef.current) {
+      clearInterval(verifyTimerRef.current);
+      verifyTimerRef.current = null;
+    }
+  }, [verifyRunning, selectedSurface, verifyCountdown]);
 
   const cycleSurface = useCallback(() => {
     hapticTap();
@@ -1211,32 +1291,24 @@ export default function HomeScreen() {
                 <View style={[
                   styles.statusPill,
                   {
-                    backgroundColor: npiScore != null && npiScore > 5 
-                      ? (isDark ? 'rgba(217,119,6,0.12)' : 'rgba(217,119,6,0.14)')
-                      : (isDark ? 'rgba(46,204,113,0.12)' : 'rgba(20, 140, 72, 0.14)'),
-                    borderColor: npiScore != null && npiScore > 5 
-                      ? (isDark ? 'rgba(217,119,6,0.25)' : 'rgba(217,119,6,0.28)')
-                      : (isDark ? 'rgba(46,204,113,0.25)' : 'rgba(20, 140, 72, 0.28)'),
+                    backgroundColor: statusBadge.bg,
+                    borderColor: statusBadge.border,
                   }
                 ]}>
                   <View style={[
                     styles.statusDot, 
                     { 
-                      backgroundColor: npiScore != null && npiScore > 5 
-                        ? RISK_AMBER 
-                        : (isDark ? SAFETY_GREEN : '#0F7A3B') 
+                      backgroundColor: statusBadge.color
                     }
                   ]} />
                   <Text style={[
                     styles.statusPillText, 
                     { 
-                      color: npiScore != null && npiScore > 5 
-                        ? RISK_AMBER 
-                        : (isDark ? SAFETY_GREEN : '#0F7A3B'),
+                      color: statusBadge.color,
                       fontWeight: '800'
                     }
                   ]}>
-                    {npiScore != null && npiScore > 5 ? 'Caution' : 'Ready'}
+                    {statusBadge.label}
                   </Text>
                 </View>
               </View>
@@ -1422,6 +1494,7 @@ export default function HomeScreen() {
                         score={npiScore}
                         size={avatarRingSize}
                         isDark={isDark}
+                        roadBand={currentRoadPoint?.roadBand}
                       />
                     )}
                     <Pressable
@@ -1622,7 +1695,11 @@ export default function HomeScreen() {
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Pressable
-                    onPress={() => { hapticTap(); setVerifySurfaceOpen(true); }}
+                    onPress={() => {
+                      hapticTap();
+                      setVerifySurfaceOpen(true);
+                      trackEvent('hand_test_opened', { surface: selectedSurface });
+                    }}
                     accessibilityRole="button"
                     accessibilityLabel="Start Hand Test verification">
                     <BlurView
@@ -1728,14 +1805,7 @@ export default function HomeScreen() {
         visible={verifySurfaceOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => {
-          setVerifySurfaceOpen(false);
-          setVerifyRunning(false);
-          if (verifyTimerRef.current) {
-            clearInterval(verifyTimerRef.current);
-            verifyTimerRef.current = null;
-          }
-        }}>
+        onRequestClose={closeVerifySurface}>
         <View style={styles.verifyOverlay}>
           <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border }]}>
@@ -1768,14 +1838,7 @@ export default function HomeScreen() {
               </Pressable>
             ) : null}
             <Pressable
-              onPress={() => {
-                setVerifySurfaceOpen(false);
-                setVerifyRunning(false);
-                if (verifyTimerRef.current) {
-                  clearInterval(verifyTimerRef.current);
-                  verifyTimerRef.current = null;
-                }
-              }}
+              onPress={closeVerifySurface}
               style={styles.verifyClose}>
               <Text style={[styles.verifyCloseText, { color: palette.textSecondary }]}>Close</Text>
             </Pressable>

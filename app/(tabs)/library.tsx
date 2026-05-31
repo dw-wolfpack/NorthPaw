@@ -1,8 +1,9 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback } from 'react';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -19,6 +20,7 @@ import {
 } from '@/lib/content';
 import { gradientForPack, IMAGES } from '@/lib/contentVisuals';
 import { useColorScheme } from '@/components/useColorScheme';
+import { trackEvent } from '@/lib/analytics';
 
 export default function LibraryScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -29,6 +31,11 @@ export default function LibraryScreen() {
   const hazard = getCurrentHazardMonth();
   const lib = getLibrary();
   const insets = useSafeAreaInsets();
+  useFocusEffect(
+    useCallback(() => {
+      trackEvent('screen_viewed', { screenName: 'Field Guide (Library)' });
+    }, [])
+  );
 
   const homeGrad = gradientForPack('trail-basics');
 

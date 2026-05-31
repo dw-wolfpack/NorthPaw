@@ -40,7 +40,7 @@ import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
 import { type HomeWeatherState } from '@/lib/weather/nwsWeather';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
-import { trackEvent } from '@/lib/analytics';
+import { trackEvent, setUserProperties } from '@/lib/analytics';
 
 type SceneId =
   | 'welcome'
@@ -227,6 +227,10 @@ export default function OnboardingScreen() {
   }, [ahaWeather]);
 
   useEffect(() => {
+    trackEvent('onboarding_started');
+  }, []);
+
+  useEffect(() => {
     const anim = Animated.loop(
       Animated.timing(spin, {
         toValue: 1,
@@ -249,6 +253,14 @@ export default function OnboardingScreen() {
     cardTranslateY.value = withSpring(0, { damping: 15, stiffness: 130 });
     cardOpacity.value = withTiming(1, { duration: 260 });
   }, [cardOpacity, cardTranslateY, scene]);
+
+  useEffect(() => {
+    trackEvent('onboarding_step_viewed', {
+      scene,
+      stepIndex: sceneIdx,
+      totalSteps: SCENES.length,
+    });
+  }, [scene, sceneIdx]);
 
   useEffect(() => {
     pulse.value = withRepeat(
@@ -385,6 +397,9 @@ export default function OnboardingScreen() {
         finalNotif = n.ok ? 'granted' : 'denied';
       }
       setNotificationsPermission(finalNotif);
+      if (finalNotif === 'granted') {
+        trackEvent('notification_enabled', { context: 'onboarding' });
+      }
 
       let photoUri = '';
       if (pickedUri) {
@@ -420,6 +435,29 @@ export default function OnboardingScreen() {
         hasPhoto: !!pickedUri,
         notificationsPermission: finalNotif,
         locationPermission,
+      });
+
+      trackEvent('dog_created', {
+        dogBreed: resolvedBreed,
+        dogAgeGroup: ageGroup,
+        dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
+        dogCoatType: dogCoatType,
+        dogColor: dogColor,
+        dogSnoutProfile,
+        dogActivityBaseline,
+      });
+
+      setUserProperties({
+        dog_breed: resolvedBreed,
+        dog_size: parseInt(dogWeightLbs, 10) ? (parseInt(dogWeightLbs, 10) < 25 ? 'Small' : parseInt(dogWeightLbs, 10) < 60 ? 'Medium' : 'Large') : 'Unknown',
+        dog_weight_lbs: parseInt(dogWeightLbs, 10) || null,
+        dog_coat_type: dogCoatType,
+        dog_color: dogColor,
+        dog_snout_profile: dogSnoutProfile,
+        dog_activity_baseline: dogActivityBaseline,
+        notifications_permission: finalNotif,
+        location_permission: locationPermission,
+        subscription_status: 'free',
       });
 
       if (deepLink) {

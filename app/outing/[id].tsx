@@ -9,6 +9,7 @@ import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useSubscription } from '@/context/SubscriptionContext';
 import { getChecklist } from '@/lib/content';
+import { trackEvent } from '@/lib/analytics';
 import { deleteChecklistOuting, getChecklistOuting } from '@/lib/database';
 import type { ChecklistOutingRow } from '@/lib/database.types';
 import { parseOutingCheckedIds } from '@/lib/parseOutingChecked';
@@ -35,6 +36,12 @@ export default function OutingDetailScreen() {
   useEffect(() => {
     load().catch(() => setRow(null));
   }, [load]);
+
+  useEffect(() => {
+    if (row) {
+      trackEvent('screen_viewed', { screenName: 'Outing Detail', checklistId: row.checklist_id });
+    }
+  }, [row]);
 
   useEffect(() => {
     if (subLoading) return;

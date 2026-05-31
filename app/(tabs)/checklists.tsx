@@ -11,6 +11,7 @@ import { HeroImage } from '@/components/HeroImage';
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { trackEvent } from '@/lib/analytics';
 import { canAccessPack, getAllChecklists, getChecklist } from '@/lib/content';
 import { gradientForPack, IMAGES } from '@/lib/contentVisuals';
 import { listChecklistOutings } from '@/lib/database';
@@ -35,6 +36,7 @@ export default function ChecklistsScreen() {
   useFocusEffect(
     useCallback(() => {
       let gone = false;
+      trackEvent('screen_viewed', { screenName: 'Checklists (Outings)' });
       listChecklistOutings(50).then((rows) => {
         if (!gone) setOutings(rows);
       });

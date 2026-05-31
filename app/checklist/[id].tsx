@@ -96,7 +96,9 @@ export default function ChecklistDetailScreen() {
     recordOpen('checklist', id).catch(() => {});
     reload().catch(() => {});
     markPrimaryChecklistOpenedForLocalDate(localCalendarDateString(), id).catch(() => {});
+    trackEvent('screen_viewed', { screenName: 'Checklist Detail', checklistId: id, title: cl.title });
     trackEvent('checklist_opened', { checklistId: id, title: cl.title });
+    trackEvent('preparedness_viewed', { type: 'checklist', checklistId: id, title: cl.title });
   }, [id, cl, reload]);
 
   useFocusEffect(

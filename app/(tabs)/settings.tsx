@@ -1,7 +1,9 @@
 import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useCallback } from 'react';
+import { trackEvent } from '@/lib/analytics';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -27,8 +29,11 @@ export default function SettingsScreen() {
   const { isPro, configured, expoGo, loading, error } = useSubscription();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
-
+  useFocusEffect(
+    useCallback(() => {
+      trackEvent('screen_viewed', { screenName: 'Settings' });
+    }, [])
+  );
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 96 }]}>
@@ -136,14 +141,12 @@ export default function SettingsScreen() {
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Legal &amp; listing</Text>
       <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
-        Links for App Store compliance and support. Set URLs in your Expo env (
-        <Text style={{ fontWeight: '700', color: palette.textSecondary }}>EXPO_PUBLIC_NORTHPAW_*</Text>) before
-        production builds. Legacy EXPO_PUBLIC_TRAILREADY_* names still work.
+        Links for App Store compliance and support.
       </Text>
 
       <LinkButton
         label="Privacy Policy"
-        hint={PRIVACY_POLICY_URL ? PRIVACY_POLICY_URL : 'Add EXPO_PUBLIC_NORTHPAW_PRIVACY_URL'}
+        hint={PRIVACY_POLICY_URL}
         disabled={!PRIVACY_POLICY_URL}
         palette={palette}
         onPress={() => { hapticTap();  openExternalLink(PRIVACY_POLICY_URL); }}
@@ -151,11 +154,7 @@ export default function SettingsScreen() {
 
       <LinkButton
         label="Support"
-        hint={
-          SUPPORT_URL
-            ? SUPPORT_URL
-            : 'Add EXPO_PUBLIC_NORTHPAW_SUPPORT_URL (https or mailto:)'
-        }
+        hint={SUPPORT_URL}
         disabled={!SUPPORT_URL}
         palette={palette}
         onPress={() => { hapticTap();  openExternalLink(SUPPORT_URL); }}

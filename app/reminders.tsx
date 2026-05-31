@@ -20,6 +20,7 @@ import {
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { trackEvent } from '@/lib/analytics';
 import {
   addMedReminder,
   countMedReminderByKind,
@@ -427,6 +428,7 @@ export default function RemindersScreen() {
   useFocusEffect(
     useCallback(() => {
       let gone = false;
+      trackEvent('screen_viewed', { screenName: 'Care Reminders' });
       (async () => {
         await reload();
         await rescheduleMedRemindersFromUi();
@@ -447,7 +449,10 @@ export default function RemindersScreen() {
 
   const ensurePerm = async (): Promise<boolean> => {
     const result = await requestMedReminderPermissions();
-    if (result.ok) return true;
+    if (result.ok) {
+      trackEvent('notification_enabled', { context: 'reminders' });
+      return true;
+    }
 
     const openSettings = () => {
       Linking.openSettings().catch(() => {});

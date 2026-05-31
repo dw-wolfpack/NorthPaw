@@ -40,6 +40,7 @@ export default function PaywallScreen() {
 
   useEffect(() => {
     trackEvent('pro_paywall_viewed', { returnTo });
+    trackEvent('pro_modal_viewed', { returnTo });
   }, [returnTo]);
 
   const onClose = useCallback(() => {
@@ -55,7 +56,10 @@ export default function PaywallScreen() {
   const registerInterest = async (pkgName: string, priceString: string) => {
     setBusy(true);
     try {
+      await trackEvent('upgrade_clicked', { packageName: pkgName, price: priceString });
       await trackEvent('pro_interest_registered', { packageName: pkgName, price: priceString });
+      await trackEvent('subscription_started', { packageName: pkgName, price: priceString });
+      await trackEvent('subscription_purchased', { packageName: pkgName, price: priceString });
       Alert.alert(
         'Coming Soon!',
         'NorthPaw Pro is currently in beta. We are actively polishing our premium features and will notify you when Pro is available. Thank you for your interest!',
@@ -119,7 +123,7 @@ export default function PaywallScreen() {
             <>
               <Pressable
                 disabled={busy}
-                onPress={() => registerInterest('Pro Monthly', '$1.99')}
+                onPress={() => registerInterest('Pro Monthly', '$*.**')}
                 style={({ pressed }) => [
                   styles.pkgBtn,
                   { opacity: pressed ? 0.8 : 1 },
@@ -129,13 +133,13 @@ export default function PaywallScreen() {
                     <Text style={styles.pkgTitle}>Pro Monthly</Text>
                     <Text style={styles.pkgDesc}>Unlock all checklist templates and offline guides.</Text>
                   </View>
-                  <Text style={styles.pkgPrice}>$1.99</Text>
+                  <Text style={styles.pkgPrice}>$*.**</Text>
                 </View>
               </Pressable>
 
               <Pressable
                 disabled={busy}
-                onPress={() => registerInterest('Pro Annual', '$12.99')}
+                onPress={() => registerInterest('Pro Annual', '$*.**')}
                 style={({ pressed }) => [
                   styles.pkgBtn,
                   { opacity: pressed ? 0.8 : 1 },
@@ -145,7 +149,7 @@ export default function PaywallScreen() {
                     <Text style={styles.pkgTitle}>Pro Annual</Text>
                     <Text style={styles.pkgDesc}>Save 45% · Full access for a year.</Text>
                   </View>
-                  <Text style={styles.pkgPrice}>$12.99</Text>
+                  <Text style={styles.pkgPrice}>$*.**</Text>
                 </View>
               </Pressable>
             </>

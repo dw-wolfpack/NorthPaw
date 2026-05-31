@@ -21,6 +21,7 @@ import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { getDogProfile, pickAndStoreDogPhoto, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
+import { trackEvent } from '@/lib/analytics';
 
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
@@ -53,6 +54,10 @@ export default function DogProfileScreen() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [load]);
+
+  useEffect(() => {
+    trackEvent('screen_viewed', { screenName: 'Edit Dog Profile' });
+  }, []);
 
   const displayPhoto = pickedUri || savedPhotoUri;
 
@@ -93,6 +98,12 @@ export default function DogProfileScreen() {
         dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
         dogCoatType: dogCoatType,
         dogColor: dogColor,
+      });
+      trackEvent('dog_profile_saved', {
+        hasPhoto: !!photoUri,
+        dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
+        dogCoatType,
+        dogColor,
       });
       router.back();
     } catch (e) {
