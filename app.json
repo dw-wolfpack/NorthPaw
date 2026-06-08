@@ -14,9 +14,10 @@
       "backgroundColor": "#1B4332"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.northpaw.app",
-      "buildNumber": "7",
+      "buildNumber": "13",
+
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

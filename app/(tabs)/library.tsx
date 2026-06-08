@@ -133,7 +133,8 @@ export default function LibraryScreen() {
               </Text>
               <View style={styles.packMeta}>
                 <Text style={{ color: palette.tint, fontSize: 13, fontWeight: '700' }}>
-                  {count} cards · {pack.tier === 'premium' ? 'Pro' : 'Free'}
+                  {count} cards
+
                 </Text>
                 {locked ? (
                   <View style={[styles.lockPill, { borderColor: palette.tint }]}>

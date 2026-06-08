@@ -148,7 +148,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     return info;
   }, [applyCustomerInfo, expoGo]);
 
-  const isPro = devUnlock || isProInternal;
+  const isPro = true; // Force-unlock all Pro features for initial free launch
+
 
   const value = useMemo(
     () => ({

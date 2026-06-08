@@ -940,10 +940,7 @@ export default function OnboardingScreen() {
           <Pressable
             onPress={() => { hapticTap(); requestLocation(); }}
             style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            <Text style={styles.ctaText}>Allow location access</Text>
-          </Pressable>
-          <Pressable onPress={() => { hapticTap();  setSceneIdx(SCENES.indexOf('npi-activation')); }} style={styles.skipLink}>
-            <Text style={[styles.skipText, { color: palette.textSecondary }]}>Continue without location</Text>
+            <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
         </AnimatedReanimated.View>
       );

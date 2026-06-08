@@ -803,6 +803,25 @@ export default function HomeScreen() {
     const pm = bestPmSeg ? `${formatHourShort(bestPmSeg.startHour)}–${formatHourShort(bestPmSeg.endHour)}` : '';
     return [am, pm].filter(Boolean).join(' & ');
   }, [bestAmSeg, bestPmSeg]);
+
+  const bestWindows = useMemo(() => {
+    const formatHourShort = (h: number) => {
+      const period = h >= 12 ? 'PM' : 'AM';
+      const displayHour = h % 12 === 0 ? 12 : h % 12;
+      return `${displayHour}${period}`;
+    };
+    const list: string[] = [];
+    if (bestAmSeg) {
+      list.push(`${formatHourShort(bestAmSeg.startHour)}–${formatHourShort(bestAmSeg.endHour)}`);
+    }
+    if (bestPmSeg) {
+      list.push(`${formatHourShort(bestPmSeg.startHour)}–${formatHourShort(bestPmSeg.endHour)}`);
+    }
+    if (list.length === 0) {
+      list.push('None');
+    }
+    return list;
+  }, [bestAmSeg, bestPmSeg]);
   const daylightStart = timelineBars?.daylightSegments?.[0]?.startHour ?? null;
   const daylightEnd = timelineBars?.daylightSegments?.[timelineBars.daylightSegments.length - 1]?.endHour ?? null;
   const scrubPoint = useMemo(() => {
@@ -1204,7 +1223,9 @@ export default function HomeScreen() {
     const surfaces: SurfaceType[] = ['asphalt', 'concrete', 'sand', 'turf'];
     setSelectedSurface((prev) => {
       const idx = surfaces.indexOf(prev);
-      return surfaces[(idx + 1) % surfaces.length];
+      const next = surfaces[(idx + 1) % surfaces.length];
+      trackEvent('surface_changed', { surface: next });
+      return next;
     });
   }, [setSelectedSurface]);
   const onToggleGearVault = useCallback(async () => {
@@ -1390,7 +1411,11 @@ export default function HomeScreen() {
                 <View style={{ width: '100%', alignItems: 'center', height: (cardSize * 0.93) - 40, justifyContent: 'center' }}>
                   {/* Quiet Corner Instrumentation */}
                   <Pressable 
-                    onPress={() => { hapticTap(); setWeatherModalOpen(true); }}
+                    onPress={() => {
+                      hapticTap();
+                      trackEvent('weather_details_viewed');
+                      setWeatherModalOpen(true);
+                    }}
                     style={styles.hudCornerTl}
                     accessibilityRole="button"
                     accessibilityLabel={`Weather conditions: ${(weather as any).tempF}°F. Tap to open details.`}>
@@ -1423,7 +1448,11 @@ export default function HomeScreen() {
                   </Pressable>
 
                   <Pressable 
-                    onPress={() => { hapticTap(); setNpiModalOpen(true); }}
+                    onPress={() => {
+                      hapticTap();
+                      trackEvent('npi_explanation_viewed', { score: npiScore });
+                      setNpiModalOpen(true);
+                    }}
                     style={styles.hudCornerTr}
                     accessibilityRole="button"
                     accessibilityLabel={`NPI score ${npiScore}. Tap for details.`}>
@@ -1456,35 +1485,38 @@ export default function HomeScreen() {
 
                   <Pressable 
                     onPress={() => { hapticTap(); setRoadTempModalOpen(true); }}
-                    style={styles.hudCornerBr}
+                    style={[styles.hudCornerBr, { gap: 6 }]}
                     accessibilityRole="button"
                     accessibilityLabel={`Best window: ${bestWindowLabel}. Tap for road temperature details.`}>
-                    <BlurView
-                      intensity={45}
-                      tint={isDark ? "dark" : "light"}
-                      style={[
-                        styles.heroBestWindowPill,
-                        {
-                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
-                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
-                        }
-                      ]}
-                    >
-                      <MaterialCommunityIcons
-                        name="clock-outline"
-                        size={12}
-                        color={isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)"}
-                        style={{ marginRight: 4 }}
-                      />
-                      <Text
+                    {bestWindows.map((winStr, idx) => (
+                      <BlurView
+                        key={`best-win-${idx}`}
+                        intensity={45}
+                        tint={isDark ? "dark" : "light"}
                         style={[
-                          styles.heroBestWindowPillText,
-                          { color: isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)" }
+                          styles.heroBestWindowPill,
+                          {
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                          }
                         ]}
                       >
-                        {bestWindowLabel.toUpperCase()}
-                      </Text>
-                    </BlurView>
+                        <MaterialCommunityIcons
+                          name="clock-outline"
+                          size={12}
+                          color={isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)"}
+                          style={{ marginRight: 4 }}
+                        />
+                        <Text
+                          style={[
+                            styles.heroBestWindowPillText,
+                            { color: isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)" }
+                          ]}
+                        >
+                          {winStr.toUpperCase()}
+                        </Text>
+                      </BlurView>
+                    ))}
                   </Pressable>
 
                   {/* Centered Dog Portrait + Ring */}

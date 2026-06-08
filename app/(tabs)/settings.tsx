@@ -105,6 +105,7 @@ export default function SettingsScreen() {
         <FontAwesome name="info-circle" size={16} color={palette.tint} />
       </Pressable>
 
+      {/* 
       <Text style={[styles.h1, { marginTop: 24 }]}>Subscription</Text>
       <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}>
         <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
@@ -125,19 +126,9 @@ export default function SettingsScreen() {
             <Text style={styles.ctaText}>Unlock Pro</Text>
           </Pressable>
         ) : null}
-        {/* Commented out for beta release - restore when StoreKit subscriptions go live
-        {Platform.OS === 'ios' ? (
-          <Pressable
-            onPress={() => { hapticTap();  openExternalLink(APPLE_MANAGE_SUBSCRIPTIONS_URL); }}
-            style={[styles.linkRow, { marginTop: 12 }]}>
-            <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 15 }}>
-              Manage subscription in App Store…
-            </Text>
-            <FontAwesome name="external-link" size={14} color={palette.tint} style={{ marginLeft: 8 }} />
-          </Pressable>
-        ) : null}
-        */}
       </View>
+      */}
+
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Legal &amp; listing</Text>
       <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
