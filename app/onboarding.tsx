@@ -338,6 +338,34 @@ export default function OnboardingScreen() {
     }
   };
 
+  const handlePhotoContinue = async () => {
+    if (pickedUri) {
+      advance();
+      return;
+    }
+    setBusy(true);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.granted) {
+        const res = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.85,
+        });
+        if (!res.canceled && res.assets[0]?.uri) {
+          setPickedUri(res.assets[0].uri);
+        }
+      }
+      advance();
+    } catch (e) {
+      console.warn('[NorthPaw] Photo permission/picker error', e);
+      advance();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectionTick = () => {
     Haptics.selectionAsync().catch(() => {});
   };
@@ -599,21 +627,8 @@ export default function OnboardingScreen() {
               </View>
             )}
           </Pressable>
-          <View style={styles.rowButtons}>
-            <Pressable
-              onPress={() => {
-                selectionTick();
-                void pickPhoto();
-              }}
-              style={[styles.ghostBtn, { borderColor: palette.tint, backgroundColor: palette.selectedBg }]}>
-              <Text style={[styles.ghostText, { color: palette.tint }]}>Choose photo</Text>
-            </Pressable>
-            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-              <Text style={[styles.ghostText, { color: palette.textSecondary }]}>Skip for now</Text>
-            </Pressable>
-          </View>
           <Pressable
-            onPress={() => { hapticTap(); advance(); }}
+            onPress={() => { hapticTap(); void handlePhotoContinue(); }}
             style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
