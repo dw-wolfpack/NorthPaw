@@ -5,12 +5,16 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as Linking from 'expo-linking';
+import { File, Paths } from 'expo-file-system';
+import Constants from 'expo-constants';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -192,6 +196,94 @@ export default function OnboardingScreen() {
   const [activationLineIdx, setActivationLineIdx] = useState(0);
   const [previewInteracted, setPreviewInteracted] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const [requestBreedModalOpen, setRequestBreedModalOpen] = useState(false);
+  const [requestBreedName, setRequestBreedName] = useState('');
+  const [requestNotes, setRequestNotes] = useState('');
+  const [requestEmail, setRequestEmail] = useState('');
+  const [requestSuccess, setRequestSuccess] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+
+  const handleSubmitBreedRequest = async () => {
+    if (!requestBreedName.trim()) {
+      setRequestError('Breed Name is required');
+      return;
+    }
+    setRequestError(null);
+    setBusy(true);
+    try {
+      // 1. Store request locally in Document directory
+      const file = new File(Paths.document, 'breed_requests.json');
+      let requests: Array<{ breedName: string; notes: string; email: string; timestamp: number }> = [];
+      if (file.exists) {
+        try {
+          const text = await file.text();
+          requests = JSON.parse(text);
+        } catch {
+          // ignore corrupted/empty file
+        }
+      }
+      requests.push({
+        breedName: requestBreedName.trim(),
+        notes: requestNotes.trim(),
+        email: requestEmail.trim(),
+        timestamp: Date.now()
+      });
+      file.write(JSON.stringify(requests));
+
+      // TODO: Submit to server backend API once available.
+
+      // 2. Track Mixpanel event
+      const appVersion = Constants.expoConfig?.version || '1.0.0';
+      trackEvent('breed_request_submitted', {
+        breed_name: requestBreedName.trim(),
+        email_provided: !!requestEmail.trim(),
+        notes_provided: !!requestNotes.trim(),
+        app_version: appVersion,
+      });
+
+      // 3. Dynamically compose email using mailto:
+      const body = `Hi! I'd like to request a new breed for NorthPaw.
+
+Breed Name: ${requestBreedName.trim()}
+Email (optional): ${requestEmail.trim() || 'Not provided'}
+Notes (optional): ${requestNotes.trim() || 'None'}
+
+Sent from NorthPaw.`;
+
+      const mailtoUrl = `mailto:cnfiegel@gmail.com?subject=${encodeURIComponent(
+        'NorthPaw Breed Request: ' + requestBreedName.trim()
+      )}&body=${encodeURIComponent(body)}`;
+
+      // Attempt to open mailto URL
+      try {
+        const canOpen = await Linking.canOpenURL(mailtoUrl);
+        if (canOpen) {
+          await Linking.openURL(mailtoUrl);
+        } else {
+          console.warn('[NorthPaw] Mail client not available.');
+        }
+      } catch (err) {
+        console.warn('[NorthPaw] Failed to open mail client:', err);
+      }
+
+      setRequestSuccess(true);
+    } catch (e) {
+      console.error('[NorthPaw] Request breed submission error:', e);
+      setRequestError('Failed to save request. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const closeRequestBreedModal = () => {
+    setRequestBreedModalOpen(false);
+    setRequestBreedName('');
+    setRequestNotes('');
+    setRequestEmail('');
+    setRequestSuccess(false);
+    setRequestError(null);
+  };
 
   const spin = useRef(new Animated.Value(0)).current;
   const displayPhoto = pickedUri;
@@ -703,15 +795,25 @@ export default function OnboardingScreen() {
                     {
                       borderColor: selected ? palette.tint : palette.border,
                       backgroundColor: selected ? palette.selectedBg : palette.surface,
-                      opacity: pressed ? 0.9 : 1,
+                      opacity: pressed ? 0.8 : 1,
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
                     },
-                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                  ]}>
                   <Text style={styles.breedIcon}>🐾</Text>
                   <Text style={[styles.breedText, { color: palette.text }]}>{item}</Text>
                 </Pressable>
               );
             })}
           </ScrollView>
+          <Pressable
+            onPress={() => { hapticTap(); setRequestBreedModalOpen(true); }}
+            style={{ marginBottom: 16, alignSelf: 'flex-start' }}
+            accessibilityRole="button"
+            accessibilityLabel="Request a missing breed">
+            <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 14 }}>
+              Can&apos;t find your breed? Request a breed →
+            </Text>
+          </Pressable>
           <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>How is {dogName}&apos;s snout?</Text>
           <View style={styles.cardList}>
             {SNOUT_OPTIONS.map((opt) => {
@@ -740,7 +842,11 @@ export default function OnboardingScreen() {
           <AnimatedReanimated.Text
             entering={FadeInDown.duration(300)}
             style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
-            Did you know? Flat-faced dogs like {dogName} can cool less efficiently through panting.
+            {dogSnoutProfile === 'flat'
+              ? `Did you know? Flat-faced dogs like ${dogName} can cool less efficiently through panting.`
+              : dogSnoutProfile === 'long'
+              ? `Did you know? Long-snouted dogs like ${dogName} are generally more efficient at panting to cool down.`
+              : `Did you know? Snout length directly affects how efficiently a dog cools down through panting.`}
           </AnimatedReanimated.Text>
           <Pressable
             disabled={!canAdvance}
@@ -839,7 +945,11 @@ export default function OnboardingScreen() {
           <AnimatedReanimated.Text
             entering={FadeInDown.duration(300)}
             style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
-            Did you know? Darker coats like {dogName}&apos;s can absorb more heat in direct sun.
+            {dogColor === 'Dark'
+              ? `Did you know? Darker coats like ${dogName}'s can absorb more heat in direct sun.`
+              : dogColor === 'Light'
+              ? `Did you know? Lighter coats like ${dogName}'s reflect more solar heat, but their skin can still be sensitive.`
+              : `Did you know? A dog's fur color directly affects how much solar heat they absorb in direct sun.`}
           </AnimatedReanimated.Text>
 
           <View style={[styles.rowButtons, { marginTop: 10 }]}>
@@ -1221,6 +1331,123 @@ export default function OnboardingScreen() {
         </ScrollView>
         </AnimatedReanimated.View>
       </KeyboardAvoidingView>
+      <Modal
+        visible={requestBreedModalOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeRequestBreedModal}>
+        <SafeAreaView style={[styles.modalRoot, { backgroundColor: palette.background }]} edges={['top', 'left', 'right', 'bottom']}>
+          <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>Request a Breed</Text>
+            <Pressable onPress={() => { hapticTap(); closeRequestBreedModal(); }} hitSlop={12}>
+              <MaterialCommunityIcons name="close" size={24} color={palette.textSecondary} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
+            {requestSuccess ? (
+              <View style={styles.modalSuccessContainer}>
+                <MaterialCommunityIcons name="check-circle" size={64} color={palette.tint} style={{ alignSelf: 'center', marginBottom: 16 }} />
+                <Text style={[styles.modalSuccessText, { color: palette.text }]}>
+                  Thanks! Your request has been sent. Every request is personally reviewed and helps make NorthPaw better.
+                </Text>
+                <Pressable
+                  onPress={closeRequestBreedModal}
+                  style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1, marginTop: 24 }]}>
+                  <Text style={styles.ctaText}>Done</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View>
+                <Text style={[styles.modalSubtitle, { color: palette.textSecondary, marginBottom: 20 }]}>
+                  NorthPaw is growing thanks to community feedback. If your dog’s breed isn’t listed, let me know and I’ll add it to the list.
+                </Text>
+
+                {requestError ? (
+                  <Text style={[styles.errorLabel, { color: '#B5443A', marginBottom: 12 }]}>{requestError}</Text>
+                ) : null}
+
+                <Text style={[styles.inputLabel, { color: palette.text, marginBottom: 6 }]}>Breed Name (required)</Text>
+                <TextInput
+                  value={requestBreedName}
+                  onChangeText={setRequestBreedName}
+                  placeholder="Whippet"
+                  placeholderTextColor={palette.textSecondary}
+                  style={[
+                    styles.input,
+                    {
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                      color: palette.text,
+                      marginBottom: 16,
+                    },
+                  ]}
+                />
+
+                <Text style={[styles.inputLabel, { color: palette.text, marginBottom: 6 }]}>Notes (optional)</Text>
+                <TextInput
+                  value={requestNotes}
+                  onChangeText={setRequestNotes}
+                  placeholder="Anything special I should know? Coat type, exercise needs, heat sensitivity, etc."
+                  placeholderTextColor={palette.textSecondary}
+                  multiline
+                  numberOfLines={3}
+                  style={[
+                    styles.input,
+                    {
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                      color: palette.text,
+                      marginBottom: 16,
+                      minHeight: 80,
+                      textAlignVertical: 'top',
+                    },
+                  ]}
+                />
+
+                <Text style={[styles.inputLabel, { color: palette.text, marginBottom: 6 }]}>Email (optional)</Text>
+                <TextInput
+                  value={requestEmail}
+                  onChangeText={setRequestEmail}
+                  placeholder="you@email.com"
+                  placeholderTextColor={palette.textSecondary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={[
+                    styles.input,
+                    {
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                      color: palette.text,
+                      marginBottom: 4,
+                    },
+                  ]}
+                />
+                <Text style={[styles.helperText, { color: palette.textSecondary, marginBottom: 24 }]}>
+                  Only used to let you know when your breed is available.
+                </Text>
+
+                <Pressable
+                  disabled={busy}
+                  onPress={() => { hapticTap(); void handleSubmitBreedRequest(); }}
+                  style={({ pressed }) => [
+                    styles.cta,
+                    {
+                      backgroundColor: busy ? palette.border : palette.tint,
+                      opacity: pressed && !busy ? 0.9 : 1,
+                    },
+                  ]}>
+                  {busy ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.ctaText}>🐾 Request Breed</Text>
+                  )}
+                </Pressable>
+              </View>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1335,4 +1562,21 @@ const styles = StyleSheet.create({
   notificationPreviewBody: { fontSize: 13, lineHeight: 19, marginTop: 6 },
   cta: { paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 8 },
   ctaText: { color: '#fff', fontWeight: '800', fontSize: 17 },
+  modalRoot: { flex: 1 },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
+  modalSubtitle: { fontSize: 15, lineHeight: 22 },
+  modalScroll: { padding: 20 },
+  modalSuccessContainer: { alignItems: 'stretch', paddingVertical: 40 },
+  modalSuccessText: { fontSize: 16, lineHeight: 24, textAlign: 'center', fontWeight: '600' },
+  inputLabel: { fontSize: 14, fontWeight: '700' },
+  helperText: { fontSize: 12, marginTop: 4 },
+  errorLabel: { fontSize: 13, fontWeight: '700' },
 });

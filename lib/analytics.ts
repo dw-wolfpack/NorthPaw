@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import Constants from 'expo-constants';
+import * as Device from 'expo-device';
 
 const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN || '';
 
@@ -49,10 +50,12 @@ async function getInstallTime(): Promise<number> {
 }
 
 export async function trackEvent(eventName: string, properties: Record<string, any> = {}) {
+  if (__DEV__ || !Device.isDevice) {
+    console.log(`[Analytics] (Dry Run) Event: "${eventName}"`, properties);
+    return;
+  }
+
   if (!MIXPANEL_TOKEN) {
-    if (__DEV__) {
-      console.log(`[Analytics] (Dry Run) Event: "${eventName}"`, properties);
-    }
     return;
   }
 
@@ -91,10 +94,12 @@ export async function trackEvent(eventName: string, properties: Record<string, a
 }
 
 export async function setUserProperties(properties: Record<string, any>) {
+  if (__DEV__ || !Device.isDevice) {
+    console.log(`[Analytics] (Dry Run) Set User Properties:`, properties);
+    return;
+  }
+
   if (!MIXPANEL_TOKEN) {
-    if (__DEV__) {
-      console.log(`[Analytics] (Dry Run) Set User Properties:`, properties);
-    }
     return;
   }
 
