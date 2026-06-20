@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -242,7 +243,12 @@ export function FeedbackModal({ visible, onClose, initialType = 'general_feedbac
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+        >
+          <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
           {success ? (
             <View style={styles.modalSuccessContainer}>
               <MaterialCommunityIcons
@@ -435,13 +441,15 @@ export function FeedbackModal({ visible, onClose, initialType = 'general_feedbac
             </View>
           )}
         </ScrollView>
-      </SafeAreaView>
-    </Modal>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   modalRoot: { flex: 1 },
+  keyboardAvoid: { flex: 1 },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

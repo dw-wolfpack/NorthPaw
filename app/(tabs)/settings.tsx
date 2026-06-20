@@ -207,11 +207,11 @@ export default function SettingsScreen() {
       <Pressable
         onPress={async () => {
           hapticTap();
+          trackEvent('share_button_pressed', { context: 'settings' });
           try {
             await Share.share({
-              message: 'Check out NorthPaw, the outdoor thermal safety app for dogs! https://northpaw.app',
+              message: 'Check out NorthPaw, the outdoor thermal safety app for dogs! https://apps.apple.com/us/app/northpaw/id6763930232',
             });
-            trackEvent('share_button_pressed', { context: 'settings' });
           } catch (e) {
             // ignore
           }
