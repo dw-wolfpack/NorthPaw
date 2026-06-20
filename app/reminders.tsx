@@ -20,6 +20,7 @@ import {
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { trackEvent } from '@/lib/analytics';
 import {
   addMedReminder,
   countMedReminderByKind,
@@ -293,7 +294,7 @@ function SchedulePickers(props: {
       <View style={styles.scheduleBlock}>
         <Text style={[styles.scheduleBlockTitle, { color: palette.text }]}>How often?</Text>
         <Text style={[styles.scheduleBlockHint, { color: palette.textSecondary }]}>
-          1 week, 2 weeks, or monthly (30 days)—confirm with your vet.
+          1 week, 2 weeks, or monthly (30 days), and confirm with your vet.
         </Text>
         <View style={[styles.chipScroll, { flexWrap: 'wrap' }]}>
           {INTERVAL_CHOICES.map((s) =>
@@ -427,6 +428,7 @@ export default function RemindersScreen() {
   useFocusEffect(
     useCallback(() => {
       let gone = false;
+      trackEvent('screen_viewed', { screenName: 'Care Reminders' });
       (async () => {
         await reload();
         await rescheduleMedRemindersFromUi();
@@ -447,7 +449,10 @@ export default function RemindersScreen() {
 
   const ensurePerm = async (): Promise<boolean> => {
     const result = await requestMedReminderPermissions();
-    if (result.ok) return true;
+    if (result.ok) {
+      trackEvent('notification_enabled', { context: 'reminders' });
+      return true;
+    }
 
     const openSettings = () => {
       Linking.openSettings().catch(() => {});
@@ -650,7 +655,7 @@ export default function RemindersScreen() {
       ) : null}
 
       <Text style={[styles.body, { color: palette.textSecondary }]}>
-        On-device alerts for parasite prevention (not medical advice—confirm schedules with your veterinarian).
+        On-device alerts for routine care and treatment dates (not medical advice, please confirm schedules with your veterinarian).
       </Text>
 
       <Text style={[styles.h1, { color: palette.text }]}>Free reminders</Text>
@@ -786,7 +791,7 @@ export default function RemindersScreen() {
             <TextInput
               value={customLabel}
               onChangeText={setCustomLabel}
-              placeholder="e.g. Allergy chew"
+              placeholder="e.g. Weekly brush"
               placeholderTextColor={palette.textSecondary}
               style={[
                 styles.input,

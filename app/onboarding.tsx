@@ -40,6 +40,7 @@ import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
 import { type HomeWeatherState } from '@/lib/weather/nwsWeather';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
+import { trackEvent, setUserProperties } from '@/lib/analytics';
 
 type SceneId =
   | 'welcome'
@@ -123,10 +124,10 @@ const ACTIVITY_OPTIONS: Array<{ id: 'low' | 'moderate' | 'high'; title: string; 
 ];
 
 const CALIBRATION_LINES = [
-  'Calculating THI...',
-  'Applying snout-profile offset...',
-  'Fetching local humidity...',
-  'Estimating pavement heat load...',
+  'Checking temperature and humidity...',
+  'Adjusting for snout length...',
+  'Fetching local conditions...',
+  'Checking pavement warmth...',
 ];
 
 function displaySlot(isoStart: string, isoEnd: string): string {
@@ -226,6 +227,10 @@ export default function OnboardingScreen() {
   }, [ahaWeather]);
 
   useEffect(() => {
+    trackEvent('onboarding_started');
+  }, []);
+
+  useEffect(() => {
     const anim = Animated.loop(
       Animated.timing(spin, {
         toValue: 1,
@@ -248,6 +253,14 @@ export default function OnboardingScreen() {
     cardTranslateY.value = withSpring(0, { damping: 15, stiffness: 130 });
     cardOpacity.value = withTiming(1, { duration: 260 });
   }, [cardOpacity, cardTranslateY, scene]);
+
+  useEffect(() => {
+    trackEvent('onboarding_step_viewed', {
+      scene,
+      stepIndex: sceneIdx,
+      totalSteps: SCENES.length,
+    });
+  }, [scene, sceneIdx]);
 
   useEffect(() => {
     pulse.value = withRepeat(
@@ -325,6 +338,34 @@ export default function OnboardingScreen() {
     }
   };
 
+  const handlePhotoContinue = async () => {
+    if (pickedUri) {
+      advance();
+      return;
+    }
+    setBusy(true);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.granted) {
+        const res = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.85,
+        });
+        if (!res.canceled && res.assets[0]?.uri) {
+          setPickedUri(res.assets[0].uri);
+        }
+      }
+      advance();
+    } catch (e) {
+      console.warn('[NorthPaw] Photo permission/picker error', e);
+      advance();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectionTick = () => {
     Haptics.selectionAsync().catch(() => {});
   };
@@ -384,6 +425,9 @@ export default function OnboardingScreen() {
         finalNotif = n.ok ? 'granted' : 'denied';
       }
       setNotificationsPermission(finalNotif);
+      if (finalNotif === 'granted') {
+        trackEvent('notification_enabled', { context: 'onboarding' });
+      }
 
       let photoUri = '';
       if (pickedUri) {
@@ -407,10 +451,47 @@ export default function OnboardingScreen() {
         dogActivityBaseline,
         morningBriefTime,
       });
+
+      trackEvent('onboarding_completed', {
+        dogBreed: resolvedBreed,
+        dogAgeGroup: ageGroup,
+        dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
+        dogCoatType: dogCoatType,
+        dogColor: dogColor,
+        dogSnoutProfile,
+        dogActivityBaseline,
+        hasPhoto: !!pickedUri,
+        notificationsPermission: finalNotif,
+        locationPermission,
+      });
+
+      trackEvent('dog_created', {
+        dogBreed: resolvedBreed,
+        dogAgeGroup: ageGroup,
+        dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
+        dogCoatType: dogCoatType,
+        dogColor: dogColor,
+        dogSnoutProfile,
+        dogActivityBaseline,
+      });
+
+      setUserProperties({
+        dog_breed: resolvedBreed,
+        dog_size: parseInt(dogWeightLbs, 10) ? (parseInt(dogWeightLbs, 10) < 25 ? 'Small' : parseInt(dogWeightLbs, 10) < 60 ? 'Medium' : 'Large') : 'Unknown',
+        dog_weight_lbs: parseInt(dogWeightLbs, 10) || null,
+        dog_coat_type: dogCoatType,
+        dog_color: dogColor,
+        dog_snout_profile: dogSnoutProfile,
+        dog_activity_baseline: dogActivityBaseline,
+        notifications_permission: finalNotif,
+        location_permission: locationPermission,
+        subscription_status: 'free',
+      });
+
       if (deepLink) {
         router.replace(deepLink as any);
       } else {
-        router.replace('/(tabs)/home');
+        router.replace('/(tabs)');
       }
     } catch (e) {
       console.error('[Onboarding] save failed', e);
@@ -461,9 +542,9 @@ export default function OnboardingScreen() {
           <Animated.View style={[styles.compassWrap, { transform: [{ rotate: compassSpin }] }]}>
             <MaterialCommunityIcons name="compass-rose" size={84} color={palette.tint} />
           </Animated.View>
-          <Text style={[styles.h1, { color: palette.text }]}>Calibrating {dogName}&apos;s safety engine.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Getting {dogName} ready for the trail.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Build a personalized readiness model in a few quick scenes.
+            Set up a custom profile to get personalized safety checklists.
           </Text>
           <Pressable
             onPress={() => { hapticTap(); advance(); }}
@@ -471,7 +552,7 @@ export default function OnboardingScreen() {
               styles.cta,
               { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 },
             , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            <Text style={styles.ctaText}>Start calibration</Text>
+            <Text style={styles.ctaText}>Let&apos;s get started</Text>
           </Pressable>
         </AnimatedReanimated.View>
       );
@@ -546,21 +627,8 @@ export default function OnboardingScreen() {
               </View>
             )}
           </Pressable>
-          <View style={styles.rowButtons}>
-            <Pressable
-              onPress={() => {
-                selectionTick();
-                void pickPhoto();
-              }}
-              style={[styles.ghostBtn, { borderColor: palette.tint, backgroundColor: palette.selectedBg }]}>
-              <Text style={[styles.ghostText, { color: palette.tint }]}>Choose photo</Text>
-            </Pressable>
-            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-              <Text style={[styles.ghostText, { color: palette.textSecondary }]}>Skip for now</Text>
-            </Pressable>
-          </View>
           <Pressable
-            onPress={() => { hapticTap(); advance(); }}
+            onPress={() => { hapticTap(); void handlePhotoContinue(); }}
             style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
@@ -573,7 +641,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            We calibrate heat safety using breed context and airway profile.
+            We customize temperature guides using breed context and airway profile.
           </Text>
           <TextInput
             value={breedQuery}
@@ -693,9 +761,9 @@ export default function OnboardingScreen() {
     if (scene === 'biology-activity') {
       return (
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>Let&apos;s finish {dogName}&apos;s safety calibration.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Let&apos;s finish {dogName}&apos;s custom profile.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Weight, coat, color, and energy tune warning thresholds and safe-window duration.
+            Weight, coat, color, and energy help build safe outing guides and checklists.
           </Text>
 
           <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>Weight (lbs)</Text>
@@ -887,10 +955,7 @@ export default function OnboardingScreen() {
           <Pressable
             onPress={() => { hapticTap(); requestLocation(); }}
             style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            <Text style={styles.ctaText}>Allow location access</Text>
-          </Pressable>
-          <Pressable onPress={() => { hapticTap();  setSceneIdx(SCENES.indexOf('npi-activation')); }} style={styles.skipLink}>
-            <Text style={[styles.skipText, { color: palette.textSecondary }]}>Continue without location</Text>
+            <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
         </AnimatedReanimated.View>
       );
@@ -910,7 +975,7 @@ export default function OnboardingScreen() {
 
       return (
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>Activating {dogName}&apos;s NorthPaw Index.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Setting up {dogName}&apos;s personalized guides.</Text>
           {loadingAha ? (
             <View style={styles.ahaLoading}>
               <ActivityIndicator color={palette.tint} size="small" />
@@ -926,7 +991,7 @@ export default function OnboardingScreen() {
                   </Circle>
                   <Circle cx={70} cy={70} r={26} color="#2ECC71" opacity={0.35} />
                 </Canvas>
-                <Text style={[styles.activationTitle, { color: palette.text }]}>Calculation pulse</Text>
+                <Text style={[styles.activationTitle, { color: palette.text }]}>Reviewing conditions</Text>
                 <Text style={[styles.activationLine, { color: palette.textSecondary }]}>
                   {CALIBRATION_LINES[activationLineIdx]}
                 </Text>
@@ -1057,7 +1122,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>Ready to keep {dogName} safe?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            We will use your calibration profile to power personalized readiness and walk-window guidance.
+            We will use this profile to create personalized safety checklists and safe walking times.
           </Text>
           <Pressable
             disabled={busy}
@@ -1075,7 +1140,7 @@ export default function OnboardingScreen() {
               styles.cta,
               { backgroundColor: busy ? palette.border : palette.tint, opacity: pressed && !busy ? 0.9 : 1 },
             , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>I&apos;m ready to keep {dogName} safe</Text>}
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>I&apos;m ready to go</Text>}
           </Pressable>
           <Pressable
             disabled={busy}

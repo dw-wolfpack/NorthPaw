@@ -368,6 +368,7 @@ export async function saveChecklistOuting(input: SaveChecklistOutingInput): Prom
         data: { url: '/tick-check' },
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: 4 * 60 * 60, // 4 hours
       },
     });

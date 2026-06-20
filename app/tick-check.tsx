@@ -1,18 +1,25 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, Pressable } from 'react-native';
+import { useEffect } from 'react';
 import { Text, View } from '@/components/Themed';
 import * as Haptics from 'expo-haptics';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { trackEvent } from '@/lib/analytics';
 
 export default function TickCheckScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
   const router = useRouter();
 
+  useEffect(() => {
+    trackEvent('screen_viewed', { screenName: 'Tick Check Modal' });
+  }, []);
+
   const handleClear = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
+    trackEvent('tick_check_completed');
     if (router.canGoBack()) router.back();
     else router.replace('/(tabs)');
   };

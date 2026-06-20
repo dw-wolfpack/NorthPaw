@@ -5,12 +5,24 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
+import { Text, TextInput } from 'react-native';
+
+// Disable Dynamic Type font scaling globally to preserve precise UI layouts on small/zoomed screens
+try {
+  (Text as any).defaultProps = (Text as any).defaultProps || {};
+  (Text as any).defaultProps.allowFontScaling = false;
+  (TextInput as any).defaultProps = (TextInput as any).defaultProps || {};
+  (TextInput as any).defaultProps.allowFontScaling = false;
+} catch (e) {
+  console.warn('[NorthPaw] Failed to disable allowFontScaling globally', e);
+}
 
 import { MedReminderNotifications } from '@/components/MedReminderNotifications';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { SubscriptionProvider } from '@/context/SubscriptionContext';
 import { getDb } from '@/lib/database';
+import { trackEvent } from '@/lib/analytics';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -84,6 +96,10 @@ const NavThemeDark = {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    trackEvent('app_opened');
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? NavThemeDark : NavThemeLight}>

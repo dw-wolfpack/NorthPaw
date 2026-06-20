@@ -5,10 +5,13 @@ import { useCallback, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { HeroImage } from '@/components/HeroImage';
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { trackEvent } from '@/lib/analytics';
 import { canAccessPack, getAllChecklists, getChecklist } from '@/lib/content';
 import { gradientForPack, IMAGES } from '@/lib/contentVisuals';
 import { listChecklistOutings } from '@/lib/database';
@@ -28,10 +31,12 @@ export default function ChecklistsScreen() {
   const [outings, setOutings] = useState<ChecklistOutingRow[]>([]);
   const [hazardTags, setHazardTags] = useState<string[]>([]);
   const [hazardMission, setHazardMission] = useState<null | { title: string; body: string }>(null);
+  const insets = useSafeAreaInsets();
 
   useFocusEffect(
     useCallback(() => {
       let gone = false;
+      trackEvent('screen_viewed', { screenName: 'Checklists (Outings)' });
       listChecklistOutings(50).then((rows) => {
         if (!gone) setOutings(rows);
       });
@@ -65,7 +70,7 @@ export default function ChecklistsScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: palette.background }}
-      contentContainerStyle={styles.container}>
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
       <HeroImage height={132} source={IMAGES.card} gradient={heroGrad} scrimOpacity={0.85}>
         <View style={styles.heroRow}>
           <MaterialCommunityIcons name="clipboard-check" size={22} color="rgba(255,255,255,0.95)" />

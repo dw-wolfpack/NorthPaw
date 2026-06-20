@@ -13,6 +13,7 @@ import { canAccessPack, getCardsForPack, getChecklistsForPack, getPack } from '@
 import { gradientForCardTags, gradientForPack, IMAGES, iconForTag } from '@/lib/contentVisuals';
 import { recordOpen } from '@/lib/database';
 import { useColorScheme } from '@/components/useColorScheme';
+import { trackEvent } from '@/lib/analytics';
 
 export default function PackScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,6 +26,8 @@ export default function PackScreen() {
   useEffect(() => {
     if (!id || !pack) return;
     recordOpen('pack', id).catch(() => {});
+    trackEvent('screen_viewed', { screenName: 'Pack Detail', packId: pack.id, title: pack.title });
+    trackEvent('preparedness_viewed', { type: 'pack', packId: pack.id, title: pack.title });
   }, [id, pack]);
 
   useEffect(() => {

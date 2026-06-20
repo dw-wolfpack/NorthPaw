@@ -12,6 +12,7 @@ import { canAccessPack, getCard, getPack } from '@/lib/content';
 import { gradientForCardTags, IMAGES, iconForTag } from '@/lib/contentVisuals';
 import { addFavorite, isFavorite, recordOpen, removeFavorite } from '@/lib/database';
 import { useColorScheme } from '@/components/useColorScheme';
+import { trackEvent } from '@/lib/analytics';
 
 export default function CardDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,6 +27,8 @@ export default function CardDetailScreen() {
     if (!id || !card) return;
     recordOpen('card', id).catch(() => {});
     isFavorite('card', id).then(setFav).catch(() => {});
+    trackEvent('screen_viewed', { screenName: 'Card Detail', cardId: card.id, title: card.title });
+    trackEvent('preparedness_viewed', { type: 'card', cardId: card.id, title: card.title });
   }, [id, card]);
 
   useEffect(() => {

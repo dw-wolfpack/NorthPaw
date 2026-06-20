@@ -1,7 +1,9 @@
 import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useCallback } from 'react';
+import { trackEvent } from '@/lib/analytics';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -17,6 +19,8 @@ import { getDogProfile, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
 export default function SettingsScreen() {
@@ -24,65 +28,15 @@ export default function SettingsScreen() {
   const palette = Colors[colorScheme];
   const { isPro, configured, expoGo, loading, error } = useSubscription();
   const router = useRouter();
-
-  const resetOnboardingForTesting = () => {
-    Alert.alert(
-      'Reset onboarding?',
-      'This will reopen onboarding on next launch. You can keep current dog details or clear them.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Keep details',
-          onPress: async () => {
-            try {
-              const p = await getDogProfile();
-              await saveDogProfile({
-                onboardingDone: false,
-                dogName: p.dogName,
-                dogPhotoUri: p.dogPhotoUri,
-                dogBreed: p.dogBreed,
-                dogBreedMix: p.dogBreedMix,
-                dogAgeGroup: p.dogAgeGroup,
-                dogOutingTypes: p.dogOutingTypes,
-                locationPermission: p.locationPermission,
-                notificationsPermission: p.notificationsPermission,
-              });
-              try { await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true }); } catch (err) {}
-              router.replace('/onboarding');
-            } catch (e) {
-              Alert.alert('Could not reset onboarding', e instanceof Error ? e.message : 'Please try again.');
-            }
-          },
-        },
-        {
-          text: 'Clear all',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await saveDogProfile({
-                onboardingDone: false,
-                dogName: '',
-                dogPhotoUri: '',
-                dogBreed: '',
-                dogBreedMix: '',
-                dogAgeGroup: '',
-                dogOutingTypes: [],
-                locationPermission: '',
-                notificationsPermission: '',
-              });
-              try { await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true }); } catch (err) {}
-              router.replace('/onboarding');
-            } catch (e) {
-              Alert.alert('Could not reset onboarding', e instanceof Error ? e.message : 'Please try again.');
-            }
-          },
-        },
-      ]
-    );
-  };
+  const insets = useSafeAreaInsets();
+  useFocusEffect(
+    useCallback(() => {
+      trackEvent('screen_viewed', { screenName: 'Settings' });
+    }, [])
+  );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={styles.container}>
+    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 96 }]}>
       <Text style={styles.h1}>Your dog</Text>
       <Pressable
         onPress={() => { hapticTap();  router.push('/dog-profile'); }}
@@ -118,7 +72,7 @@ export default function SettingsScreen() {
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Care reminders</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
             Heartworm and flea & tick alerts on your device. Custom schedules with Pro. Alerts are scheduled
-            locally—no server.
+            locally with no server required.
           </Text>
         </View>
         <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
@@ -128,7 +82,7 @@ export default function SettingsScreen() {
         onPress={async () => {
           try {
             await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true });
-            router.replace('/(tabs)/home');
+            router.replace('/(tabs)');
           } catch (e) {
             Alert.alert('Error', 'Could not reset walkthrough.');
           }
@@ -151,70 +105,47 @@ export default function SettingsScreen() {
         <FontAwesome name="info-circle" size={16} color={palette.tint} />
       </Pressable>
 
+      {/* 
       <Text style={[styles.h1, { marginTop: 24 }]}>Subscription</Text>
       <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-        <Text style={{ color: palette.text, fontWeight: '600' }}>
-          {loading ? 'Checking…' : isPro ? 'NorthPaw Pro active' : 'Free library + locked Pro packs'}
+        <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+          {loading ? 'Checking Status...' : isPro ? 'NorthPaw Pro Active' : 'Free Library + Locked Pro Packs'}
         </Text>
-        {expoGo ? (
-          <Text style={{ color: palette.textSecondary, marginTop: 10, lineHeight: 20 }}>
-            Running in Expo Go, Pro packs stay locked here. Use EXPO_PUBLIC_NORTHPAW_DEV_PRO=1 in .env to
-            preview all content locally, or build a dev client (npm run dev:client) for real StoreKit.
-          </Text>
-        ) : !configured ? (
-          <Text style={{ color: palette.textSecondary, marginTop: 10, lineHeight: 20 }}>
-            Add EXPO_PUBLIC_REVENUECAT_IOS_API_KEY for StoreKit. Until then, Pro lessons stay locked (unless you
-            set EXPO_PUBLIC_NORTHPAW_DEV_PRO=1 in development only).
-          </Text>
-        ) : null}
+        <Text style={{ color: palette.textSecondary, marginTop: 8, lineHeight: 20, fontSize: 14 }}>
+          {loading
+            ? 'Verifying subscription details...'
+            : isPro
+              ? 'Thank you for testing the NorthPaw Pro beta! You have access to all premium checklists and offline reference cards.'
+              : 'NorthPaw Pro is currently in beta. Unlock custom safety checklists, offline regional guide packs, and location logging.'}
+        </Text>
         {error ? <Text style={{ color: palette.danger, marginTop: 10 }}>{error}</Text> : null}
-        {!isPro ? (
+        {!loading && !isPro ? (
           <Pressable
             onPress={() => { hapticTap();  router.push('/paywall'); }}
             style={[styles.cta, { backgroundColor: palette.tint, marginTop: 14 }]}>
             <Text style={styles.ctaText}>Unlock Pro</Text>
           </Pressable>
         ) : null}
-        {Platform.OS === 'ios' ? (
-          <Pressable
-            onPress={() => { hapticTap();  openExternalLink(APPLE_MANAGE_SUBSCRIPTIONS_URL); }}
-            style={[styles.linkRow, { marginTop: 12 }]}>
-            <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 15 }}>
-              Manage subscription in App Store…
-            </Text>
-            <FontAwesome name="external-link" size={14} color={palette.tint} style={{ marginLeft: 8 }} />
-          </Pressable>
-        ) : null}
       </View>
+      */}
+
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Legal &amp; listing</Text>
       <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
-        Links for App Store compliance and support. Set URLs in your Expo env (
-        <Text style={{ fontWeight: '700', color: palette.textSecondary }}>EXPO_PUBLIC_NORTHPAW_*</Text>) before
-        production builds. Legacy EXPO_PUBLIC_TRAILREADY_* names still work.
+        Links for App Store compliance and support.
       </Text>
 
       <LinkButton
         label="Privacy Policy"
-        hint={PRIVACY_POLICY_URL ? PRIVACY_POLICY_URL : 'Add EXPO_PUBLIC_NORTHPAW_PRIVACY_URL'}
+        hint={PRIVACY_POLICY_URL}
         disabled={!PRIVACY_POLICY_URL}
         palette={palette}
         onPress={() => { hapticTap();  openExternalLink(PRIVACY_POLICY_URL); }}
       />
-      <LinkButton
-        label="Terms of Use"
-        hint={TERMS_OF_USE_URL ? TERMS_OF_USE_URL : 'Add EXPO_PUBLIC_NORTHPAW_TERMS_URL'}
-        disabled={!TERMS_OF_USE_URL}
-        palette={palette}
-        onPress={() => { hapticTap();  openExternalLink(TERMS_OF_USE_URL); }}
-      />
+
       <LinkButton
         label="Support"
-        hint={
-          SUPPORT_URL
-            ? SUPPORT_URL
-            : 'Add EXPO_PUBLIC_NORTHPAW_SUPPORT_URL (https or mailto:)'
-        }
+        hint={SUPPORT_URL}
         disabled={!SUPPORT_URL}
         palette={palette}
         onPress={() => { hapticTap();  openExternalLink(SUPPORT_URL); }}
@@ -232,25 +163,6 @@ export default function SettingsScreen() {
         optional GPS), and open history stay on your device. Subscription status is verified through Apple and
         RevenueCat when configured. Opening Privacy Policy or Support may use an in-app browser or your mail app.
       </Text>
-
-      <Text style={[styles.h1, { marginTop: 28 }]}>Developer</Text>
-      <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-        <Text style={[styles.body, { color: palette.textSecondary }]}>
-          Temporary test utility for repeating signup flow during development.
-        </Text>
-        <Pressable
-          onPress={() => { hapticTap(); resetOnboardingForTesting(); }}
-          style={({ pressed }) => [
-            styles.resetBtn,
-            {
-              borderColor: palette.border,
-              backgroundColor: palette.background,
-              opacity: pressed ? 0.9 : 1,
-            },
-          , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 15 }}>Reset onboarding flow</Text>
-        </Pressable>
-      </View>
     </ScrollView>
   );
 }
