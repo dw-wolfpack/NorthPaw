@@ -1223,7 +1223,7 @@ export default function HomeScreen() {
 
   const cycleSurface = useCallback(() => {
     hapticTap();
-    const surfaces: SurfaceType[] = ['asphalt', 'concrete', 'sand', 'turf'];
+    const surfaces: SurfaceType[] = ['asphalt', 'concrete', 'cobblestone', 'sand', 'turf'];
     setSelectedSurface((prev) => {
       const idx = surfaces.indexOf(prev);
       const next = surfaces[(idx + 1) % surfaces.length];
@@ -2201,7 +2201,7 @@ export default function HomeScreen() {
                 ) : null}
 
                 <View style={styles.surfaceComparisonGrid}>
-                  {(['asphalt', 'concrete', 'sand', 'turf'] as SurfaceType[]).map((st) => {
+                  {(['asphalt', 'concrete', 'cobblestone', 'sand', 'turf'] as SurfaceType[]).map((st) => {
                     // We need the sample for the selected hour to calculate others
                     const sample = weatherOk?.hourlySamples.find(s => {
                        const h = new Date(s.timeIso).getHours();
