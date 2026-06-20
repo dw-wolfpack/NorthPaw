@@ -28,6 +28,7 @@ import { BlurMask, Canvas, Circle, Path, Skia, RoundedRect, Rect, Group, SweepGr
 
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
+import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
 import { useSubscription } from '@/context/SubscriptionContext';
 import { canAccessPack, getChecklist, getLibrary } from '@/lib/content';
 import { IMAGES } from '@/lib/contentVisuals';
@@ -533,6 +534,8 @@ export default function HomeScreen() {
   const [showSecondaryHazard, setShowSecondaryHazard] = useState(false);
   const [gearVaultBusy, setGearVaultBusy] = useState(false);
   const [dogProfile, setDogProfile] = useState<DogProfile | null>(null);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [readinessPresentation, setReadinessPresentation] = useState<ReadinessPresentation | null>(null);
 
   const [showWalkthrough, setShowWalkthrough] = useState(false);
@@ -2227,6 +2230,19 @@ export default function HomeScreen() {
                     );
                   })}
                 </View>
+                <Pressable
+                  onPress={() => {
+                    hapticTap();
+                    setFeedbackInitialType('surface_request');
+                    setFeedbackModalOpen(true);
+                  }}
+                  style={{ alignSelf: 'flex-start', marginTop: 4, marginBottom: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Suggest a missing surface">
+                  <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 13 }}>
+                    Missing a surface? Suggest one →
+                  </Text>
+                </Pressable>
                 <View style={[styles.roadDetailSpinner, { borderColor: palette.border }]}>
                   <Pressable
                     onPress={() => { hapticTap();  setRoadDetailHour((selectedRoadDetailHour + 23) % 24); }}
@@ -2424,6 +2440,11 @@ export default function HomeScreen() {
           </View>
         </Modal>
       )}
+      <FeedbackModal
+        visible={feedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
+        initialType={feedbackInitialType}
+      />
     </View>
   );
 }

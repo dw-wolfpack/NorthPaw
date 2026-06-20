@@ -1,8 +1,9 @@
 import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { trackEvent } from '@/lib/analytics';
 
 import { Text, View } from '@/components/Themed';
@@ -18,6 +19,7 @@ import { openExternalLink } from '@/lib/openExternalLink';
 import { getDogProfile, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
 import * as FileSystem from 'expo-file-system/legacy';
+import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,6 +31,8 @@ export default function SettingsScreen() {
   const { isPro, configured, expoGo, loading, error } = useSubscription();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Settings' });
@@ -104,6 +108,40 @@ export default function SettingsScreen() {
         </View>
         <FontAwesome name="info-circle" size={16} color={palette.tint} />
       </Pressable>
+
+      <Text style={[styles.h1, { marginTop: 28 }]}>Help improve NorthPaw</Text>
+      <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
+        Share your thoughts or suggest content directly to the developer.
+      </Text>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8, backgroundColor: 'transparent' }}>
+        {[
+          { label: 'Suggest a Breed', type: 'breed_request', icon: 'dog' },
+          { label: 'Suggest a Surface', type: 'surface_request', icon: 'road-variant' },
+          { label: 'Request a Feature', type: 'feature_request', icon: 'lightbulb-outline' },
+          { label: 'Report a Bug', type: 'bug_report', icon: 'bug-outline' },
+        ].map((opt) => (
+          <Pressable
+            key={opt.label}
+            onPress={() => {
+              hapticTap();
+              setFeedbackInitialType(opt.type as FeedbackType);
+              setFeedbackModalOpen(true);
+            }}
+            style={({ pressed }) => [
+              styles.feedbackCardButton,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.92 : 1,
+              }
+            ]}
+          >
+            <MaterialCommunityIcons name={opt.icon as any} size={20} color={palette.tint} />
+            <Text style={{ color: palette.text, fontWeight: '700', fontSize: 14 }}>{opt.label}</Text>
+          </Pressable>
+        ))}
+      </View>
 
       {/* 
       <Text style={[styles.h1, { marginTop: 24 }]}>Subscription</Text>
@@ -226,6 +264,11 @@ export default function SettingsScreen() {
           </Pressable>
         </>
       ) : null}
+      <FeedbackModal
+        visible={feedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
+        initialType={feedbackInitialType}
+      />
     </ScrollView>
   );
 }
@@ -289,5 +332,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     alignItems: 'center',
+  },
+  feedbackCardButton: {
+    flex: 1,
+    minWidth: '45%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 4,
   },
 });
