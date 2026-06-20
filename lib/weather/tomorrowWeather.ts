@@ -38,8 +38,9 @@ export async function fetchTomorrowWeatherAtCoordinates(
   latitude: number,
   longitude: number
 ): Promise<Exclude<HomeWeatherState, { status: 'loading' }>> {
+  const startTime = Date.now();
   if (!API_KEY) {
-    return { status: 'unavailable', message: 'Tomorrow.io API key is missing. Add it to your .env file.' };
+    return { status: 'unavailable', message: 'Tomorrow.io API key is missing. Add it to your .env file.', isCacheHit: false, loadTimeMs: Date.now() - startTime };
   }
 
   const latStr = latitude.toFixed(4);
@@ -118,8 +119,8 @@ export async function fetchTomorrowWeatherAtCoordinates(
       mockRecentRain: false,
     };
 
-    return ok;
+    return { ...ok, isCacheHit: false, loadTimeMs: Date.now() - startTime };
   } catch (e) {
-    return { status: 'unavailable', message: 'Failed to connect to Tomorrow.io.' };
+    return { status: 'unavailable', message: 'Failed to connect to Tomorrow.io.', isCacheHit: false, loadTimeMs: Date.now() - startTime };
   }
 }

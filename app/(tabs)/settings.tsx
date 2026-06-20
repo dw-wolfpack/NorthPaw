@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share } from 'react-native';
 import Constants from 'expo-constants';
 import { useCallback, useState } from 'react';
 import { trackEvent } from '@/lib/analytics';
@@ -197,8 +197,43 @@ export default function SettingsScreen() {
         hint={SUPPORT_URL}
         disabled={!SUPPORT_URL}
         palette={palette}
-        onPress={() => { hapticTap();  openExternalLink(SUPPORT_URL); }}
+        onPress={() => {
+          hapticTap();
+          trackEvent('support_contact_pressed', { method: 'settings_link' });
+          openExternalLink(SUPPORT_URL);
+        }}
       />
+
+      <Pressable
+        onPress={async () => {
+          hapticTap();
+          try {
+            await Share.share({
+              message: 'Check out NorthPaw, the outdoor thermal safety app for dogs! https://northpaw.app',
+            });
+            trackEvent('share_button_pressed', { context: 'settings' });
+          } catch (e) {
+            // ignore
+          }
+        }}
+        style={({ pressed }) => [
+          styles.linkCard,
+          {
+            borderColor: palette.border,
+            backgroundColor: palette.surface,
+            opacity: pressed ? 0.92 : 1,
+            marginBottom: 8,
+          },
+        ]}
+      >
+        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Share NorthPaw</Text>
+          <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+            Tell other dog owners about outdoor safety.
+          </Text>
+        </View>
+        <FontAwesome name="share-alt" size={16} color={palette.tint} />
+      </Pressable>
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Disclaimer</Text>
       <Text style={[styles.body, { color: palette.textSecondary }]}>

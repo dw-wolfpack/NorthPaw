@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
 import { File, Paths } from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -514,6 +515,12 @@ export default function OnboardingScreen() {
         notificationsPermission: finalNotif,
         locationPermission,
       });
+
+      try {
+        await AsyncStorage.setItem('@northpaw/onboarding_completed_at', Date.now().toString());
+      } catch (err) {
+        console.warn('[Onboarding] Failed to save completed timestamp to AsyncStorage', err);
+      }
 
       trackEvent('dog_created', {
         dogBreed: resolvedBreed,

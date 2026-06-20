@@ -5,7 +5,9 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { Text, TextInput } from 'react-native';
+import { AppState, AppStateStatus, Text, TextInput } from 'react-native';
+import * as Linking from 'expo-linking';
+import { getHasTrackedActivity, resetTrackedActivity, setUserProperties } from '@/lib/analytics';
 
 // Disable Dynamic Type font scaling globally to preserve precise UI layouts on small/zoomed screens
 try {
@@ -99,6 +101,74 @@ function RootLayoutNav() {
 
   useEffect(() => {
     trackEvent('app_opened');
+
+    // 1. UTM Deep Link Parsing
+    const handleDeepLink = (event: { url: string }) => {
+      try {
+        const parsed = Linking.parse(event.url);
+        if (parsed.queryParams) {
+          const { utm_source, utm_medium, utm_campaign } = parsed.queryParams;
+          if (utm_source) {
+            setUserProperties({
+              acquisition_source: utm_source,
+              acquisition_medium: utm_medium || 'direct',
+              acquisition_campaign: utm_campaign || 'none',
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[Analytics] Deep link parsing failed', e);
+      }
+    };
+
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url) handleDeepLink({ url });
+      })
+      .catch(() => {});
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    // 2. Active-Duration Bounce (Zero Value Session) Tracker
+    let activeTimer: ReturnType<typeof setTimeout> | null = null;
+    let timeSpentActive = 0;
+    let activeStart = Date.now();
+    let hasTrackedZeroValueSessionThisSession = false;
+
+    const checkBounce = () => {
+      if (AppState.currentState === 'active') {
+        timeSpentActive += Date.now() - activeStart;
+      }
+      if (timeSpentActive >= 15000 && !getHasTrackedActivity() && !hasTrackedZeroValueSessionThisSession) {
+        hasTrackedZeroValueSessionThisSession = true;
+        trackEvent('zero_value_session');
+      }
+    };
+
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        activeStart = Date.now();
+        hasTrackedZeroValueSessionThisSession = false; // Reset lock on new active session
+        resetTrackedActivity(); // Reset activity on new active session
+        const remaining = Math.max(0, 15000 - timeSpentActive);
+        activeTimer = setTimeout(checkBounce, remaining);
+      } else {
+        if (activeTimer) clearTimeout(activeTimer);
+        timeSpentActive += Date.now() - activeStart;
+      }
+    };
+
+    if (AppState.currentState === 'active') {
+      activeTimer = setTimeout(checkBounce, 15000);
+    }
+
+    const appStateSub = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+      appStateSub.remove();
+      if (activeTimer) clearTimeout(activeTimer);
+    };
   }, []);
 
   return (

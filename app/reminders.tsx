@@ -603,6 +603,10 @@ export default function RemindersScreen() {
 
   const onToggle = async (row: MedReminderRow, on: boolean) => {
     await setMedReminderEnabled(row.id, on);
+    trackEvent(on ? 'notification_enabled' : 'notification_disabled', {
+      context: 'reminders_toggle',
+      reminder_kind: row.kind,
+    });
     await reload();
     await rescheduleMedRemindersFromUi();
   };

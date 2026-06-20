@@ -170,6 +170,7 @@ export function FeedbackModal({ visible, onClose, initialType = 'general_feedbac
       // Send general feedback submission
       trackEvent('feedback_submitted', {
         feedback_type: activeType,
+        payload_subject: subVal,
         email_provided: !!emailVal,
         notes_provided: !!notesVal,
         app_version: appVersion,

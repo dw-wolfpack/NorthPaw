@@ -49,7 +49,34 @@ async function getInstallTime(): Promise<number> {
   return cachedInstallTime;
 }
 
+let hasTrackedActivity = false;
+
+const MEANINGFUL_EVENTS = new Set([
+  'onboarding_started',
+  'onboarding_completed',
+  'dog_created',
+  'readiness_viewed',
+  'hand_test_started',
+  'hand_test_completed',
+  'surface_changed',
+  'feedback_submitted',
+  'share_button_pressed',
+  'support_contact_pressed',
+]);
+
+export function getHasTrackedActivity() {
+  return hasTrackedActivity;
+}
+
+export function resetTrackedActivity() {
+  hasTrackedActivity = false;
+}
+
 export async function trackEvent(eventName: string, properties: Record<string, any> = {}) {
+  if (MEANINGFUL_EVENTS.has(eventName)) {
+    hasTrackedActivity = true;
+  }
+
   if (__DEV__ || !Device.isDevice) {
     console.log(`[Analytics] (Dry Run) Event: "${eventName}"`, properties);
     return;
@@ -121,5 +148,36 @@ export async function setUserProperties(properties: Record<string, any>) {
     });
   } catch (error) {
     console.error('[Analytics] Failed to set user properties:', error);
+  }
+}
+
+export async function incrementUserProperties(properties: Record<string, number>) {
+  if (__DEV__ || !Device.isDevice) {
+    console.log(`[Analytics] (Dry Run) Increment User Properties:`, properties);
+    return;
+  }
+
+  if (!MIXPANEL_TOKEN) {
+    return;
+  }
+
+  try {
+    const distinctId = await getDistinctId();
+    await fetch('https://api.mixpanel.com/engage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/plain',
+      },
+      body: JSON.stringify([
+        {
+          $token: MIXPANEL_TOKEN,
+          $distinct_id: distinctId,
+          $add: properties,
+        },
+      ]),
+    });
+  } catch (error) {
+    console.error('[Analytics] Failed to increment user properties:', error);
   }
 }
