@@ -158,11 +158,74 @@ export default function SettingsScreen() {
       </Text>
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Privacy</Text>
-      <Text style={[styles.body, { color: palette.textSecondary }]}>
+      <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
         Favorites, checklist boxes, your dog&apos;s name and photo on Home, Pro outing logs (notes, place, photos,
         optional GPS), and open history stay on your device. Subscription status is verified through Apple and
         RevenueCat when configured. Opening Privacy Policy or Support may use an in-app browser or your mail app.
       </Text>
+
+      {__DEV__ ? (
+        <>
+          <Text style={[styles.h1, { marginTop: 28, color: palette.tint }]}>Developer Settings</Text>
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              Alert.alert(
+                'Reset Onboarding',
+                'Are you sure you want to reset all onboarding progress and profile data?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Reset',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await saveDogProfile({
+                          onboardingDone: false,
+                          dogName: '',
+                          dogPhotoUri: '',
+                          dogBreed: '',
+                          dogBreedMix: '',
+                          dogAgeGroup: '',
+                          dogOutingTypes: [],
+                          locationPermission: '',
+                          notificationsPermission: '',
+                          dogWeightLbs: null,
+                          dogCoatType: '',
+                          dogColor: '',
+                          dogSnoutProfile: 'standard',
+                          dogActivityBaseline: 'moderate',
+                          morningBriefTime: '7:00 AM',
+                          gearVault: {},
+                        });
+                        await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true });
+                        router.replace('/onboarding');
+                      } catch (e) {
+                        Alert.alert('Error', 'Failed to reset onboarding profile.');
+                      }
+                    },
+                  },
+                ]
+              );
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: '#B5443A',
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.92 : 1,
+              },
+            ]}>
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: '#B5443A', fontWeight: '800', fontSize: 16 }}>Reset Onboarding & Profile</Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Clear all database profile records and return to the onboarding flow.
+              </Text>
+            </View>
+            <FontAwesome name="refresh" size={16} color="#B5443A" />
+          </Pressable>
+        </>
+      ) : null}
     </ScrollView>
   );
 }
