@@ -348,9 +348,10 @@ export default function OnboardingScreen() {
   const glowOpacity = useDerivedValue(() => 0.22 + 0.28 * pulse.value, [pulse]);
 
   const filteredBreeds = useMemo(() => {
+    const base = BREEDS.filter((b) => b !== 'Mixed Breed / Rescue');
     const q = breedQuery.trim().toLowerCase();
-    if (!q) return BREEDS;
-    return BREEDS.filter((b) => b.toLowerCase().includes(q));
+    if (!q) return base;
+    return base.filter((b) => b.toLowerCase().includes(q));
   }, [breedQuery]);
 
   const legacyStep = useMemo(() => {
@@ -725,7 +726,7 @@ export default function OnboardingScreen() {
               { borderColor: palette.border, backgroundColor: isMixedBreed ? palette.surface : 'transparent', opacity: pressed ? 0.9 : 1 },
             , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <MaterialCommunityIcons name={isMixedBreed ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={20} color={palette.tint} />
-            <Text style={[styles.mixedLabel, { color: palette.text }]}>Mixed breed</Text>
+            <Text style={[styles.mixedLabel, { color: palette.text }]}>Mixed Breed / Rescue</Text>
           </Pressable>
           {isMixedBreed ? (
             <TextInput
