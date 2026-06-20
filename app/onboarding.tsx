@@ -691,7 +691,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            We customize temperature guides using breed context and airway profile.
+            Pick your dog’s breed for their profile. You’ll customize snout, coat, and activity next.
           </Text>
           <TextInput
             value={breedQuery}
