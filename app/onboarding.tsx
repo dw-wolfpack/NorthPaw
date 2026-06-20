@@ -212,6 +212,12 @@ export default function OnboardingScreen() {
     setRequestError(null);
     setBusy(true);
     try {
+      const breedName = requestBreedName.trim();
+      const notes = requestNotes.trim();
+      const email = requestEmail.trim();
+      const appVersion = Constants.expoConfig?.version || '1.0.0';
+      const timestamp = Date.now();
+
       // 1. Store request locally in Document directory
       const file = new File(Paths.document, 'breed_requests.json');
       let requests: Array<{ breedName: string; notes: string; email: string; timestamp: number }> = [];
@@ -224,53 +230,53 @@ export default function OnboardingScreen() {
         }
       }
       requests.push({
-        breedName: requestBreedName.trim(),
-        notes: requestNotes.trim(),
-        email: requestEmail.trim(),
-        timestamp: Date.now()
+        breedName,
+        notes,
+        email,
+        timestamp,
       });
       file.write(JSON.stringify(requests));
 
-      // TODO: Submit to server backend API once available.
-
       // 2. Track Mixpanel event
-      const appVersion = Constants.expoConfig?.version || '1.0.0';
       trackEvent('breed_request_submitted', {
-        breed_name: requestBreedName.trim(),
-        email_provided: !!requestEmail.trim(),
-        notes_provided: !!requestNotes.trim(),
+        breed_name: breedName,
+        email_provided: !!email,
+        notes_provided: !!notes,
         app_version: appVersion,
       });
 
-      // 3. Dynamically compose email using mailto:
-      const body = `Hi! I'd like to request a new breed for NorthPaw.
-
-Breed Name: ${requestBreedName.trim()}
-Email (optional): ${requestEmail.trim() || 'Not provided'}
-Notes (optional): ${requestNotes.trim() || 'None'}
-
-Sent from NorthPaw.`;
-
-      const mailtoUrl = `mailto:cnfiegel@gmail.com?subject=${encodeURIComponent(
-        'NorthPaw Breed Request: ' + requestBreedName.trim()
-      )}&body=${encodeURIComponent(body)}`;
-
-      // Attempt to open mailto URL
-      try {
-        const canOpen = await Linking.canOpenURL(mailtoUrl);
-        if (canOpen) {
-          await Linking.openURL(mailtoUrl);
-        } else {
-          console.warn('[NorthPaw] Mail client not available.');
+      // 3. Submit to Google Sheets Web App if configured
+      const sheetsUrl = process.env.EXPO_PUBLIC_BREED_REQUEST_SHEETS_URL;
+      if (sheetsUrl) {
+        try {
+          const response = await fetch(sheetsUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              breedName,
+              notes,
+              email,
+              appVersion,
+            }),
+          });
+          const result = await response.json();
+          if (result.status !== 'success') {
+            console.warn('[NorthPaw] Google Sheets Web App responded with error:', result);
+          }
+        } catch (err) {
+          console.warn('[NorthPaw] Failed to post to Google Sheets Web App:', err);
+          throw new Error('Network error posting to Sheets');
         }
-      } catch (err) {
-        console.warn('[NorthPaw] Failed to open mail client:', err);
+      } else {
+        console.log('[NorthPaw] Breed request saved locally. Configure EXPO_PUBLIC_BREED_REQUEST_SHEETS_URL in environment for Sheets sync.');
       }
 
       setRequestSuccess(true);
     } catch (e) {
       console.error('[NorthPaw] Request breed submission error:', e);
-      setRequestError('Failed to save request. Please try again.');
+      setRequestError('Failed to send request. Please check connection and try again.');
     } finally {
       setBusy(false);
     }
