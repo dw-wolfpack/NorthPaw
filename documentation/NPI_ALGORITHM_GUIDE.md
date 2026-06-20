@@ -19,6 +19,7 @@ Located in [`roadTemp.ts`](file:///Users/fiegellansknowledge/experiment/NorthPaw
 *   **Surface Multipliers:**
     *   **Asphalt:** 1.0 (Baseline)
     *   **Concrete:** 0.72 (Higher albedo/reflectivity)
+    *   **Cobblestone:** 0.85 (Engineering estimate)
     *   **Sand:** 1.15 (Low conductivity, high surface heat)
     *   **Artificial Turf:** 1.38 (Rubber infill "heat trap")
 
