@@ -1,8 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useCallback } from 'react';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share } from 'react-native';
+import Constants from 'expo-constants';
+import { useCallback, useState } from 'react';
 import { trackEvent } from '@/lib/analytics';
 
 import { Text, View } from '@/components/Themed';
@@ -18,6 +20,7 @@ import { openExternalLink } from '@/lib/openExternalLink';
 import { getDogProfile, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
 import * as FileSystem from 'expo-file-system/legacy';
+import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,6 +32,8 @@ export default function SettingsScreen() {
   const { isPro, configured, expoGo, loading, error } = useSubscription();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Settings' });
@@ -105,6 +110,50 @@ export default function SettingsScreen() {
         <FontAwesome name="info-circle" size={16} color={palette.tint} />
       </Pressable>
 
+      <Text style={[styles.h1, { marginTop: 28 }]}>🐾 Help Improve NorthPaw</Text>
+      <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
+        NorthPaw is independently built for people who love exploring with their dogs. Every suggestion is personally read and helps shape future updates.
+      </Text>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8, backgroundColor: 'transparent' }}>
+        {[
+          { label: 'Suggest a Breed', type: 'breed_request', icon: 'dog' },
+          { label: 'Suggest a Surface', type: 'surface_request', icon: 'road-variant' },
+          { label: 'Request a Feature', type: 'feature_request', icon: 'lightbulb-outline' },
+          { label: 'Report a Bug', type: 'bug_report', icon: 'bug-outline' },
+        ].map((opt) => (
+          <Pressable
+            key={opt.label}
+            onPress={() => {
+              hapticTap();
+              setFeedbackInitialType(opt.type as FeedbackType);
+              setFeedbackModalOpen(true);
+            }}
+            style={({ pressed }) => [
+              styles.feedbackCardButton,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.92 : 1,
+              }
+            ]}
+          >
+            <MaterialCommunityIcons name={opt.icon as any} size={20} color={palette.tint} />
+            <Text style={{ color: palette.text, fontWeight: '700', fontSize: 14 }}>{opt.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={[styles.h1, { marginTop: 28 }]}>About NorthPaw</Text>
+      <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8 }]}>
+        <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+          Built with ❤️ for dogs and the people who love them.
+        </Text>
+        <Text style={{ color: palette.textSecondary, marginTop: 8, lineHeight: 20, fontSize: 14 }}>
+          NorthPaw started as a side project inspired by years working in a veterinary hospital and countless hours outdoors with my own dog. Thanks for being part of the journey.
+        </Text>
+      </View>
+
       {/* 
       <Text style={[styles.h1, { marginTop: 24 }]}>Subscription</Text>
       <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}>
@@ -148,8 +197,43 @@ export default function SettingsScreen() {
         hint={SUPPORT_URL}
         disabled={!SUPPORT_URL}
         palette={palette}
-        onPress={() => { hapticTap();  openExternalLink(SUPPORT_URL); }}
+        onPress={() => {
+          hapticTap();
+          trackEvent('support_contact_pressed', { method: 'settings_link' });
+          openExternalLink(SUPPORT_URL);
+        }}
       />
+
+      <Pressable
+        onPress={async () => {
+          hapticTap();
+          try {
+            await Share.share({
+              message: 'Check out NorthPaw, the outdoor thermal safety app for dogs! https://northpaw.app',
+            });
+            trackEvent('share_button_pressed', { context: 'settings' });
+          } catch (e) {
+            // ignore
+          }
+        }}
+        style={({ pressed }) => [
+          styles.linkCard,
+          {
+            borderColor: palette.border,
+            backgroundColor: palette.surface,
+            opacity: pressed ? 0.92 : 1,
+            marginBottom: 8,
+          },
+        ]}
+      >
+        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Share NorthPaw</Text>
+          <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+            Tell other dog owners about outdoor safety.
+          </Text>
+        </View>
+        <FontAwesome name="share-alt" size={16} color={palette.tint} />
+      </Pressable>
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Disclaimer</Text>
       <Text style={[styles.body, { color: palette.textSecondary }]}>
@@ -158,11 +242,89 @@ export default function SettingsScreen() {
       </Text>
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Privacy</Text>
-      <Text style={[styles.body, { color: palette.textSecondary }]}>
+      <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
         Favorites, checklist boxes, your dog&apos;s name and photo on Home, Pro outing logs (notes, place, photos,
         optional GPS), and open history stay on your device. Subscription status is verified through Apple and
         RevenueCat when configured. Opening Privacy Policy or Support may use an in-app browser or your mail app.
       </Text>
+
+      {__DEV__ ? (
+        <>
+          <Text style={[styles.h1, { marginTop: 28, color: palette.tint }]}>Developer Settings</Text>
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              Alert.alert(
+                'Reset Onboarding',
+                'Are you sure you want to reset all onboarding progress and profile data?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Reset',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await saveDogProfile({
+                          onboardingDone: false,
+                          dogName: '',
+                          dogPhotoUri: '',
+                          dogBreed: '',
+                          dogBreedMix: '',
+                          dogAgeGroup: '',
+                          dogOutingTypes: [],
+                          locationPermission: '',
+                          notificationsPermission: '',
+                          dogWeightLbs: null,
+                          dogCoatType: '',
+                          dogColor: '',
+                          dogSnoutProfile: 'standard',
+                          dogActivityBaseline: 'moderate',
+                          morningBriefTime: '7:00 AM',
+                          gearVault: {},
+                        });
+                        await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true });
+                        router.replace('/onboarding');
+                      } catch (e) {
+                        Alert.alert('Error', 'Failed to reset onboarding profile.');
+                      }
+                    },
+                  },
+                ]
+              );
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: '#B5443A',
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.92 : 1,
+              },
+            ]}>
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: '#B5443A', fontWeight: '800', fontSize: 16 }}>Reset Onboarding & Profile</Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Clear all database profile records and return to the onboarding flow.
+              </Text>
+            </View>
+            <FontAwesome name="refresh" size={16} color="#B5443A" />
+          </Pressable>
+        </>
+      ) : null}
+
+      <View style={styles.footerContainer}>
+        <Text style={[styles.footerText, { color: palette.textSecondary }]}>
+          🐾 Built by one developer. Shaped by dog owners.
+        </Text>
+        <Text style={[styles.footerText, { color: palette.textSecondary, marginTop: 4 }]}>
+          Version {Constants.expoConfig?.version || '1.0.0'}
+        </Text>
+      </View>
+
+      <FeedbackModal
+        visible={feedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
+        initialType={feedbackInitialType}
+      />
     </ScrollView>
   );
 }
@@ -226,5 +388,27 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     alignItems: 'center',
+  },
+  feedbackCardButton: {
+    flex: 1,
+    minWidth: '45%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 4,
+  },
+  footerContainer: {
+    marginTop: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  footerText: {
+    fontSize: 12,
+    textAlign: 'center',
+    opacity: 0.8,
   },
 });

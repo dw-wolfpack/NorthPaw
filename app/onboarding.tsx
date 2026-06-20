@@ -5,12 +5,17 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as Linking from 'expo-linking';
+import { File, Paths } from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -41,6 +46,7 @@ import { type HomeWeatherState } from '@/lib/weather/nwsWeather';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
 import { trackEvent, setUserProperties } from '@/lib/analytics';
+import { FeedbackModal } from '@/components/FeedbackModal';
 
 type SceneId =
   | 'welcome'
@@ -70,29 +76,72 @@ const SCENES: SceneId[] = [
 ];
 
 const BREEDS = [
-  'Labrador Retriever',
-  'French Bulldog',
-  'Golden Retriever',
-  'German Shepherd',
-  'Poodle',
-  'Bulldog',
-  'Rottweiler',
-  'Beagle',
-  'Dachshund',
-  'German Shorthaired Pointer',
-  'Pembroke Welsh Corgi',
-  'Australian Shepherd',
-  'Yorkshire Terrier',
-  'Cavalier King Charles Spaniel',
-  'Doberman Pinscher',
-  'Boxer',
-  'Siberian Husky',
-  'Great Dane',
-  'Bernese Mountain Dog',
-  'Shih Tzu',
+  'Mixed Breed / Rescue',
+  'Akita',
+  'Alaskan Malamute',
   'American Pit Bull Terrier',
   'American Staffordshire Terrier',
+  'Australian Cattle Dog',
+  'Australian Shepherd',
+  'Basset Hound',
+  'Beagle',
+  'Belgian Malinois',
+  'Bernedoodle',
+  'Bernese Mountain Dog',
+  'Bichon Frise',
+  'Border Collie',
+  'Boston Terrier',
+  'Boxer',
+  'Brittany',
+  'Bull Terrier',
+  'Bulldog',
+  'Cane Corso',
+  'Cavalier King Charles Spaniel',
+  'Chihuahua',
+  'Cocker Spaniel',
+  'Cockapoo',
+  'Collie',
+  'Dachshund',
+  'Doberman Pinscher',
+  'English Springer Spaniel',
+  'Flat-Coated Retriever',
+  'French Bulldog',
+  'German Shepherd',
+  'German Shorthaired Pointer',
+  'Golden Retriever',
+  'Goldendoodle',
+  'Great Dane',
+  'Greyhound',
+  'Havanese',
+  'Italian Greyhound',
+  'Jack Russell Terrier',
+  'Labradoodle',
+  'Labrador Retriever',
+  'Maltese',
+  'Mastiff',
+  'Miniature American Shepherd',
+  'Miniature Schnauzer',
+  'Newfoundland',
+  'Nova Scotia Duck Tolling Retriever',
+  'Papillon',
+  'Pembroke Welsh Corgi',
+  'Pomeranian',
+  'Poodle',
+  'Pug',
+  'Rhodesian Ridgeback',
+  'Rottweiler',
+  'Saint Bernard',
+  'Samoyed',
+  'Shetland Sheepdog',
+  'Shih Tzu',
+  'Shiba Inu',
+  'Siberian Husky',
   'Staffordshire Bull Terrier',
+  'Vizsla',
+  'Weimaraner',
+  'West Highland White Terrier',
+  'Whippet',
+  'Yorkshire Terrier',
 ];
 
 const AGE_OPTIONS: Array<{ id: string; title: string; subtitle: string }> = [
@@ -192,6 +241,8 @@ export default function OnboardingScreen() {
   const [activationLineIdx, setActivationLineIdx] = useState(0);
   const [previewInteracted, setPreviewInteracted] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const [requestBreedModalOpen, setRequestBreedModalOpen] = useState(false);
 
   const spin = useRef(new Animated.Value(0)).current;
   const displayPhoto = pickedUri;
@@ -297,9 +348,10 @@ export default function OnboardingScreen() {
   const glowOpacity = useDerivedValue(() => 0.22 + 0.28 * pulse.value, [pulse]);
 
   const filteredBreeds = useMemo(() => {
+    const base = BREEDS.filter((b) => b !== 'Mixed Breed / Rescue');
     const q = breedQuery.trim().toLowerCase();
-    if (!q) return BREEDS;
-    return BREEDS.filter((b) => b.toLowerCase().includes(q));
+    if (!q) return base;
+    return base.filter((b) => b.toLowerCase().includes(q));
   }, [breedQuery]);
 
   const legacyStep = useMemo(() => {
@@ -464,6 +516,12 @@ export default function OnboardingScreen() {
         notificationsPermission: finalNotif,
         locationPermission,
       });
+
+      try {
+        await AsyncStorage.setItem('@northpaw/onboarding_completed_at', Date.now().toString());
+      } catch (err) {
+        console.warn('[Onboarding] Failed to save completed timestamp to AsyncStorage', err);
+      }
 
       trackEvent('dog_created', {
         dogBreed: resolvedBreed,
@@ -641,7 +699,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            We customize temperature guides using breed context and airway profile.
+            Pick your dog’s breed for their profile. You’ll customize snout, coat, and activity next.
           </Text>
           <TextInput
             value={breedQuery}
@@ -668,7 +726,7 @@ export default function OnboardingScreen() {
               { borderColor: palette.border, backgroundColor: isMixedBreed ? palette.surface : 'transparent', opacity: pressed ? 0.9 : 1 },
             , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             <MaterialCommunityIcons name={isMixedBreed ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={20} color={palette.tint} />
-            <Text style={[styles.mixedLabel, { color: palette.text }]}>Mixed breed</Text>
+            <Text style={[styles.mixedLabel, { color: palette.text }]}>Mixed Breed / Rescue</Text>
           </Pressable>
           {isMixedBreed ? (
             <TextInput
@@ -703,15 +761,25 @@ export default function OnboardingScreen() {
                     {
                       borderColor: selected ? palette.tint : palette.border,
                       backgroundColor: selected ? palette.selectedBg : palette.surface,
-                      opacity: pressed ? 0.9 : 1,
+                      opacity: pressed ? 0.8 : 1,
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
                     },
-                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                  ]}>
                   <Text style={styles.breedIcon}>🐾</Text>
                   <Text style={[styles.breedText, { color: palette.text }]}>{item}</Text>
                 </Pressable>
               );
             })}
           </ScrollView>
+          <Pressable
+            onPress={() => { hapticTap(); setRequestBreedModalOpen(true); }}
+            style={{ marginBottom: 16, alignSelf: 'flex-start' }}
+            accessibilityRole="button"
+            accessibilityLabel="Request a missing breed">
+            <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 14 }}>
+              Can&apos;t find your breed? Request a breed →
+            </Text>
+          </Pressable>
           <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>How is {dogName}&apos;s snout?</Text>
           <View style={styles.cardList}>
             {SNOUT_OPTIONS.map((opt) => {
@@ -740,7 +808,11 @@ export default function OnboardingScreen() {
           <AnimatedReanimated.Text
             entering={FadeInDown.duration(300)}
             style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
-            Did you know? Flat-faced dogs like {dogName} can cool less efficiently through panting.
+            {dogSnoutProfile === 'flat'
+              ? `Did you know? Flat-faced dogs like ${dogName} can cool less efficiently through panting.`
+              : dogSnoutProfile === 'long'
+              ? `Did you know? Long-snouted dogs like ${dogName} are generally more efficient at panting to cool down.`
+              : `Did you know? Snout length directly affects how efficiently a dog cools down through panting.`}
           </AnimatedReanimated.Text>
           <Pressable
             disabled={!canAdvance}
@@ -839,7 +911,11 @@ export default function OnboardingScreen() {
           <AnimatedReanimated.Text
             entering={FadeInDown.duration(300)}
             style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
-            Did you know? Darker coats like {dogName}&apos;s can absorb more heat in direct sun.
+            {dogColor === 'Dark'
+              ? `Did you know? Darker coats like ${dogName}'s can absorb more heat in direct sun.`
+              : dogColor === 'Light'
+              ? `Did you know? Lighter coats like ${dogName}'s reflect more solar heat, but their skin can still be sensitive.`
+              : `Did you know? A dog's fur color directly affects how much solar heat they absorb in direct sun.`}
           </AnimatedReanimated.Text>
 
           <View style={[styles.rowButtons, { marginTop: 10 }]}>
@@ -1221,6 +1297,11 @@ export default function OnboardingScreen() {
         </ScrollView>
         </AnimatedReanimated.View>
       </KeyboardAvoidingView>
+      <FeedbackModal
+        visible={requestBreedModalOpen}
+        onClose={() => setRequestBreedModalOpen(false)}
+        initialType="breed_request"
+      />
     </SafeAreaView>
   );
 }
@@ -1335,4 +1416,21 @@ const styles = StyleSheet.create({
   notificationPreviewBody: { fontSize: 13, lineHeight: 19, marginTop: 6 },
   cta: { paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 8 },
   ctaText: { color: '#fff', fontWeight: '800', fontSize: 17 },
+  modalRoot: { flex: 1 },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
+  modalSubtitle: { fontSize: 15, lineHeight: 22 },
+  modalScroll: { padding: 20 },
+  modalSuccessContainer: { alignItems: 'stretch', paddingVertical: 40 },
+  modalSuccessText: { fontSize: 16, lineHeight: 24, textAlign: 'center', fontWeight: '600' },
+  inputLabel: { fontSize: 14, fontWeight: '700' },
+  helperText: { fontSize: 12, marginTop: 4 },
+  errorLabel: { fontSize: 13, fontWeight: '700' },
 });

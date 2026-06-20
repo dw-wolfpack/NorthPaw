@@ -20,9 +20,10 @@ export function isInsideUS(lat: number, lon: number): boolean {
 export async function fetchWeatherForDeviceLocation(): Promise<
   Exclude<HomeWeatherState, { status: 'loading' }>
 > {
+  const startTime = Date.now();
   const perm = await Location.requestForegroundPermissionsAsync();
   if (perm.status !== 'granted') {
-    return { status: 'permission_denied' };
+    return { status: 'permission_denied', isCacheHit: false, loadTimeMs: Date.now() - startTime };
   }
 
   let pos: Location.LocationObject | null = null;
@@ -39,21 +40,30 @@ export async function fetchWeatherForDeviceLocation(): Promise<
         accuracy: Location.Accuracy.Low,
       });
     } catch {
-      return { status: 'unavailable', message: 'Could not read your location.' };
+      return { status: 'unavailable', message: 'Could not read your location.', isCacheHit: false, loadTimeMs: Date.now() - startTime };
     }
   }
 
   const { latitude, longitude } = pos.coords;
 
+  let result: Exclude<HomeWeatherState, { status: 'loading' }>;
+
   // 1. If in US, try NWS (Free)
   if (isInsideUS(latitude, longitude)) {
     const nwsResult = await fetchUsWeatherForDeviceLocation();
     if (nwsResult.status === 'ok') {
-      return nwsResult;
+      result = nwsResult;
+    } else {
+      result = await fetchTomorrowWeatherAtCoordinates(latitude, longitude);
     }
-    // If NWS is unavailable (e.g. server down or grid gap), fall back to Tomorrow.io
+  } else {
+    result = await fetchTomorrowWeatherAtCoordinates(latitude, longitude);
   }
 
-  // 2. Global or US Fallback -> Tomorrow.io
-  return fetchTomorrowWeatherAtCoordinates(latitude, longitude);
+  const totalDuration = Date.now() - startTime;
+  return {
+    ...result,
+    isCacheHit: result.isCacheHit ?? false,
+    loadTimeMs: result.loadTimeMs ?? totalDuration,
+  };
 }

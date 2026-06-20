@@ -28,6 +28,7 @@ import { BlurMask, Canvas, Circle, Path, Skia, RoundedRect, Rect, Group, SweepGr
 
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
+import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
 import { useSubscription } from '@/context/SubscriptionContext';
 import { canAccessPack, getChecklist, getLibrary } from '@/lib/content';
 import { IMAGES } from '@/lib/contentVisuals';
@@ -36,7 +37,9 @@ import { getDogProfile, toggleGearVaultItem, type DogProfile } from '@/lib/profi
 import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
 import type { ReadinessPresentation } from '@/lib/readiness/types';
-import { trackEvent } from '@/lib/analytics';
+import { trackEvent, setUserProperties, incrementUserProperties } from '@/lib/analytics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import {
   loadReadinessDaySignals,
   localCalendarDateString,
@@ -533,6 +536,8 @@ export default function HomeScreen() {
   const [showSecondaryHazard, setShowSecondaryHazard] = useState(false);
   const [gearVaultBusy, setGearVaultBusy] = useState(false);
   const [dogProfile, setDogProfile] = useState<DogProfile | null>(null);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [readinessPresentation, setReadinessPresentation] = useState<ReadinessPresentation | null>(null);
 
   const [showWalkthrough, setShowWalkthrough] = useState(false);
@@ -652,28 +657,59 @@ export default function HomeScreen() {
     useCallback(() => {
       let gone = false;
       (async () => {
-        const profile = await getDogProfile();
+        const [profile, result] = await Promise.all([
+          getDogProfile(),
+          fetchWeatherForDeviceLocation(),
+        ]);
         if (!gone) {
           setDogProfile(profile);
-        }
-      })();
-      return () => {
-        gone = true;
-      };
-    }, [])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      let gone = false;
-      (async () => {
-        const result = await fetchWeatherForDeviceLocation();
-        if (!gone) {
           setWeather(result);
           if (result.status === 'ok') {
+            trackEvent('weather_loaded', {
+              cache_hit: result.isCacheHit ?? false,
+              load_time_ms: result.loadTimeMs ?? 0,
+            });
+
+            // Calculate Time to Value (TTV)
+            let isFirst = false;
+            let timeToFirstMs: number | null = null;
+            try {
+              const alreadyTracked = await AsyncStorage.getItem('@northpaw/first_readiness_tracked');
+              if (!alreadyTracked) {
+                isFirst = true;
+                await AsyncStorage.setItem('@northpaw/first_readiness_tracked', 'true');
+                const completedAtStr = await AsyncStorage.getItem('@northpaw/onboarding_completed_at');
+                if (completedAtStr) {
+                  const completedAt = parseInt(completedAtStr, 10);
+                  if (completedAt) {
+                    timeToFirstMs = Date.now() - completedAt;
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn('[Home] Failed to check AsyncStorage readiness flags', err);
+            }
+
+            const appVersion = Constants.expoConfig?.version || '1.0.0';
+
             trackEvent('readiness_viewed', {
               tempF: result.tempF,
               forecast: result.forecastShort,
+              is_first_readiness_view: isFirst,
+              time_to_first_readiness_ms: timeToFirstMs,
+              weather_load_time_ms: result.loadTimeMs ?? 0,
+              weather_cache_hit: result.isCacheHit ?? false,
+              surface: selectedSurface,
+              dog_breed: profile.dogBreed || 'Unknown',
+              app_version: appVersion,
+            });
+
+            setUserProperties({
+              last_safety_check_timestamp: Date.now(),
+            });
+
+            incrementUserProperties({
+              total_safety_checks: 1,
             });
           }
         }
@@ -681,7 +717,7 @@ export default function HomeScreen() {
       return () => {
         gone = true;
       };
-    }, [])
+    }, [selectedSurface])
   );
 
   const openSuggestion = useCallback(
@@ -1220,7 +1256,7 @@ export default function HomeScreen() {
 
   const cycleSurface = useCallback(() => {
     hapticTap();
-    const surfaces: SurfaceType[] = ['asphalt', 'concrete', 'sand', 'turf'];
+    const surfaces: SurfaceType[] = ['asphalt', 'concrete', 'cobblestone', 'sand', 'turf'];
     setSelectedSurface((prev) => {
       const idx = surfaces.indexOf(prev);
       const next = surfaces[(idx + 1) % surfaces.length];
@@ -2198,7 +2234,7 @@ export default function HomeScreen() {
                 ) : null}
 
                 <View style={styles.surfaceComparisonGrid}>
-                  {(['asphalt', 'concrete', 'sand', 'turf'] as SurfaceType[]).map((st) => {
+                  {(['asphalt', 'concrete', 'cobblestone', 'sand', 'turf'] as SurfaceType[]).map((st) => {
                     // We need the sample for the selected hour to calculate others
                     const sample = weatherOk?.hourlySamples.find(s => {
                        const h = new Date(s.timeIso).getHours();
@@ -2227,6 +2263,19 @@ export default function HomeScreen() {
                     );
                   })}
                 </View>
+                <Pressable
+                  onPress={() => {
+                    hapticTap();
+                    setFeedbackInitialType('surface_request');
+                    setFeedbackModalOpen(true);
+                  }}
+                  style={{ alignSelf: 'flex-start', marginTop: 4, marginBottom: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Suggest a missing surface">
+                  <Text style={{ color: palette.tint, fontWeight: '700', fontSize: 13 }}>
+                    Missing a surface? Suggest one →
+                  </Text>
+                </Pressable>
                 <View style={[styles.roadDetailSpinner, { borderColor: palette.border }]}>
                   <Pressable
                     onPress={() => { hapticTap();  setRoadDetailHour((selectedRoadDetailHour + 23) % 24); }}
@@ -2424,6 +2473,11 @@ export default function HomeScreen() {
           </View>
         </Modal>
       )}
+      <FeedbackModal
+        visible={feedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
+        initialType={feedbackInitialType}
+      />
     </View>
   );
 }

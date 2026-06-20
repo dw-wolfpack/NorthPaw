@@ -28,8 +28,8 @@ export type HazardTag = 'smoke' | 'haze' | 'pollen' | 'tick';
 
 export type HomeWeatherState =
   | { status: 'loading' }
-  | { status: 'permission_denied' }
-  | { status: 'unavailable'; message: string }
+  | { status: 'permission_denied'; isCacheHit?: boolean; loadTimeMs?: number }
+  | { status: 'unavailable'; message: string; isCacheHit?: boolean; loadTimeMs?: number }
   | {
       status: 'ok';
       latitude: number;
@@ -70,6 +70,8 @@ export type HomeWeatherState =
       sunsetTimeIso: string | null;
       mockAqi: number;
       mockRecentRain: boolean;
+      isCacheHit?: boolean;
+      loadTimeMs?: number;
     };
 
 type NwsJson = Record<string, unknown>;
@@ -316,14 +318,19 @@ function setCache(result: Exclude<HomeWeatherState, { status: 'loading' }>) {
 export async function fetchUsWeatherForDeviceLocation(): Promise<
   Exclude<HomeWeatherState, { status: 'loading' }>
 > {
+  const startTime = Date.now();
   const now = Date.now();
   if (cache && now - cache.at < CACHE_MS) {
-    return cache.result;
+    return {
+      ...cache.result,
+      isCacheHit: true,
+      loadTimeMs: Date.now() - startTime,
+    };
   }
 
   const perm = await Location.requestForegroundPermissionsAsync();
   if (perm.status !== 'granted') {
-    return { status: 'permission_denied' };
+    return { status: 'permission_denied', isCacheHit: false, loadTimeMs: Date.now() - startTime };
   }
 
   let pos: Location.LocationObject | null = null;
@@ -340,7 +347,7 @@ export async function fetchUsWeatherForDeviceLocation(): Promise<
         accuracy: Location.Accuracy.Low,
       });
     } catch {
-      return { status: 'unavailable', message: 'Could not read your location.' };
+      return { status: 'unavailable', message: 'Could not read your location.', isCacheHit: false, loadTimeMs: Date.now() - startTime };
     }
   }
 
@@ -432,6 +439,7 @@ async function fetchUsWeatherAtCoordinates(
   latitude: number,
   longitude: number
 ): Promise<Exclude<HomeWeatherState, { status: 'loading' }>> {
+  const startTime = Date.now();
   const latStr = latitude.toFixed(4);
   const lonStr = longitude.toFixed(4);
 
@@ -440,11 +448,11 @@ async function fetchUsWeatherAtCoordinates(
     pointData = await nwsFetchJson(`${NWS_ORIGIN}/points/${latStr},${lonStr}`);
   } catch (e) {
     if (e instanceof Error && e.message === 'nws_not_found') {
-      const r: HomeWeatherState = { status: 'unavailable', message: US_ONLY_MESSAGE };
+      const r: HomeWeatherState = { status: 'unavailable', message: US_ONLY_MESSAGE, isCacheHit: false, loadTimeMs: Date.now() - startTime };
       setCache(r);
       return r;
     }
-    return { status: 'unavailable', message: 'Weather service unavailable. Try again later.' };
+    return { status: 'unavailable', message: 'Weather service unavailable. Try again later.', isCacheHit: false, loadTimeMs: Date.now() - startTime };
   }
 
   const props = pointData.properties as NwsJson | undefined;
@@ -610,6 +618,8 @@ async function fetchUsWeatherAtCoordinates(
     sunsetTimeIso: getApproximateSunset(latitude, longitude, new Date()),
     mockAqi: 45, // TODO: AI AGENT - Replace with real AQI API
     mockRecentRain: false, // TODO: AI AGENT - Replace with real historical precipitation
+    isCacheHit: false,
+    loadTimeMs: Date.now() - startTime,
   };
   setCache(ok);
   return ok;
