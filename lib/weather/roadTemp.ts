@@ -106,7 +106,7 @@ export function estimateRoadTempF(
   // Artificial Turf: ~35% more heating due to rubber infill and poor dissipation (1.35)
   const surfaceMultiplier = 
     surfaceType === 'concrete' ? 0.72 :
-    surfaceType === 'cobblestone' ? 0.85 :
+    surfaceType === 'cobblestone' ? 0.85 : // Engineering estimate
     surfaceType === 'sand' ? 1.15 :
     surfaceType === 'turf' ? 1.38 : 1.0;
 
