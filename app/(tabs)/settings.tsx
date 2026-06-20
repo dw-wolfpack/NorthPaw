@@ -3,6 +3,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import Constants from 'expo-constants';
 import { useCallback, useState } from 'react';
 import { trackEvent } from '@/lib/analytics';
 
@@ -109,9 +110,9 @@ export default function SettingsScreen() {
         <FontAwesome name="info-circle" size={16} color={palette.tint} />
       </Pressable>
 
-      <Text style={[styles.h1, { marginTop: 28 }]}>Help improve NorthPaw</Text>
+      <Text style={[styles.h1, { marginTop: 28 }]}>🐾 Help Improve NorthPaw</Text>
       <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
-        Share your thoughts or suggest content directly to the developer.
+        NorthPaw is independently built for people who love exploring with their dogs. Every suggestion is personally read and helps shape future updates.
       </Text>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8, backgroundColor: 'transparent' }}>
@@ -141,6 +142,16 @@ export default function SettingsScreen() {
             <Text style={{ color: palette.text, fontWeight: '700', fontSize: 14 }}>{opt.label}</Text>
           </Pressable>
         ))}
+      </View>
+
+      <Text style={[styles.h1, { marginTop: 28 }]}>About NorthPaw</Text>
+      <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8 }]}>
+        <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+          Built with ❤️ for dogs and the people who love them.
+        </Text>
+        <Text style={{ color: palette.textSecondary, marginTop: 8, lineHeight: 20, fontSize: 14 }}>
+          NorthPaw started as a side project inspired by years working in a veterinary hospital and countless hours outdoors with my own dog. Thanks for being part of the journey.
+        </Text>
       </View>
 
       {/* 
@@ -264,6 +275,16 @@ export default function SettingsScreen() {
           </Pressable>
         </>
       ) : null}
+
+      <View style={styles.footerContainer}>
+        <Text style={[styles.footerText, { color: palette.textSecondary }]}>
+          🐾 Built by one developer. Shaped by dog owners.
+        </Text>
+        <Text style={[styles.footerText, { color: palette.textSecondary, marginTop: 4 }]}>
+          Version {Constants.expoConfig?.version || '1.0.0'}
+        </Text>
+      </View>
+
       <FeedbackModal
         visible={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
@@ -343,5 +364,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     marginBottom: 4,
+  },
+  footerContainer: {
+    marginTop: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  footerText: {
+    fontSize: 12,
+    textAlign: 'center',
+    opacity: 0.8,
   },
 });

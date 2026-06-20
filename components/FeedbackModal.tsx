@@ -250,8 +250,11 @@ export function FeedbackModal({ visible, onClose, initialType = 'general_feedbac
                 color={palette.tint}
                 style={{ alignSelf: 'center', marginBottom: 16 }}
               />
-              <Text style={[styles.modalSuccessText, { color: palette.text }]}>
-                Thanks! Your feedback has been sent. Every submission is personally reviewed and helps make NorthPaw better.
+              <Text style={[styles.modalSuccessTitle, { color: palette.text }]}>
+                Thanks! 🐶
+              </Text>
+              <Text style={[styles.modalSuccessBody, { color: palette.textSecondary }]}>
+                Every request is personally reviewed. Thanks for helping make NorthPaw a little better for dogs everywhere.
               </Text>
               <Pressable
                 onPress={onClose}
@@ -265,6 +268,30 @@ export function FeedbackModal({ visible, onClose, initialType = 'general_feedbac
             </View>
           ) : (
             <View>
+              {/* Brand Message Banner */}
+              <View
+                style={[
+                  styles.bannerContainer,
+                  {
+                    backgroundColor: palette.selectedBg,
+                    borderColor: palette.border,
+                  },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="heart-outline"
+                  size={20}
+                  color={palette.tint}
+                  style={{ marginRight: 10, marginTop: 2 }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.bannerTitle, { color: palette.text }]}>Help Shape NorthPaw</Text>
+                  <Text style={[styles.bannerBody, { color: palette.textSecondary }]}>
+                    NorthPaw is built by one developer and improved through feedback from dog owners like you.
+                  </Text>
+                </View>
+              </View>
+
               {/* Type Switcher Chips */}
               <Text style={[styles.inputLabel, { color: palette.text, marginBottom: 8 }]}>Feedback Type</Text>
               <ScrollView
@@ -427,6 +454,33 @@ const styles = StyleSheet.create({
   modalScroll: { padding: 20 },
   modalSuccessContainer: { alignItems: 'stretch', paddingVertical: 40 },
   modalSuccessText: { fontSize: 16, lineHeight: 24, textAlign: 'center', fontWeight: '600' },
+  modalSuccessTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  modalSuccessBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  bannerContainer: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+  },
+  bannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  bannerBody: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   inputLabel: { fontSize: 14, fontWeight: '700' },
   input: {
     borderWidth: 1,
