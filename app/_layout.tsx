@@ -8,6 +8,9 @@ import 'react-native-reanimated';
 import { AppState, AppStateStatus, Text, TextInput } from 'react-native';
 import * as Linking from 'expo-linking';
 import { getHasTrackedActivity, resetTrackedActivity, setUserProperties } from '@/lib/analytics';
+import { getDogProfile, saveDogProfile } from '@/lib/profile';
+import { localCalendarDateString } from '@/lib/readiness/persistence';
+import { registerBackgroundFetchAsync } from '@/lib/weather/backgroundFetch';
 
 // Disable Dynamic Type font scaling globally to preserve precise UI layouts on small/zoomed screens
 try {
@@ -101,6 +104,29 @@ function RootLayoutNav() {
 
   useEffect(() => {
     trackEvent('app_opened');
+
+    // Register background fetch for weather updates
+    registerBackgroundFetchAsync();
+
+    // Track unique readiness days login metric
+    (async () => {
+      try {
+        const profile = await getDogProfile();
+        const todayStr = localCalendarDateString();
+        if (todayStr !== profile.lastReadinessDay) {
+          const nextCount = profile.uniqueReadinessDays + 1;
+          await saveDogProfile({
+            ...profile,
+            uniqueReadinessDays: nextCount,
+            lastReadinessDay: todayStr,
+          });
+          // Update Mixpanel User Properties
+          await setUserProperties({ unique_readiness_days: nextCount });
+        }
+      } catch (err) {
+        console.warn('[NorthPaw] Failed to update unique readiness days', err);
+      }
+    })();
 
     // 1. UTM Deep Link Parsing
     const handleDeepLink = (event: { url: string }) => {
