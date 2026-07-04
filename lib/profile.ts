@@ -1,6 +1,6 @@
 import { getDb } from '@/lib/database';
 
-import { finalizeDogAvatar } from '@/lib/dogProfilePhoto';
+import { finalizeDogAvatar, resolveDogPhotoUri } from '@/lib/dogProfilePhoto';
 
 export type DogProfile = {
   onboardingDone: boolean;
@@ -19,6 +19,8 @@ export type DogProfile = {
   dogActivityBaseline: 'low' | 'moderate' | 'high';
   morningBriefTime: string;
   gearVault: Record<string, string[]>;
+  uniqueReadinessDays: number;
+  lastReadinessDay: string;
 };
 
 export async function getDogProfile(): Promise<DogProfile> {
@@ -40,7 +42,9 @@ export async function getDogProfile(): Promise<DogProfile> {
     dog_activity_baseline: string;
     morning_brief_time: string;
     gear_vault_json: string;
-  }>(`SELECT onboarding_done, dog_name, dog_photo_uri, dog_breed, dog_breed_mix, dog_age_group, dog_outing_types_json, location_permission, notifications_permission, dog_weight_lbs, dog_coat_type, dog_color, dog_snout_profile, dog_activity_baseline, morning_brief_time, gear_vault_json FROM app_profile WHERE id = 1`);
+    unique_readiness_days: number;
+    last_readiness_day: string;
+  }>(`SELECT onboarding_done, dog_name, dog_photo_uri, dog_breed, dog_breed_mix, dog_age_group, dog_outing_types_json, location_permission, notifications_permission, dog_weight_lbs, dog_coat_type, dog_color, dog_snout_profile, dog_activity_baseline, morning_brief_time, gear_vault_json, unique_readiness_days, last_readiness_day FROM app_profile WHERE id = 1`);
   if (!row) {
     return {
       onboardingDone: false,
@@ -59,6 +63,8 @@ export async function getDogProfile(): Promise<DogProfile> {
       dogActivityBaseline: 'moderate',
       morningBriefTime: '7:00 AM',
       gearVault: {},
+      uniqueReadinessDays: 0,
+      lastReadinessDay: '',
     };
   }
   let outingTypes: string[] = [];
@@ -86,7 +92,7 @@ export async function getDogProfile(): Promise<DogProfile> {
   return {
     onboardingDone: row.onboarding_done === 1,
     dogName: row.dog_name,
-    dogPhotoUri: row.dog_photo_uri,
+    dogPhotoUri: resolveDogPhotoUri(row.dog_photo_uri),
     dogBreed: row.dog_breed,
     dogBreedMix: row.dog_breed_mix,
     dogAgeGroup: row.dog_age_group,
@@ -106,6 +112,8 @@ export async function getDogProfile(): Promise<DogProfile> {
         : 'moderate',
     morningBriefTime: row.morning_brief_time || '7:00 AM',
     gearVault,
+    uniqueReadinessDays: row.unique_readiness_days ?? 0,
+    lastReadinessDay: row.last_readiness_day ?? '',
   };
 }
 
@@ -126,10 +134,12 @@ export async function saveDogProfile(input: {
   dogActivityBaseline?: 'low' | 'moderate' | 'high';
   morningBriefTime?: string;
   gearVault?: Record<string, string[]>;
+  uniqueReadinessDays?: number;
+  lastReadinessDay?: string;
 }): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    `INSERT INTO app_profile (id, onboarding_done, dog_name, dog_photo_uri, dog_breed, dog_breed_mix, dog_age_group, dog_outing_types_json, location_permission, notifications_permission, dog_weight_lbs, dog_coat_type, dog_color, dog_snout_profile, dog_activity_baseline, morning_brief_time, gear_vault_json) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO app_profile (id, onboarding_done, dog_name, dog_photo_uri, dog_breed, dog_breed_mix, dog_age_group, dog_outing_types_json, location_permission, notifications_permission, dog_weight_lbs, dog_coat_type, dog_color, dog_snout_profile, dog_activity_baseline, morning_brief_time, gear_vault_json, unique_readiness_days, last_readiness_day) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        onboarding_done = excluded.onboarding_done,
        dog_name = excluded.dog_name,
@@ -144,9 +154,11 @@ export async function saveDogProfile(input: {
        dog_coat_type = excluded.dog_coat_type,
        dog_color = excluded.dog_color,
        dog_snout_profile = excluded.dog_snout_profile,
-      dog_activity_baseline = excluded.dog_activity_baseline,
-      morning_brief_time = excluded.morning_brief_time,
-      gear_vault_json = excluded.gear_vault_json`,
+       dog_activity_baseline = excluded.dog_activity_baseline,
+       morning_brief_time = excluded.morning_brief_time,
+       gear_vault_json = excluded.gear_vault_json,
+       unique_readiness_days = excluded.unique_readiness_days,
+       last_readiness_day = excluded.last_readiness_day`,
     [
       input.onboardingDone ? 1 : 0,
       input.dogName.trim(),
@@ -164,6 +176,8 @@ export async function saveDogProfile(input: {
       input.dogActivityBaseline ?? 'moderate',
       (input.morningBriefTime ?? '7:00 AM').trim(),
       JSON.stringify(input.gearVault ?? {}),
+      input.uniqueReadinessDays ?? 0,
+      input.lastReadinessDay ?? '',
     ]
   );
 }

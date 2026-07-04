@@ -75,7 +75,7 @@ const SCENES: SceneId[] = [
   'commitment',
 ];
 
-const BREEDS = [
+export const BREEDS = [
   'Mixed Breed / Rescue',
   'Akita',
   'Alaskan Malamute',
@@ -111,6 +111,7 @@ const BREEDS = [
   'Golden Retriever',
   'Goldendoodle',
   'Great Dane',
+  'Greater Swiss Mountain Dog',
   'Greyhound',
   'Havanese',
   'Italian Greyhound',
@@ -118,8 +119,10 @@ const BREEDS = [
   'Labradoodle',
   'Labrador Retriever',
   'Maltese',
+  'Maltipoo',
   'Mastiff',
   'Miniature American Shepherd',
+  'Miniature Poodle',
   'Miniature Schnauzer',
   'Newfoundland',
   'Nova Scotia Duck Tolling Retriever',
@@ -140,6 +143,7 @@ const BREEDS = [
   'Vizsla',
   'Weimaraner',
   'West Highland White Terrier',
+  'Wheaten',
   'Whippet',
   'Yorkshire Terrier',
 ];
@@ -243,6 +247,7 @@ export default function OnboardingScreen() {
   const [busy, setBusy] = useState(false);
 
   const [requestBreedModalOpen, setRequestBreedModalOpen] = useState(false);
+  const [disclaimerAgreed, setDisclaimerAgreed] = useState(false);
 
   const spin = useRef(new Animated.Value(0)).current;
   const displayPhoto = pickedUri;
@@ -445,6 +450,11 @@ export default function OnboardingScreen() {
     setSceneIdx((s) => s + 1);
   };
 
+  const advanceFromWelcome = () => {
+    trackEvent('disclaimer_accepted', { is_upgrade_flow: false });
+    advance();
+  };
+
   const goBack = () => {
     if (sceneIdx <= 0 || busy) return;
     setSceneIdx((s) => s - 1);
@@ -519,8 +529,9 @@ export default function OnboardingScreen() {
 
       try {
         await AsyncStorage.setItem('@northpaw/onboarding_completed_at', Date.now().toString());
+        await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', 'v4.3');
       } catch (err) {
-        console.warn('[Onboarding] Failed to save completed timestamp to AsyncStorage', err);
+        console.warn('[Onboarding] Failed to save completed timestamp/disclaimer to AsyncStorage', err);
       }
 
       trackEvent('dog_created', {
@@ -609,7 +620,8 @@ export default function OnboardingScreen() {
             style={({ pressed }) => [
               styles.cta,
               { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
             <Text style={styles.ctaText}>Let&apos;s get started</Text>
           </Pressable>
         </AnimatedReanimated.View>
@@ -1197,15 +1209,41 @@ export default function OnboardingScreen() {
       return (
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>Ready to keep {dogName} safe?</Text>
-          <Text style={[styles.body, { color: palette.textSecondary }]}>
+          <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
             We will use this profile to create personalized safety checklists and safe walking times.
           </Text>
+
+          <View style={{ borderColor: palette.border, backgroundColor: palette.surface, padding: 12, borderRadius: 12, marginBottom: 16, borderWidth: 1 }}>
+            <Text style={{ color: palette.textSecondary, fontSize: 11, lineHeight: 16 }}>
+              <Text style={{ fontWeight: '700' }}>Disclaimer: </Text>
+              NorthPaw is for general outdoor education. It is not veterinary, legal, or emergency medical advice. Always perform a physical Hand Test on pavement before walking and consult professionals for health/safety concerns.
+            </Text>
+          </View>
+
           <Pressable
-            disabled={busy}
+            onPress={() => { hapticTap(); setDisclaimerAgreed(!disclaimerAgreed); }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: disclaimerAgreed }}
+            accessibilityLabel="I agree to the Terms of Service & Liability Disclaimer"
+          >
+            <MaterialCommunityIcons
+              name={disclaimerAgreed ? "checkbox-marked" : "checkbox-blank-outline"}
+              size={20}
+              color={disclaimerAgreed ? palette.tint : palette.textSecondary}
+            />
+            <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', flex: 1 }}>
+              I agree to the Terms of Service & Liability Disclaimer
+            </Text>
+          </Pressable>
+
+          <Pressable
+            disabled={!disclaimerAgreed || busy}
             onPress={async () => {
+              if (!disclaimerAgreed || busy) return;
               const url = undefined;
-              if (busy) return;
               setBusy(true);
+              trackEvent('disclaimer_accepted', { is_upgrade_flow: false });
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
               headerFade.value = withTiming(0, { duration: 180 });
               screenFade.value = withTiming(0, { duration: 320 });
@@ -1214,18 +1252,25 @@ export default function OnboardingScreen() {
             }}
             style={({ pressed }) => [
               styles.cta,
-              { backgroundColor: busy ? palette.border : palette.tint, opacity: pressed && !busy ? 0.9 : 1 },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>I&apos;m ready to go</Text>}
+              { 
+                backgroundColor: disclaimerAgreed && !busy ? palette.tint : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'),
+                opacity: pressed && disclaimerAgreed && !busy ? 0.9 : 1 
+              },
+              { transform: [{ scale: pressed && disclaimerAgreed && !busy ? 0.98 : 1 }] }
+            ]}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={[styles.ctaText, { color: disclaimerAgreed ? '#fff' : palette.textSecondary }]}>I&apos;m ready to go</Text>}
           </Pressable>
+
           <Pressable
-            disabled={busy}
+            disabled={!disclaimerAgreed || busy}
             onPress={() => {
+              if (!disclaimerAgreed || busy) return;
+              trackEvent('disclaimer_accepted', { is_upgrade_flow: false });
               const url = undefined;
               void skipNotifications(url);
             }}
-            style={styles.skipLink}>
-            <Text style={[styles.skipText, { color: palette.textSecondary }]}>Not right now</Text>
+            style={[styles.skipLink, { opacity: disclaimerAgreed ? 1 : 0.4 }]}>
+            <Text style={[styles.skipText, { color: disclaimerAgreed ? palette.tint : palette.textSecondary }]}>Not right now</Text>
           </Pressable>
         </AnimatedReanimated.View>
       );

@@ -49,3 +49,22 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     r.readAsDataURL(blob);
   });
 }
+
+/** Resolves stored local photo URIs dynamically to handle application UUID shifts on update. */
+export function resolveDogPhotoUri(savedUri: string): string {
+  if (!savedUri || !savedUri.startsWith('file://')) return savedUri;
+
+  const parts = savedUri.split('/');
+  const filename = parts[parts.length - 1];
+  if (!filename.startsWith('avatar_')) return savedUri;
+
+  try {
+    const dogDir = new Directory(Paths.document, 'dog');
+    const destFile = new File(dogDir, filename);
+    return destFile.uri;
+  } catch (e) {
+    console.warn("Failed to resolve dynamic dog photo path", e);
+    return savedUri;
+  }
+}
+

@@ -258,10 +258,13 @@ export function FeedbackModal({ visible, onClose, initialType = 'general_feedbac
                 style={{ alignSelf: 'center', marginBottom: 16 }}
               />
               <Text style={[styles.modalSuccessTitle, { color: palette.text }]}>
-                Thanks! 🐶
+                Status
               </Text>
-              <Text style={[styles.modalSuccessBody, { color: palette.textSecondary }]}>
-                Every request is personally reviewed. Thanks for helping make NorthPaw a little better for dogs everywhere.
+              <Text style={[styles.modalSuccessStatus, { color: palette.tint, marginVertical: 8 }]}>
+                ✅ Received
+              </Text>
+              <Text style={[styles.modalSuccessBody, { color: palette.textSecondary, marginTop: 8 }]}>
+                Thank you!{"\n\n"}Feature requests are reviewed every week.
               </Text>
               <Pressable
                 onPress={onClose}
@@ -468,6 +471,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     marginBottom: 8,
+  },
+  modalSuccessStatus: {
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   modalSuccessBody: {
     fontSize: 15,

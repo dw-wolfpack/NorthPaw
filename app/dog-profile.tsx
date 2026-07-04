@@ -1,13 +1,15 @@
 import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -22,6 +24,7 @@ import Colors from '@/constants/Colors';
 import { getDogProfile, pickAndStoreDogPhoto, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
 import { trackEvent } from '@/lib/analytics';
+import { BREEDS } from '@/app/onboarding';
 
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
@@ -36,6 +39,11 @@ export default function DogProfileScreen() {
   const [dogWeightLbs, setDogWeightLbs] = useState('');
   const [dogCoatType, setDogCoatType] = useState('');
   const [dogColor, setDogColor] = useState('');
+  const [dogBreed, setDogBreed] = useState('');
+  const [dogBreedMix, setDogBreedMix] = useState('');
+  const [isMixedBreed, setIsMixedBreed] = useState(false);
+  const [showBreedModal, setShowBreedModal] = useState(false);
+  const [breedSearchQuery, setBreedSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -46,6 +54,9 @@ export default function DogProfileScreen() {
     setDogWeightLbs(p.dogWeightLbs ? p.dogWeightLbs.toString() : '');
     setDogCoatType(p.dogCoatType || '');
     setDogColor(p.dogColor || '');
+    setDogBreed(p.dogBreed || '');
+    setDogBreedMix(p.dogBreedMix || '');
+    setIsMixedBreed(p.dogBreed === 'Mixed Breed / Rescue' || p.dogBreed === 'Mixed breed');
     setPickedUri(null);
   }, []);
 
@@ -60,6 +71,13 @@ export default function DogProfileScreen() {
   }, []);
 
   const displayPhoto = pickedUri || savedPhotoUri;
+
+  const filteredBreeds = useMemo(() => {
+    const base = BREEDS.filter((b) => b !== 'Mixed Breed / Rescue');
+    const q = breedSearchQuery.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((b) => b.toLowerCase().includes(q));
+  }, [breedSearchQuery]);
 
   const pickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -91,6 +109,7 @@ export default function DogProfileScreen() {
       } else {
         photoUri = savedPhotoUri;
       }
+      const resolvedBreed = isMixedBreed ? 'Mixed breed' : dogBreed;
       await saveDogProfile({
         onboardingDone: true,
         dogName: trimmed,
@@ -98,12 +117,16 @@ export default function DogProfileScreen() {
         dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
         dogCoatType: dogCoatType,
         dogColor: dogColor,
+        dogBreed: resolvedBreed,
+        dogBreedMix: isMixedBreed ? dogBreedMix : '',
       });
       trackEvent('dog_profile_saved', {
         hasPhoto: !!photoUri,
         dogWeightLbs: parseInt(dogWeightLbs, 10) || null,
         dogCoatType,
         dogColor,
+        dogBreed: resolvedBreed,
+        dogBreedMix: isMixedBreed ? dogBreedMix : '',
       });
       router.back();
     } catch (e) {
@@ -118,6 +141,13 @@ export default function DogProfileScreen() {
       setBusy(false);
     }
   };
+
+  const breedDisplay = useMemo(() => {
+    if (isMixedBreed) {
+      return dogBreedMix ? `Mixed breed (${dogBreedMix})` : 'Mixed breed';
+    }
+    return dogBreed || 'Select breed';
+  }, [isMixedBreed, dogBreed, dogBreedMix]);
 
   if (loading) {
     return (
@@ -173,6 +203,27 @@ export default function DogProfileScreen() {
               },
             ]}
           />
+
+          <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Breed</Text>
+          <Pressable
+            onPress={() => { hapticTap(); setShowBreedModal(true); }}
+            style={({ pressed }) => [
+              styles.input,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.8 : 1,
+                justifyContent: 'center',
+                flexDirection: 'row',
+                alignItems: 'center',
+              },
+            ]}
+          >
+            <Text style={{ flex: 1, color: (isMixedBreed || dogBreed) ? palette.text : palette.textSecondary, fontSize: 17 }}>
+              {breedDisplay}
+            </Text>
+            <FontAwesome name="chevron-right" size={16} color={palette.textSecondary} />
+          </Pressable>
 
           <Text style={[styles.label, { color: palette.text, marginTop: 20 }]}>Coat Type</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -261,6 +312,150 @@ export default function DogProfileScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showBreedModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowBreedModal(false)}
+      >
+        <SafeAreaView
+          style={[styles.modalRoot, { backgroundColor: palette.background }]}
+          edges={['top', 'left', 'right', 'bottom']}
+        >
+          <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>Select Breed</Text>
+            <Pressable onPress={() => { hapticTap(); setShowBreedModal(false); }} hitSlop={12}>
+              <FontAwesome name="close" size={24} color={palette.textSecondary} />
+            </Pressable>
+          </View>
+
+          <KeyboardAvoidingView
+            style={styles.flex}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+          >
+            <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+              <TextInput
+                value={breedSearchQuery}
+                onChangeText={setBreedSearchQuery}
+                placeholder="Search breeds"
+                placeholderTextColor={palette.textSecondary}
+                style={[
+                  styles.input,
+                  {
+                    borderColor: palette.border,
+                    backgroundColor: palette.surface,
+                    color: palette.text,
+                    marginBottom: 12,
+                  },
+                ]}
+              />
+
+              <Pressable
+                onPress={() => {
+                  hapticTap();
+                  const nextVal = !isMixedBreed;
+                  setIsMixedBreed(nextVal);
+                  if (nextVal) {
+                    setDogBreed('Mixed breed');
+                  } else {
+                    setDogBreed('');
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.mixedRow,
+                  {
+                    borderColor: palette.border,
+                    backgroundColor: isMixedBreed ? palette.selectedBg : palette.surface,
+                    opacity: pressed ? 0.9 : 1,
+                  },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name={isMixedBreed ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                  size={20}
+                  color={palette.tint}
+                />
+                <Text style={[styles.mixedLabel, { color: palette.text, marginLeft: 10 }]}>Mixed Breed / Rescue</Text>
+              </Pressable>
+
+              {isMixedBreed ? (
+                <TextInput
+                  value={dogBreedMix}
+                  onChangeText={setDogBreedMix}
+                  placeholder="Primary mix (e.g. Lab mix)"
+                  placeholderTextColor={palette.textSecondary}
+                  style={[
+                    styles.input,
+                    {
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                      color: palette.text,
+                      marginTop: 8,
+                      marginBottom: 12,
+                    },
+                  ]}
+                />
+              ) : null}
+            </View>
+
+            <ScrollView
+              style={[styles.breedScroll]}
+              contentContainerStyle={styles.breedGrid}
+              keyboardShouldPersistTaps="handled"
+            >
+              {filteredBreeds.map((item) => {
+                const selected = !isMixedBreed && dogBreed === item;
+                return (
+                  <Pressable
+                    key={item}
+                    onPress={() => {
+                      hapticTap();
+                      setIsMixedBreed(false);
+                      setDogBreed(item);
+                      setDogBreedMix('');
+                      setShowBreedModal(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.breedCard,
+                      {
+                        borderColor: selected ? palette.tint : palette.border,
+                        backgroundColor: selected ? palette.selectedBg : palette.surface,
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.breedIcon}>🐾</Text>
+                    <Text style={[styles.breedText, { color: palette.text }]}>{item}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {isMixedBreed ? (
+              <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+                <Pressable
+                  disabled={!dogBreedMix.trim()}
+                  onPress={() => {
+                    hapticTap();
+                    setShowBreedModal(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.cta,
+                    {
+                      backgroundColor: dogBreedMix.trim() ? palette.tint : palette.border,
+                      opacity: pressed && dogBreedMix.trim() ? 0.9 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={styles.ctaText}>Confirm Mix</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -298,4 +493,39 @@ const styles = StyleSheet.create({
   },
   cta: { paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
   ctaText: { color: '#fff', fontWeight: '800', fontSize: 17 },
+  modalRoot: { flex: 1 },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
+  mixedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  mixedLabel: { fontSize: 15, fontWeight: '700' },
+  breedScroll: { flex: 1, marginHorizontal: 20, marginBottom: 14 },
+  breedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingVertical: 12 },
+  breedCard: {
+    width: '48%',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'flex-start',
+    minHeight: 74,
+  },
+  breedIcon: { fontSize: 18, marginBottom: 4 },
+  breedText: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
 });

@@ -11,6 +11,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  AppState,
+  AppStateStatus,
   Easing,
   ImageBackground,
   Linking,
@@ -539,6 +541,8 @@ export default function HomeScreen() {
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [readinessPresentation, setReadinessPresentation] = useState<ReadinessPresentation | null>(null);
+  const [showUpgradeTermsModal, setShowUpgradeTermsModal] = useState(false);
+  const [upgradeDisclaimerAgreed, setUpgradeDisclaimerAgreed] = useState(false);
 
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -653,18 +657,88 @@ export default function HomeScreen() {
     }
   }, [weather.status]);
 
+  // Load cached weather from AsyncStorage on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const cachedStr = await AsyncStorage.getItem('@northpaw/cached_weather_data');
+        if (cachedStr) {
+          const parsed = JSON.parse(cachedStr);
+          if (parsed && parsed.status === 'ok') {
+            setWeather(parsed);
+          }
+        }
+      } catch (err) {
+        console.warn('[Home] Failed to load cached weather from AsyncStorage', err);
+      }
+    })();
+  }, []);
+
+  // Refresh weather when returning from background if it is stale (older than 30 mins)
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        try {
+          const lastFetchStr = await AsyncStorage.getItem('@northpaw/last_weather_fetch_time');
+          const lastFetch = lastFetchStr ? parseInt(lastFetchStr, 10) : 0;
+          const staleThreshold = 30 * 60 * 1000; // 30 minutes
+          if (Date.now() - lastFetch > staleThreshold) {
+            console.log('[Home] Weather cache is stale. Refreshing...');
+            const freshWeather = await fetchWeatherForDeviceLocation();
+            if (freshWeather.status === 'ok') {
+              setWeather(freshWeather);
+              await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(freshWeather));
+              await AsyncStorage.setItem('@northpaw/last_weather_fetch_time', Date.now().toString());
+              if (freshWeather.latitude != null && freshWeather.longitude != null) {
+                await AsyncStorage.setItem(
+                  '@northpaw/last_fetched_lat_lon',
+                  JSON.stringify({ latitude: freshWeather.latitude, longitude: freshWeather.longitude })
+                );
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[Home] Failed to auto-refresh weather on foreground', err);
+        }
+      }
+    };
+
+    const appStateSub = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      appStateSub.remove();
+    };
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let gone = false;
       (async () => {
-        const [profile, result] = await Promise.all([
+        const [profile, result, acceptedVer] = await Promise.all([
           getDogProfile(),
           fetchWeatherForDeviceLocation(),
+          AsyncStorage.getItem('@northpaw/disclaimer_accepted_version'),
         ]);
         if (!gone) {
           setDogProfile(profile);
           setWeather(result);
+          if (profile && profile.onboardingDone && acceptedVer !== 'v4.3') {
+            setShowUpgradeTermsModal(true);
+          }
           if (result.status === 'ok') {
+            // Cache fresh weather in AsyncStorage
+            try {
+              await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(result));
+              await AsyncStorage.setItem('@northpaw/last_weather_fetch_time', Date.now().toString());
+              if (result.latitude != null && result.longitude != null) {
+                await AsyncStorage.setItem(
+                  '@northpaw/last_fetched_lat_lon',
+                  JSON.stringify({ latitude: result.latitude, longitude: result.longitude })
+                );
+              }
+            } catch (err) {
+              console.warn('[Home] Failed to cache weather in AsyncStorage', err);
+            }
+
             trackEvent('weather_loaded', {
               cache_hit: result.isCacheHit ?? false,
               load_time_ms: result.loadTimeMs ?? 0,
@@ -820,6 +894,19 @@ export default function HomeScreen() {
     });
   }, [weatherOk, dogProfile, selectedSurface]);
   const timelineAxis = timelineBounds();
+  const timelineColors = useMemo(() => {
+    if (!timelineBars || !timelineBars.points.length) {
+      return ['#2D6A4F', '#2D6A4F'] as [string, string, ...string[]];
+    }
+    const colors = timelineBars.points.map(p => {
+      if (p.roadBand === 'warm') return '#D4A017';
+      if (p.roadBand === 'hot') return '#C46A2D';
+      if (p.roadBand === 'danger') return '#B5443A';
+      return '#2D6A4F';
+    });
+    if (colors.length === 1) return [colors[0], colors[0]] as [string, string, ...string[]];
+    return colors as [string, string, ...string[]];
+  }, [timelineBars]);
   const roadDetailHours = useMemo(() => Array.from({ length: 24 }, (_, hour) => hour), []);
   const scrubMovedRef = useRef(false);
   const scrubStartXRef = useRef(0);
@@ -1082,9 +1169,12 @@ export default function HomeScreen() {
         body: `${hourText} may feel hot on paws. Choose grass-first routes and quick potty breaks.`,
       };
     }
+    const waitText = bestWindowLabel && bestWindowLabel !== 'None'
+      ? `Try again near ${bestWindowLabel} or choose a shaded grass area.`
+      : 'Avoid hot pavement today and stick to shaded grass areas.';
     return {
       title: `${dogName} is better off waiting`,
-      body: `${hourText} is risky for paws. Try again near ${bestWindowLabel} or pick a shaded grass area.`,
+      body: `${hourText} is risky for paws. ${waitText}`,
     };
   }, [roadDetailPoint, dogName, selectedRoadDetailHour, bestWindowLabel]);
   const dailyReadinessLine = useMemo(() => {
@@ -1604,211 +1694,159 @@ export default function HomeScreen() {
             </View>
           </BlurView>
         </View>
-         {timelineBars ? (
-          <View
-            ref={timelineRef}
-            style={[
-              styles.timelineBarsCard,
-              {
-                borderColor: isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(18, 31, 24, 0.10)',
-                backgroundColor: isDark ? 'rgba(10, 22, 15, 0.58)' : 'rgba(242, 248, 239, 0.73)',
-              },
-            ]}>
-            <View style={styles.timelineBarsBg}>
-              <BlurView
-                intensity={60}
-                tint={isDark ? 'dark' : 'light'}
-                style={[StyleSheet.absoluteFillObject, { borderRadius: 24, overflow: 'hidden' }]}
-              />
-              <View style={styles.timelineBarsHeader}>
-                <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline</Text>
-              </View>
-              <View
-                style={styles.timelineBarsWrap}
-                pointerEvents="box-only"
-                onLayout={(e) => {
-                  setTimelineBarWidth(e.nativeEvent.layout.width);
-                }}
-                {...timelinePanResponder.panHandlers}>
-              {scrubPoint ? (
+        {timelineBars ? (
+          <View style={{ width: '100%' }}>
+            <View
+              ref={timelineRef}
+              style={[
+                styles.timelineBarsCard,
+                {
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(18, 31, 24, 0.10)',
+                  backgroundColor: isDark ? 'rgba(10, 22, 15, 0.58)' : 'rgba(242, 248, 239, 0.73)',
+                },
+              ]}>
+              <View style={styles.timelineBarsBg}>
                 <BlurView
-                  intensity={90}
-                  tint={isDark ? "dark" : "light"}
-                  style={[
-                    styles.timelineScrubPopup,
-                    {
-                      left: scrubPopupLeftPx,
-                      borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(18, 31, 24, 0.15)',
-                      backgroundColor: isDark ? 'rgba(15, 23, 20, 0.85)' : 'rgba(242, 248, 239, 0.85)',
-                    },
-                  ]}>
-                  <Text style={[styles.timelineScrubTime, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.92)' }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
-                  <Text style={[styles.timelineScrubTemp, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
-                    {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {Math.round(scrubPoint.roadTempF)}F
-                  </Text>
-                  <Text style={[styles.timelineScrubBand, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
-                    {roadBandLabel(scrubPoint.roadBand)}
-                  </Text>
-                </BlurView>
-              ) : null}
-              {timelineBars.bestWindowSegments.map((seg, idx) => {
-                const left = `${timelineHourRatio(seg.startHour) * 100}%`;
-                const width = `${(timelineHourRatio(seg.endHour) - timelineHourRatio(seg.startHour)) * 100}%`;
-                return (
-                  <View
-                    key={`best-${idx}`}
-                    style={[styles.timelineBestOverlay, { left: left as unknown as number, width: width as unknown as number }]}
-                  />
-                );
-              })}
-              <View
-                style={[
-                  styles.timelineNowLine,
-                  {
-                    left: `${timelineHourRatio(timelineScrubHour ?? timelineBars.currentHourPosition) * 100}%` as unknown as number,
-                  },
-                ]}
-              />
-              <View
-                style={[
-                  styles.timelineNowThumb,
-                  {
-                    left: `${timelineHourRatio(timelineScrubHour ?? timelineBars.currentHourPosition) * 100}%` as unknown as number,
-                    borderColor: currentRisk?.color ?? FOREST,
-                  },
-                ]}
-              />
-
-              <View 
-                accessible={true} 
-                accessibilityLabel="Timeline daylight hours track"
-                style={[styles.barTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
-                {timelineBars.daylightSegments.map((seg, idx) => {
-                  const left = `${timelineHourRatio(seg.startHour) * 100}%`;
-                  const width = `${(timelineHourRatio(seg.endHour) - timelineHourRatio(seg.startHour)) * 100}%`;
-                  return (
-                    <View
-                      key={`day-${idx}`}
-                      style={[
-                        styles.barSegment,
-                        { left: left as unknown as number, width: width as unknown as number, backgroundColor: 'rgba(221, 208, 165, 0.88)' },
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-
-              <View 
-                accessible={true} 
-                accessibilityLabel={`Timeline pavement temperature risk track for selected surface ${selectedSurface}`}
-                style={[styles.barTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', marginTop: 8 }]}>
-                {timelineBars.points.map((p) => {
-                  const left = `${timelineHourRatio(p.hour) * 100}%`;
-                  const width = `${(timelineHourRatio(p.hour + 1) - timelineHourRatio(p.hour)) * 100}%`;
-                  let color = '#2D6A4F';
-                  if (p.roadBand === 'warm') color = '#D4A017';
-                  if (p.roadBand === 'hot') color = '#C46A2D';
-                  if (p.roadBand === 'danger') color = '#B5443A';
-                  return (
-                    <View
-                      key={`road-${p.hour}`}
-                      style={[
-                        styles.barSegment,
-                        { left: left as unknown as number, width: width as unknown as number, backgroundColor: color },
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-              </View>
-
-              <View style={styles.timelineRulerTicks}>
-                {[5, 7, 9, 11, 13, 15, 17, 19, 21, 22].map((hour) => {
-                  const left = `${timelineHourRatio(hour) * 100}%`;
-                  const isMajor = hour % 3 === 0 || hour === 12 || hour === 22 || hour === 5;
-                  return (
-                    <View key={`tick-${hour}`} style={[styles.rulerTickContainer, { left: left as any }]}>
-                      <View style={[styles.rulerTickLine, { height: isMajor ? 8 : 4, backgroundColor: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }]} />
-                      {isMajor && (
-                        <Text style={[styles.rulerTickLabel, { color: textColors.tertiary }]}>
-                          {hour === 12 ? '12p' : hour > 12 ? `${hour-12}p` : `${hour}a`}
-                        </Text>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
-                <Pressable
-                  onPress={cycleSurface}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Selected surface is ${selectedSurface}. Tap to cycle surface type.`}>
+                  intensity={60}
+                  tint={isDark ? 'dark' : 'light'}
+                  style={[StyleSheet.absoluteFillObject, { borderRadius: 24, overflow: 'hidden' }]}
+                />
+                <View style={styles.timelineBarsHeader}>
+                  <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline</Text>
+                </View>
+                <View
+                  style={styles.timelineBarsWrap}
+                  pointerEvents="box-only"
+                  onLayout={(e) => {
+                    setTimelineBarWidth(e.nativeEvent.layout.width);
+                  }}
+                  {...timelinePanResponder.panHandlers}>
+                {scrubPoint ? (
                   <BlurView
-                    intensity={45}
+                    intensity={90}
                     tint={isDark ? "dark" : "light"}
                     style={[
-                      styles.heroBestWindowPill,
+                      styles.timelineScrubPopup,
                       {
-                        borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
-                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
-                      }
-                    ]}
-                  >
-                    <Text style={[styles.heroBestWindowPillText, { color: textColors.instrument }]}>
-                      Surface: {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)}
+                        left: scrubPopupLeftPx,
+                        borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(18, 31, 24, 0.15)',
+                        backgroundColor: isDark ? 'rgba(15, 23, 20, 0.85)' : 'rgba(242, 248, 239, 0.85)',
+                      },
+                    ]}>
+                    <Text style={[styles.timelineScrubTime, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.92)' }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
+                    <Text style={[styles.timelineScrubTemp, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
+                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {Math.round(scrubPoint.roadTempF)}F
                     </Text>
-                    <MaterialCommunityIcons name="cached" size={10} color={textColors.instrument} style={{ marginLeft: 4 }} />
+                    <Text style={[styles.timelineScrubBand, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
+                      {roadBandLabel(scrubPoint.roadBand)}
+                    </Text>
                   </BlurView>
-                </Pressable>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                ) : null}
+                <View
+                  style={[
+                    styles.timelineNowThumb,
+                    {
+                      left: `${timelineHourRatio(timelineScrubHour ?? timelineBars.currentHourPosition) * 100}%` as unknown as number,
+                    },
+                  ]}
+                >
+                  <View style={styles.timelineNowThumbInner} />
+                </View>
+  
+                <View 
+                  accessible={true} 
+                  accessibilityLabel={`Timeline pavement temperature risk track for selected surface ${selectedSurface}`}
+                  style={styles.barTrack}>
+                  <LinearGradient
+                    colors={timelineColors}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                </View>
+                </View>
+  
+                <View style={styles.timelineRulerTicks}>
+                  {[5, 7, 9, 11, 13, 15, 17, 19, 21, 22].map((hour) => {
+                    const left = `${timelineHourRatio(hour) * 100}%`;
+                    const isMajor = hour % 3 === 0 || hour === 12 || hour === 22 || hour === 5;
+                    return (
+                      <View key={`tick-${hour}`} style={[styles.rulerTickContainer, { left: left as any }]}>
+                        <View style={[styles.rulerTickLine, { height: isMajor ? 8 : 4, backgroundColor: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }]} />
+                        {isMajor && (
+                          <Text style={[styles.rulerTickLabel, { color: textColors.tertiary }]}>
+                            {hour === 12 ? '12p' : hour > 12 ? `${hour-12}p` : `${hour}a`}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
                   <Pressable
-                    onPress={() => {
-                      hapticTap();
-                      setVerifySurfaceOpen(true);
-                      trackEvent('hand_test_opened', { surface: selectedSurface });
-                    }}
+                    onPress={cycleSurface}
                     accessibilityRole="button"
-                    accessibilityLabel="Start Hand Test verification">
-                    <BlurView
-                      intensity={45}
-                      tint={isDark ? "dark" : "light"}
-                      style={[
-                        styles.heroBestWindowPill,
-                        {
-                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
-                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
-                        }
-                      ]}
-                    >
-                      <Text style={[styles.heroBestWindowPillText, { color: textColors.instrument }]}>
-                        Hand Test
+                    accessibilityLabel={`Selected surface is ${selectedSurface}. Tap to cycle surface type.`}>
+                    <View style={styles.timelinePillButtonYellow}>
+                      <Text style={styles.timelinePillButtonTextDark}>
+                        Surface: {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)}
                       </Text>
-                    </BlurView>
+                      <MaterialCommunityIcons name="cached" size={12} color="#121F18" style={{ marginLeft: 4 }} />
+                    </View>
                   </Pressable>
-                  <Pressable
-                    onPress={() => { hapticTap(); setRoadTempModalOpen(true); }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Open road temperature details">
-                    <BlurView
-                      intensity={45}
-                      tint={isDark ? "dark" : "light"}
-                      style={[
-                        styles.heroBestWindowPill,
-                        {
-                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
-                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
-                        }
-                      ]}
-                    >
-                      <Text style={[styles.heroBestWindowPillText, { color: textColors.instrument }]}>
-                        Details
-                      </Text>
-                    </BlurView>
-                  </Pressable>
+  
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Pressable
+                      onPress={() => {
+                        hapticTap();
+                        setVerifySurfaceOpen(true);
+                        trackEvent('hand_test_opened', { surface: selectedSurface });
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Start Hand Test verification">
+                      <BlurView
+                        intensity={45}
+                        tint={isDark ? "dark" : "light"}
+                        style={[
+                          styles.timelinePillButton,
+                          {
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                          }
+                        ]}
+                      >
+                        <Text style={[styles.timelinePillButtonText, { color: textColors.primary }]}>
+                          Hand Test
+                        </Text>
+                      </BlurView>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => { hapticTap(); setRoadTempModalOpen(true); }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open road temperature details">
+                      <BlurView
+                        intensity={45}
+                        tint={isDark ? "dark" : "light"}
+                        style={[
+                          styles.timelinePillButton,
+                          {
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(18, 31, 24, 0.04)',
+                          }
+                        ]}
+                      >
+                        <Text style={[styles.timelinePillButtonText, { color: textColors.primary }]}>
+                          Details
+                        </Text>
+                      </BlurView>
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             </View>
+            <Text style={{ color: textColors.tertiary, fontSize: 10, lineHeight: 14, fontStyle: 'italic', textAlign: 'center', marginTop: 10, paddingHorizontal: 12 }}>
+              Estimates only. Local shade, turf, and heat-islands can significantly change pavement temps. Always perform a physical Hand Test before walks.
+            </Text>
           </View>
         ) : null}
       </ScrollView>
@@ -2335,7 +2373,7 @@ export default function HomeScreen() {
                   If you cannot hold your hand on the pavement for 7 seconds, it is too hot for paws.
                 </Text>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 12 }]}>
-                  Estimates are calibrated using thermodynamic constants for {selectedSurface} and local solar load.
+                  Estimates only. Local shade, turf, and heat-islands can significantly change pavement temps. Always perform a physical Hand Test.
                 </Text>
 
                 <View style={[styles.detailDivider, { backgroundColor: palette.border, marginVertical: 24 }]} />
@@ -2478,6 +2516,94 @@ export default function HomeScreen() {
         onClose={() => setFeedbackModalOpen(false)}
         initialType={feedbackInitialType}
       />
+      <Modal
+        visible={showUpgradeTermsModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => {}}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <BlurView
+            intensity={90}
+            tint={isDark ? 'dark' : 'light'}
+            style={{
+              width: '100%',
+              maxHeight: '85%',
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(18, 31, 24, 0.10)',
+              backgroundColor: isDark ? 'rgba(15, 23, 20, 0.92)' : 'rgba(242, 248, 239, 0.95)',
+              overflow: 'hidden',
+              padding: 24,
+            }}
+          >
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center' }}>
+              <MaterialCommunityIcons name="shield-check" size={54} color={palette.tint} style={{ marginBottom: 16 }} />
+              
+              <Text style={{ color: palette.text, fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
+                Updated Terms & Disclaimer
+              </Text>
+              
+              <Text style={{ color: palette.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
+                We've updated our safety guidelines and disclaimers to ensure you and your dog stay safe outdoors. Please review and accept to proceed.
+              </Text>
+
+              <View style={{ borderColor: palette.border, backgroundColor: palette.surface, padding: 14, borderRadius: 16, marginBottom: 20, borderWidth: 1, width: '100%' }}>
+                <Text style={{ color: palette.textSecondary, fontSize: 12, lineHeight: 18 }}>
+                  <Text style={{ fontWeight: '700', color: palette.text }}>Disclaimer: </Text>
+                  NorthPaw is for general outdoor education. It is not veterinary, legal, or emergency medical advice. Always perform a physical Hand Test on pavement before walking and consult professionals for health/safety concerns. Pavement estimations are thermodynamic calculations based on localized weather forecasts and can vary from actual conditions.
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={() => { hapticTap(); setUpgradeDisclaimerAgreed(!upgradeDisclaimerAgreed); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24, width: '100%', paddingHorizontal: 4 }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: upgradeDisclaimerAgreed }}
+                accessibilityLabel="I agree to the Terms of Service & Liability Disclaimer"
+              >
+                <MaterialCommunityIcons
+                  name={upgradeDisclaimerAgreed ? "checkbox-marked" : "checkbox-blank-outline"}
+                  size={22}
+                  color={upgradeDisclaimerAgreed ? palette.tint : palette.textSecondary}
+                />
+                <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600', flex: 1, lineHeight: 18 }}>
+                  I agree to the Terms of Service & Liability Disclaimer
+                </Text>
+              </Pressable>
+
+              <Pressable
+                disabled={!upgradeDisclaimerAgreed}
+                onPress={async () => {
+                  hapticTap();
+                  trackEvent('disclaimer_accepted', { is_upgrade_flow: true });
+                  try {
+                    await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', 'v4.3');
+                    setShowUpgradeTermsModal(false);
+                  } catch (err) {
+                    console.warn('[Home] Failed to save disclaimer version to AsyncStorage', err);
+                  }
+                }}
+                style={({ pressed }) => [
+                  {
+                    backgroundColor: upgradeDisclaimerAgreed ? palette.tint : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'),
+                    width: '100%',
+                    paddingVertical: 15,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed && upgradeDisclaimerAgreed ? 0.9 : 1,
+                  }
+                ]}
+              >
+                <Text style={{ color: upgradeDisclaimerAgreed ? '#fff' : palette.textSecondary, fontSize: 16, fontWeight: '800' }}>
+                  Accept & Continue
+                </Text>
+              </Pressable>
+            </ScrollView>
+          </BlurView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2937,32 +3063,71 @@ const styles = StyleSheet.create({
   },
   timelineNowThumb: {
     position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#fff',
-    borderWidth: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
+    justifyContent: 'center',
+    alignItems: 'center',
     top: '50%',
-    transform: [{ translateY: -6 }, { translateX: -5 }],
+    transform: [{ translateY: -16 }, { translateX: -16 }],
     zIndex: 5,
     shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  timelineNowThumbInner: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
   },
   barLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' as const, marginBottom: 4, marginTop: 6 },
   barTrack: {
-    height: 8,
-    borderRadius: 4,
+    height: 12,
+    borderRadius: 6,
     overflow: 'hidden',
     position: 'relative',
     zIndex: 2,
-    marginBottom: 6,
+    marginTop: 20,
+    marginBottom: 20,
   },
   barSegment: {
     position: 'absolute',
     top: 0,
     bottom: 0,
+  },
+  timelinePillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  timelinePillButtonYellow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    backgroundColor: '#F5C518',
+    overflow: 'hidden',
+  },
+  timelinePillButtonText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+  },
+  timelinePillButtonTextDark: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: '#121F18',
   },
   bestWindowLabel: {
     marginTop: 8,

@@ -126,6 +126,7 @@ async function migrate(db: SQLite.SQLiteDatabase) {
   await migrateAppProfileV2(db);
   await migrateAppProfileV3(db);
   await migrateAppProfileV4(db);
+  await migrateAppProfileV5(db);
 }
 
 async function migrateChecklistOutingsV2(db: SQLite.SQLiteDatabase) {
@@ -204,6 +205,21 @@ async function migrateAppProfileV4(db: SQLite.SQLiteDatabase) {
     'app_profile',
     'gear_vault_json',
     `ALTER TABLE app_profile ADD COLUMN gear_vault_json TEXT NOT NULL DEFAULT '{}';`
+  );
+}
+
+async function migrateAppProfileV5(db: SQLite.SQLiteDatabase) {
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'unique_readiness_days',
+    `ALTER TABLE app_profile ADD COLUMN unique_readiness_days INTEGER NOT NULL DEFAULT 0;`
+  );
+  await addColumnIfMissing(
+    db,
+    'app_profile',
+    'last_readiness_day',
+    `ALTER TABLE app_profile ADD COLUMN last_readiness_day TEXT NOT NULL DEFAULT '';`
   );
 }
 

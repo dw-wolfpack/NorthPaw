@@ -435,7 +435,7 @@ async function fetchLatestObservationFromStations(
   }
 }
 
-async function fetchUsWeatherAtCoordinates(
+export async function fetchUsWeatherAtCoordinates(
   latitude: number,
   longitude: number
 ): Promise<Exclude<HomeWeatherState, { status: 'loading' }>> {
