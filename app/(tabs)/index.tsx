@@ -61,7 +61,7 @@ import {
 import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundImages';
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
-import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand } from '@/lib/weather/roadTemp';
+import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand, mergeAndSaveDailyHourlySamples } from '@/lib/weather/roadTemp';
 import { useColorScheme } from '@/components/useColorScheme';
 import { ShareCard } from '@/components/ShareCard';
 import { ShareButton } from '@/components/ShareButton';
@@ -163,18 +163,22 @@ function npiBandColor(score: number): string {
   return '#C0392B'; // Crimson
 }
 
-function roadBandLabel(band: 'safe' | 'warm' | 'hot' | 'danger'): string {
-  if (band === 'safe') return 'Safe';
-  if (band === 'warm') return 'Warm, check paws';
-  if (band === 'hot') return 'Hot, limit time';
-  return 'Dangerous for paws';
-}
 
-function roadBandColor(band: 'safe' | 'warm' | 'hot' | 'danger'): string {
+
+function roadBandColor(band?: 'safe' | 'warm' | 'hot' | 'danger' | 'unavailable' | null): string {
   if (band === 'safe') return '#2D6A4F';
   if (band === 'warm') return '#D4A017';
   if (band === 'hot') return '#C46A2D';
-  return '#B5443A';
+  if (band === 'danger') return '#B5443A';
+  return '#666666';
+}
+
+function roadBandLabel(band?: 'safe' | 'warm' | 'hot' | 'danger' | 'unavailable' | null): string {
+  if (band === 'safe') return 'Paws Favorable';
+  if (band === 'warm') return 'Warm Surface';
+  if (band === 'hot') return 'Scorching Pavement';
+  if (band === 'danger') return 'Severe Burn Risk';
+  return 'No Data Recorded';
 }
 
 function clampNum(val: number, min: number, max: number): number {
@@ -244,7 +248,7 @@ type TacticalInstrumentRingProps = {
   score: number;
   size?: number;
   isDark: boolean;
-  roadBand?: RoadTempBand | null;
+  roadBand?: RoadTempBand | 'unavailable' | null;
 };
 
 function TacticalInstrumentRing({ score, size = 180, isDark, roadBand }: TacticalInstrumentRingProps) {
@@ -727,8 +731,10 @@ export default function HomeScreen() {
 
             const freshWeather = await fetchWeatherForDeviceLocation();
             if (freshWeather.status === 'ok') {
-              setWeather(freshWeather);
-              await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(freshWeather));
+              const mergedHourly = await mergeAndSaveDailyHourlySamples(freshWeather.hourlySamples);
+              const updatedWeather = { ...freshWeather, hourlySamples: mergedHourly };
+              setWeather(updatedWeather);
+              await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(updatedWeather));
               if (freshWeather.latitude != null && freshWeather.longitude != null) {
                 await AsyncStorage.setItem(
                   '@northpaw/last_fetched_lat_lon',
@@ -766,14 +772,15 @@ export default function HomeScreen() {
         ]);
         if (!gone) {
           setDogProfile(profile);
-          setWeather(result);
-          if (profile && profile.onboardingDone && acceptedVer !== 'v4.3') {
-            setShowUpgradeTermsModal(true);
-          }
           if (result.status === 'ok') {
-            // Cache fresh weather in AsyncStorage
+            const mergedHourly = await mergeAndSaveDailyHourlySamples(result.hourlySamples);
+            const updatedWeather = { ...result, hourlySamples: mergedHourly };
+            setWeather(updatedWeather);
+            if (profile && profile.onboardingDone && acceptedVer !== 'v4.3') {
+              setShowUpgradeTermsModal(true);
+            }
             try {
-              await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(result));
+              await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(updatedWeather));
               await AsyncStorage.setItem('@northpaw/last_weather_fetch_time', Date.now().toString());
               if (result.latitude != null && result.longitude != null) {
                 await AsyncStorage.setItem(
@@ -782,9 +789,16 @@ export default function HomeScreen() {
                 );
               }
             } catch (err) {
-              console.warn('[Home] Failed to cache weather in AsyncStorage', err);
+              console.warn('[Home] Failed to cache weather data', err);
             }
+          } else {
+            setWeather(result);
+            if (profile && profile.onboardingDone && acceptedVer !== 'v4.3') {
+              setShowUpgradeTermsModal(true);
+            }
+          }
 
+          if (result.status === 'ok') {
             trackEvent('weather_loaded', {
               cache_hit: result.isCacheHit ?? false,
               load_time_ms: result.loadTimeMs ?? 0,
@@ -940,6 +954,7 @@ export default function HomeScreen() {
     return buildTimelineBarsModel({
       hourly: weatherOk.hourlySamples,
       latitude: weatherOk.latitude,
+      longitude: weatherOk.longitude,
       riskWeightMultiplier,
       bestWindowReductionFraction,
       surfaceType: selectedSurface,
@@ -951,6 +966,8 @@ export default function HomeScreen() {
       return ['#2D6A4F', '#2D6A4F'] as [string, string, ...string[]];
     }
     const colors = timelineBars.points.map(p => {
+      if (p.roadBand === 'unavailable') return isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
+      if (p.roadBand === 'safe') return '#2D6A4F';
       if (p.roadBand === 'warm') return '#D4A017';
       if (p.roadBand === 'hot') return '#C46A2D';
       if (p.roadBand === 'danger') return '#B5443A';
@@ -958,6 +975,11 @@ export default function HomeScreen() {
     });
     if (colors.length === 1) return [colors[0], colors[0]] as [string, string, ...string[]];
     return colors as [string, string, ...string[]];
+  }, [timelineBars, isDark]);
+
+  const timelineLocations = useMemo(() => {
+    if (!timelineBars || !timelineBars.points.length) return undefined;
+    return timelineBars.points.map(p => timelineHourRatio(p.hour));
   }, [timelineBars]);
   const roadDetailHours = useMemo(() => Array.from({ length: 24 }, (_, hour) => hour), []);
   const scrubMovedRef = useRef(false);
@@ -1787,10 +1809,25 @@ export default function HomeScreen() {
                     ]}>
                     <Text style={[styles.timelineScrubTime, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.92)' }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
                     <Text style={[styles.timelineScrubTemp, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
-                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {Math.round(scrubPoint.roadTempF)}F
+                      {scrubPoint.roadTempF != null ? `${selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} ${Math.round(scrubPoint.roadTempF)}°F` : 'Data unavailable'}
                     </Text>
                     <Text style={[styles.timelineScrubBand, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
                       {roadBandLabel(scrubPoint.roadBand)}
+                    </Text>
+                    <Text style={{ color: isDark ? 'rgba(234, 234, 234, 0.55)' : 'rgba(18, 31, 24, 0.55)', fontSize: 10, marginTop: 2, fontWeight: '600' }}>
+                      {scrubPoint.sourceType === 'observation'
+                        ? `Observed ${scrubPoint.stationDistanceMiles != null ? `(${scrubPoint.stationDistanceMiles.toFixed(1)}mi)` : ''}`
+                        : scrubPoint.sourceType === 'provider_grid_forecast'
+                        ? 'NWS Grid Forecast'
+                        : scrubPoint.sourceType === 'forecast'
+                        ? 'NWS Forecast'
+                        : scrubPoint.sourceType === 'cached_forecast'
+                        ? 'Cached Forecast'
+                        : scrubPoint.sourceType === 'interpolated'
+                        ? 'Estimated (Interp)'
+                        : scrubPoint.sourceType === 'extrapolated'
+                        ? 'Estimated (Extrap)'
+                        : 'Unavailable'} · {scrubPoint.confidence.toUpperCase()} CONF
                     </Text>
                   </BlurView>
                 ) : null}
@@ -1811,6 +1848,7 @@ export default function HomeScreen() {
                   style={styles.barTrack}>
                   <LinearGradient
                     colors={timelineColors}
+                    locations={timelineLocations as [number, number, ...number[]] | undefined}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={StyleSheet.absoluteFillObject}
@@ -2331,7 +2369,7 @@ export default function HomeScreen() {
                         styles.roadDetailBadge,
                         { backgroundColor: roadBandColor(roadDetailPoint.roadBand) },
                       ]}>
-                      <Text style={styles.roadDetailBadgeText}>{Math.round(roadDetailPoint.roadTempF)}F</Text>
+                      <Text style={styles.roadDetailBadgeText}>{roadDetailPoint.roadTempF != null ? `${Math.round(roadDetailPoint.roadTempF)}°F` : '--'}</Text>
                     </View>
                     <Text style={[styles.roadDetailSelectedBand, { color: palette.textSecondary }]}>
                       {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {roadBandLabel(roadDetailPoint.roadBand)}
@@ -2348,7 +2386,7 @@ export default function HomeScreen() {
                     });
                     if (!sample || !weatherOk) return null;
                     
-                    const temp = estimateRoadTempF(sample, weatherOk.latitude, selectedRoadDetailHour, new Date(sample.timeIso), st);
+                    const temp = estimateRoadTempF(sample, weatherOk.latitude, selectedRoadDetailHour, new Date(sample.timeIso), st, weatherOk.longitude);
                     const band = roadBandForTemp(temp);
                     const isActive = selectedSurface === st;
                     
@@ -2696,7 +2734,7 @@ export default function HomeScreen() {
           bestWindows={bestWindows}
           selectedSurface={selectedSurface}
           surfaceTempF={currentRoadPoint?.roadTempF ?? 77}
-          roadBand={currentRoadPoint?.roadBand || 'safe'}
+          roadBand={(currentRoadPoint?.roadBand && currentRoadPoint.roadBand !== 'unavailable') ? currentRoadPoint.roadBand : 'safe'}
           formattedDate={formattedDate}
         />
       </View>
