@@ -62,6 +62,7 @@ import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundI
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand, mergeAndSaveDailyHourlySamples } from '@/lib/weather/roadTemp';
+import { formatTemp } from '@/lib/readiness/thresholds';
 import { useColorScheme } from '@/components/useColorScheme';
 import { ShareCard } from '@/components/ShareCard';
 import { ShareButton } from '@/components/ShareButton';
@@ -569,10 +570,14 @@ export default function HomeScreen() {
   const spotlightW = useSharedValue(0);
   const spotlightH = useSharedValue(0);
   const [walkthroughStep, setWalkthroughStep] = useState(0);
+  const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
 
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Ready (Home)' });
+      AsyncStorage.getItem('@northpaw_temp_unit').then(val => {
+        if (val === 'C' || val === 'F') setTempUnit(val as 'F' | 'C');
+      }).catch(() => {});
       FileSystem.getInfoAsync(FileSystem.documentDirectory + 'home_walkthrough.txt').then(info => {
         if (!info.exists) {
           triggerStep(0);
@@ -1642,7 +1647,7 @@ export default function HomeScreen() {
                           { color: isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)" }
                         ]}
                       >
-                        {(weather as any).tempF}°F
+                        {(weather as any).tempF != null ? formatTemp((weather as any).tempF, tempUnit) : '--°'}
                       </Text>
                     </BlurView>
                   </Pressable>
@@ -1809,7 +1814,7 @@ export default function HomeScreen() {
                     ]}>
                     <Text style={[styles.timelineScrubTime, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.92)' }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
                     <Text style={[styles.timelineScrubTemp, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
-                      {scrubPoint.roadTempF != null ? `${selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} ${Math.round(scrubPoint.roadTempF)}°F` : 'Data unavailable'}
+                      {scrubPoint.roadTempF != null ? `${selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} ${formatTemp(scrubPoint.roadTempF, tempUnit)}` : 'Data unavailable'}
                     </Text>
                     <Text style={[styles.timelineScrubBand, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
                       {roadBandLabel(scrubPoint.roadBand)}
@@ -2134,7 +2139,7 @@ export default function HomeScreen() {
                           styles.weatherCardTextShadow,
                           { color: weatherCardTint.tempColor },
                         ]}>
-                        {weatherOk.tempF}°
+                        {formatTemp(weatherOk.tempF, tempUnit)}
                       </Text>
                       <Text
                         style={[
@@ -2193,7 +2198,7 @@ export default function HomeScreen() {
                               styles.timelineTitle,
                               { color: palette.textSecondary, fontSize: 20, letterSpacing: -0.3 },
                             ]}>
-                            {w.tempF}°
+                            {formatTemp(w.tempF, tempUnit)}
                           </Text>
                           <Text style={[styles.timelineDetail, { color: palette.tint }]} numberOfLines={4}>
                             {w.shortForecast}
