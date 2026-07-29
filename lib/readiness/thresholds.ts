@@ -4,6 +4,7 @@
  */
 
 export type RoadTempBand = 'safe' | 'warm' | 'hot' | 'danger';
+export type TempUnit = 'F' | 'C';
 
 export const THRESHOLD_BOUNDARIES = {
   SAFE_MAX: 77.0,     // < 77.0°F: Safe (Green)
@@ -21,6 +22,24 @@ export function roadBandForTemp(tempF: number): RoadTempBand {
   if (tempF < THRESHOLD_BOUNDARIES.WARM_MAX) return 'warm';
   if (tempF < THRESHOLD_BOUNDARIES.HOT_MAX) return 'hot';
   return 'danger';
+}
+
+/**
+ * Converts Fahrenheit temperature to Celsius.
+ */
+export function toCelsius(tempF: number): number {
+  return Math.round(((tempF - 32) * 5 / 9) * 10) / 10;
+}
+
+/**
+ * Formats temperature integer/decimal with preferred unit symbol (°F or °C).
+ */
+export function formatTemp(tempF: number, unit: TempUnit = 'F'): string {
+  if (!Number.isFinite(tempF)) return '--°';
+  if (unit === 'C') {
+    return `${Math.round(toCelsius(tempF))}°C`;
+  }
+  return `${Math.round(tempF)}°F`;
 }
 
 /**

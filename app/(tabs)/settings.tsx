@@ -29,6 +29,7 @@ const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).c
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
   const palette = Colors[colorScheme];
   const { isPro, configured, expoGo, loading, error } = useSubscription();
   const router = useRouter();
@@ -36,12 +37,23 @@ export default function SettingsScreen() {
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [isMockHotWeather, setIsMockHotWeather] = useState(false);
+  const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
 
   useEffect(() => {
     AsyncStorage.getItem('@northpaw/mock_hot_weather_enabled').then(val => {
       setIsMockHotWeather(val === 'true');
     });
+    AsyncStorage.getItem('@northpaw_temp_unit').then(val => {
+      if (val === 'C' || val === 'F') setTempUnit(val);
+    });
   }, []);
+
+  const toggleTempUnit = async (newUnit: 'F' | 'C') => {
+    hapticTap();
+    setTempUnit(newUnit);
+    await AsyncStorage.setItem('@northpaw_temp_unit', newUnit);
+    trackEvent('temp_unit_changed', { unit: newUnit });
+  };
 
   const toggleMockHotWeather = async () => {
     const nextVal = !isMockHotWeather;
@@ -63,7 +75,39 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 96 }]}>
-      <Text style={styles.h1}>Your dog</Text>
+      <Text style={styles.h1}>Preferences</Text>
+      <View style={[styles.linkCard, { borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Temperature Unit</Text>
+          <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 4, lineHeight: 16 }}>
+            Display weather & surface heat in °F or °C
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)', borderRadius: 8, padding: 3, gap: 4 }}>
+          <Pressable
+            onPress={() => toggleTempUnit('F')}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 6,
+              backgroundColor: tempUnit === 'F' ? palette.tint : 'transparent',
+            }}>
+            <Text style={{ fontWeight: '800', fontSize: 14, color: tempUnit === 'F' ? '#0A1A12' : palette.text }}>°F</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => toggleTempUnit('C')}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 6,
+              backgroundColor: tempUnit === 'C' ? palette.tint : 'transparent',
+            }}>
+            <Text style={{ fontWeight: '800', fontSize: 14, color: tempUnit === 'C' ? '#0A1A12' : palette.text }}>°C</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <Text style={[styles.h1, { marginTop: 16 }]}>Your dog</Text>
       <Pressable
         onPress={() => { hapticTap();  router.push('/dog-profile'); }}
         style={({ pressed }) => [
