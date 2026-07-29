@@ -10,22 +10,23 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { IMAGES } from '@/lib/contentVisuals';
 import { trackEvent } from '@/lib/analytics';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { checkCompanionEligibility, CompanionEligibility, COMPANION_REQUIREMENTS } from '@/lib/companion/companionEligibility';
 
-const BENEFITS = [
+const COMPANION_BENEFITS = [
   {
     icon: 'head-cog',
-    title: 'Fewer panicked decisions',
-    desc: 'Take the guesswork out of heat thresholds, pavement burns, and toxic plants.',
+    title: 'Personalized Window Refinement',
+    desc: 'Learns how your dog recovers from specific surface & humidity thresholds.',
   },
   {
-    icon: 'clipboard-list',
-    title: 'Deeper offline checklists',
-    desc: 'Access hyper-specific packing lists for long road trips and local trail conditions.',
+    icon: 'history',
+    title: 'Similar-Condition Recall',
+    desc: 'Shows how your dog handled identical weather and heat levels on past walks.',
   },
   {
-    icon: 'map-marker-path',
-    title: 'On-device outing log',
-    desc: 'Save photos, GPS coordinates, and private notes locally without cellular reception.',
+    icon: 'chart-line-variant',
+    title: 'Seasonal Adaptation Insights',
+    desc: 'Tracks coat density & temperature adaptation over summer & winter transitions.',
   },
 ] as const;
 
@@ -36,15 +37,20 @@ export default function PaywallScreen() {
   const palette = Colors[colorScheme];
   const { isPro } = useSubscription();
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [eligibility, setEligibility] = useState<CompanionEligibility | null>(null);
 
   useEffect(() => {
-    trackEvent('pro_paywall_viewed', { returnTo });
-    trackEvent('pro_modal_viewed', { returnTo });
+    trackEvent('companion_preview_viewed', { returnTo });
+    checkCompanionEligibility().then((res) => {
+      setEligibility(res);
+      if (res.isEligible) {
+        trackEvent('companion_eligibility_reached');
+      }
+    });
   }, [returnTo]);
 
   const onClose = useCallback(() => {
-    trackEvent('pro_paywall_closed', { returnTo });
+    trackEvent('companion_paywall_closed', { returnTo });
     if (isPro && returnTo && typeof returnTo === 'string') {
       router.replace(returnTo as Parameters<typeof router.replace>[0]);
       return;
@@ -56,14 +62,12 @@ export default function PaywallScreen() {
   const registerInterest = async (pkgName: string, priceString: string) => {
     setBusy(true);
     try {
-      await trackEvent('upgrade_clicked', { packageName: pkgName, price: priceString });
-      await trackEvent('pro_interest_registered', { packageName: pkgName, price: priceString });
-      await trackEvent('subscription_started', { packageName: pkgName, price: priceString });
-      await trackEvent('subscription_purchased', { packageName: pkgName, price: priceString });
+      // D4 FIX: Emits only interest event, never fake purchase/subscription events
+      await trackEvent('companion_interest_registered', { packageName: pkgName, price: priceString });
       Alert.alert(
-        'Coming Soon!',
-        'NorthPaw Pro is currently in beta. We are actively polishing our premium features and will notify you when Pro is available. Thank you for your interest!',
-        [{ text: 'Great!', onPress: onClose }]
+        'Baseline In Progress',
+        'Thank you for your interest! NorthPaw Companion is building local baseline features. We will notify you when personalized insights unlock.',
+        [{ text: 'Got It', onPress: onClose }]
       );
     } finally {
       setBusy(false);
@@ -71,8 +75,8 @@ export default function PaywallScreen() {
   };
 
   const restore = async () => {
-    await trackEvent('pro_restore_tapped');
-    Alert.alert('Beta Mode', 'NorthPaw Pro is currently in beta. No subscriptions are active to restore.');
+    await trackEvent('companion_restore_tapped');
+    Alert.alert('Beta Mode', 'NorthPaw Companion is currently in local baseline building phase.');
   };
 
   const OVERLAY_COLORS = ['rgba(13,31,23,0.35)', 'rgba(13,31,23,0.92)', '#0A1A12'] as const;
@@ -96,74 +100,76 @@ export default function PaywallScreen() {
         </View>
 
         <View style={styles.heroBlock}>
-          <Text style={styles.h1}>NorthPaw Pro</Text>
+          <Text style={styles.h1}>NorthPaw Companion</Text>
           <Text style={styles.p}>
-            Step outside with confidence. Unlock premium regional packs, deep situation checklists, and private local logging.
+            Private, on-device intelligence that adapts to your dog's unique tolerance over time.
           </Text>
         </View>
 
-        <View style={styles.benefitsBlock}>
-          {BENEFITS.map((b) => (
-            <View key={b.icon} style={styles.benefitRow}>
-              <View style={styles.iconCircle}>
-                <MaterialCommunityIcons name={b.icon as any} size={22} color="#4ADE80" />
+        {/* Phase H4: Pre-Eligibility Baseline Screen */}
+        {eligibility && !eligibility.isEligible && (
+          <View style={styles.eligibilityCard}>
+            <View style={styles.eligibilityBadge}>
+              <MaterialCommunityIcons name="shield-sync" size={18} color="#D4AF37" />
+              <Text style={styles.eligibilityBadgeText}>Building Private Baseline</Text>
+            </View>
+            <Text style={styles.eligibilityTitle}>
+              {eligibility.qualifiedOutcomesCount} of {eligibility.requiredOutcomes} Check-Ins Recorded
+            </Text>
+            <Text style={styles.eligibilitySub}>
+              Companion insights require at least {eligibility.requiredOutcomes} post-walk check-ins across {eligibility.requiredOutcomeDays} days to ensure day-1 personalized value.
+            </Text>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${eligibility.progressPercent}%` }]} />
+            </View>
+            <Text style={styles.progressPercentText}>{eligibility.progressPercent}% Baseline Complete</Text>
+          </View>
+        )}
+
+        <View style={styles.benefitsList}>
+          {COMPANION_BENEFITS.map((item, i) => (
+            <View key={i} style={styles.benefitRow}>
+              <View style={styles.iconChip}>
+                <MaterialCommunityIcons name={item.icon as any} size={22} color="#D4AF37" />
               </View>
-              <View style={styles.benefitTextWrap}>
-                <Text style={styles.benefitTitle}>{b.title}</Text>
-                <Text style={styles.benefitDesc}>{b.desc}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.benefitTitle}>{item.title}</Text>
+                <Text style={styles.benefitDesc}>{item.desc}</Text>
               </View>
             </View>
           ))}
         </View>
 
-        <View style={styles.packagesWrap}>
-          {busy ? (
-            <ActivityIndicator style={{ marginVertical: 32 }} color="#4ADE80" size="large" />
+        {/* Purchase CTA unlocked only when eligible */}
+        <View style={styles.ctaBox}>
+          {eligibility?.isEligible ? (
+            <Pressable
+              disabled={busy}
+              style={[styles.mainBtn, busy && { opacity: 0.7 }]}
+              onPress={() => registerInterest('companion_annual', '$29.99/yr')}>
+              {busy ? (
+                <ActivityIndicator color="#0A1A12" />
+              ) : (
+                <Text style={styles.mainBtnText}>Unlock Companion — $29.99/year</Text>
+              )}
+            </Pressable>
           ) : (
-            <>
-              <Pressable
-                disabled={busy}
-                onPress={() => registerInterest('Pro Monthly', '$*.**')}
-                style={({ pressed }) => [
-                  styles.pkgBtn,
-                  { opacity: pressed ? 0.8 : 1 },
-                ]}>
-                <View style={styles.pkgRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.pkgTitle}>Pro Monthly</Text>
-                    <Text style={styles.pkgDesc}>Unlock all checklist templates and offline guides.</Text>
-                  </View>
-                  <Text style={styles.pkgPrice}>$*.**</Text>
-                </View>
-              </Pressable>
-
-              <Pressable
-                disabled={busy}
-                onPress={() => registerInterest('Pro Annual', '$*.**')}
-                style={({ pressed }) => [
-                  styles.pkgBtn,
-                  { opacity: pressed ? 0.8 : 1 },
-                ]}>
-                <View style={styles.pkgRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.pkgTitle}>Pro Annual</Text>
-                    <Text style={styles.pkgDesc}>Save 45% · Full access for a year.</Text>
-                  </View>
-                  <Text style={styles.pkgPrice}>$*.**</Text>
-                </View>
-              </Pressable>
-            </>
+            <Pressable
+              disabled={true}
+              style={[styles.mainBtn, { backgroundColor: '#2C3E35', opacity: 0.8 }]}>
+              <Text style={[styles.mainBtnText, { color: '#9AAFA3' }]}>
+                Complete Baseline First ({eligibility?.qualifiedOutcomesCount ?? 0}/{COMPANION_REQUIREMENTS.OUTCOMES_COUNT})
+              </Text>
+            </Pressable>
           )}
+
+          <Pressable onPress={restore} style={styles.restoreBtn}>
+            <Text style={styles.restoreText}>Restore Purchase</Text>
+          </Pressable>
         </View>
 
-        <Pressable onPress={restore} style={styles.restoreBtn}>
-          <Text style={styles.restoreText}>Restore purchases</Text>
-        </Pressable>
-
-        {msg ? <Text style={styles.errorMsg}>{msg}</Text> : null}
-
-        <Text style={styles.legalLabel}>
-          Subscriptions auto-renew to maintain your access unless disabled in Apple ID settings. Unlocking Pro grants on-device reference context via NorthPaw Packs. It is not veterinary advice.
+        <Text style={styles.disclaimerText}>
+          Core readiness, surface heat estimates, and post-walk check-ins remain 100% free forever. All Companion data stays on your device.
         </Text>
       </ScrollView>
     </ImageBackground>
@@ -172,128 +178,143 @@ export default function PaywallScreen() {
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: 24,
-    paddingTop: 56,
-    paddingBottom: 48,
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 40,
   },
   topControlRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 40,
-    backgroundColor: 'transparent',
+    alignItems: 'flex-end',
+    marginBottom: 10,
   },
   closeBtnBacking: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroBlock: { backgroundColor: 'transparent', marginBottom: 32 },
+  heroBlock: {
+    marginBottom: 20,
+  },
   h1: {
-    color: '#FFF',
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: '800',
-    letterSpacing: -0.5,
+    color: '#F5E6C8',
+    fontFamily: 'PlayfairDisplay_700Bold',
+    marginBottom: 8,
   },
   p: {
-    color: 'rgba(255,255,255,0.85)',
     fontSize: 16,
-    lineHeight: 24,
-    marginTop: 12,
+    color: '#D0E0D5',
+    lineHeight: 22,
   },
-  benefitsBlock: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 32,
+  eligibilityCard: {
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+    borderColor: 'rgba(212, 175, 55, 0.3)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+  },
+  eligibilityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  eligibilityBadgeText: {
+    color: '#D4AF37',
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  eligibilityTitle: {
+    color: '#FFF',
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  eligibilitySub: {
+    color: '#D0E0D5',
+    fontSize: 14,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#D4AF37',
+    borderRadius: 4,
+  },
+  progressPercentText: {
+    color: '#D4AF37',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  benefitsList: {
+    gap: 16,
+    marginBottom: 24,
   },
   benefitRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: 'transparent',
-    marginBottom: 20,
-    gap: 16,
+    gap: 14,
+    alignItems: 'center',
   },
-  iconCircle: {
+  iconChip: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(74, 222, 128, 0.15)',
+    backgroundColor: 'rgba(212,175,55,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  benefitTextWrap: { flex: 1, backgroundColor: 'transparent', marginTop: 2 },
   benefitTitle: {
     color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   benefitDesc: {
-    color: 'rgba(255,255,255,0.65)',
+    color: '#B0C2B6',
     fontSize: 14,
-    lineHeight: 20,
-  },
-  packagesWrap: { backgroundColor: 'transparent' },
-  banner: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  bannerTitle: { color: '#FFF', fontWeight: '700', fontSize: 16 },
-  bannerBody: {
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 8,
-    fontSize: 13,
     lineHeight: 18,
   },
-  pkgBtn: {
-    backgroundColor: 'rgba(74, 222, 128, 0.12)',
-    borderWidth: 1.5,
-    borderColor: '#4ADE80',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+  ctaBox: {
+    gap: 12,
+    marginBottom: 20,
   },
-  pkgRow: {
-    flexDirection: 'row',
+  mainBtn: {
+    backgroundColor: '#D4AF37',
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: 'transparent',
   },
-  pkgTitle: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  pkgDesc: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 14,
-    marginTop: 6,
-  },
-  pkgPrice: {
-    color: '#4ADE80',
-    fontSize: 22,
+  mainBtnText: {
+    color: '#0A1A12',
+    fontSize: 16,
     fontWeight: '800',
   },
   restoreBtn: {
-    marginTop: 8,
-    paddingVertical: 12,
     alignItems: 'center',
+    paddingVertical: 8,
   },
-  restoreText: { color: '#4ADE80', fontWeight: '700', fontSize: 15 },
-  errorMsg: { color: '#F87171', marginTop: 12, textAlign: 'center', fontSize: 14 },
-  legalLabel: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 11,
-    lineHeight: 16,
+  restoreText: {
+    color: '#B0C2B6',
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  disclaimerText: {
+    color: '#8A9E92',
+    fontSize: 12,
     textAlign: 'center',
-    marginTop: 40,
+    lineHeight: 16,
   },
 });
