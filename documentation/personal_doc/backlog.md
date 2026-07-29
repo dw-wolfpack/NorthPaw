@@ -1,3 +1,9 @@
+## Backlog / Upcoming (v4.4.0)
+
+*   **BL-106 (Weather Dispatcher Fallback):** Enhance NWS weather fallback logic when live observation station readings time out or lag. Ensure weather dispatcher samples the closest current hour from `hourlyForecast` instead of defaulting to the 12-hour period low/high (`p0`), preventing overnight lows (e.g. `🌙 49°F`) from displaying during daytime hours when station observations fail.
+
+---
+
 ## v4.3.0 ✅
 Released July 3, 2026
 *   **BL-101 (Legal):** Added mandatory Terms of Service & Liability Disclaimer click-wrap agreement to the onboarding final screen. Added upgrade modal to Home screen requiring existing users to accept updated terms.
