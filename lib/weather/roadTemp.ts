@@ -87,6 +87,12 @@ export function estimateRoadTempF(
     solarIntensity = solarIntensityFrom(localDate, latitude, localHour, sample.skyCover);
   }
   
+  // Surface multipliers based on physical albedo and solar absorption:
+  // - Concrete: ~28% less heating due to light color/high albedo (0.72)
+  // - Cobblestone: ~15% less heating due to thermal mass (0.85)
+  // - Asphalt: baseline blacktop absorption (1.0)
+  // - Sand: ~15% higher surface heating due to low thermal conductivity (1.15)
+  // - Artificial / Synthetic Turf: ~38% higher surface heating due to synthetic plastic fibers & black crumb rubber infill baking in direct sun (1.38)
   const surfaceMultiplier = 
     surfaceType === 'concrete' ? 0.72 :
     surfaceType === 'cobblestone' ? 0.85 :
