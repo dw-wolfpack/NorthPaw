@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NorthPaw - 8-Up QR Card Sheet (8 Cards on 8.5x11)</title>
+<style>
+  @page {
+    size: letter portrait;
+    margin: 0;
+  }
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact;
+  }
+  body {
+    margin: 0;
+    padding: 0;
+    width: 8.5in;
+    height: 11in;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #111;
+    background: #fff;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 4.25in 4.25in;
+    grid-template-rows: 2.75in 2.75in 2.75in 2.75in;
+    width: 8.5in;
+    height: 11in;
+  }
+  .card-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed #CCC;
+    padding: 4px;
+  }
+  .card {
+    border: 2px solid #111;
+    width: 4.0in;
+    height: 2.55in;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background: #fff;
+  }
+  
+  /* Top Header Zone (2 Lines) */
+  .card-header {
+    padding: 4px 10px;
+    border-bottom: 2px solid #111;
+  }
+  .card-header strong {
+    font-size: 10pt;
+    font-weight: 900;
+    color: #000;
+    text-transform: uppercase;
+    display: block;
+  }
+  .card-header span {
+    color: #333;
+    font-size: 8.5pt;
+    font-weight: 700;
+    display: block;
+    margin-top: 1px;
+  }
+
+  /* Middle 3-Column Content Zone */
+  .card-middle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px;
+    flex: 1;
+  }
+  .phone-col {
+    display: flex;
+    justify-content: flex-start;
+  }
+  .phone-col img {
+    max-height: 1.25in;
+    width: auto;
+    border-radius: 4px;
+    border: 1px solid #E5E5E5;
+  }
+  .qr-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .qr-callout {
+    font-size: 7.5pt;
+    font-weight: 900;
+    color: #000;
+    margin-bottom: 2px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .qr-col img {
+    width: 1.15in;
+    height: 1.15in;
+    border: 1.5px solid #111;
+    padding: 2px;
+    border-radius: 4px;
+  }
+  .bullets-col {
+    padding: 2px;
+    font-size: 6.8pt;
+    line-height: 1.45;
+    background: transparent;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .bullet-item {
+    font-weight: 600;
+    color: #111;
+    white-space: nowrap;
+  }
+
+  /* Bottom Footer Zone */
+  .card-footer {
+    padding: 3px 5px;
+    border-top: 2px solid #111;
+    text-align: center;
+  }
+  .footer-sub {
+    font-size: 8pt; /* Slightly increased font size */
+    font-weight: 600;
+    color: #222;
+  }
+  .footer-url {
+    font-size: 8.5pt;
+    font-weight: 900;
+    color: #000;
+    margin-top: 1px;
+  }
+</style>
+</head>
+<body>
+  <div class="grid">
+
+    <!-- CARD MACRO (8 CARDS) -->
+    <div class="card-slot">
+      <div class="card">
+        <div class="card-header">
+          <strong>NORTHPAW</strong>
+          <span>Know Before You Go.</span>
+        </div>
+        <div class="card-middle">
+          <div class="phone-col"><img src="flyerimage.png" alt="App"></div>
+          <div class="qr-col"><div class="qr-callout">Download Free</div><img src="../images/qr_northpawapp.png" alt="QR"></div>
+          <div class="bullets-col">
+            <div class="bullet-item">✓ Personalized for your dog</div>
+            <div class="bullet-item">✓ Real surface temperatures</div>
+            <div class="bullet-item">✓ Best walk windows</div>
+            <div class="bullet-item">✓ Private & ad-free</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="footer-sub">Before every adventure, check the surface.</div>
+          <div class="footer-url">northpawapp.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-slot">
+      <div class="card">
+        <div class="card-header">
+          <strong>NORTHPAW</strong>
+          <span>Know Before You Go.</span>
+        </div>
+        <div class="card-middle">
+          <div class="phone-col"><img src="flyerimage.png" alt="App"></div>
+          <div class="qr-col"><div class="qr-callout">Download Free</div><img src="../images/qr_northpawapp.png" alt="QR"></div>
+          <div class="bullets-col">
+            <div class="bullet-item">✓ Personalized for your dog</div>
+            <div class="bullet-item">✓ Real surface temperatures</div>
+            <div class="bullet-item">✓ Best walk windows</div>
+            <div class="bullet-item">✓ Private & ad-free</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="footer-sub">Before every adventure, check the surface.</div>
+          <div class="footer-url">northpawapp.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-slot">
+      <div class="card">
+        <div class="card-header">
+          <strong>NORTHPAW</strong>
+          <span>Know Before You Go.</span>
+        </div>
+        <div class="card-middle">
+          <div class="phone-col"><img src="flyerimage.png" alt="App"></div>
+          <div class="qr-col"><div class="qr-callout">Download Free</div><img src="../images/qr_northpawapp.png" alt="QR"></div>
+          <div class="bullets-col">
+            <div class="bullet-item">✓ Personalized for your dog</div>
+            <div class="bullet-item">✓ Real surface temperatures</div>
+            <div class="bullet-item">✓ Best walk windows</div>
+            <div class="bullet-item">✓ Private & ad-free</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="footer-sub">Before every adventure, check the surface.</div>
+          <div class="footer-url">northpawapp.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-slot">
+      <div class="card">
+        <div class="card-header">
+          <strong>NORTHPAW</strong>
+          <span>Know Before You Go.</span>
+        </div>
+        <div class="card-middle">
+          <div class="phone-col"><img src="flyerimage.png" alt="App"></div>
+          <div class="qr-col"><div class="qr-callout">Download Free</div><img src="../images/qr_northpawapp.png" alt="QR"></div>
+          <div class="bullets-col">
+            <div class="bullet-item">✓ Personalized for your dog</div>
+            <div class="bullet-item">✓ Real surface temperatures</div>
+            <div class="bullet-item">✓ Best walk windows</div>
+            <div class="bullet-item">✓ Private & ad-free</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="footer-sub">Before every adventure, check the surface.</div>
+          <div class="footer-url">northpawapp.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-slot">
+      <div class="card">
+        <div class="card-header">
+          <strong>NORTHPAW</strong>
+          <span>Know Before You Go.</span>
+        </div>
+        <div class="card-middle">
+          <div class="phone-col"><img src="flyerimage.png" alt="App"></div>
+          <div class="qr-col"><div class="qr-callout">Download Free</div><img src="../images/qr_northpawapp.png" alt="QR"></div>
+          <div class="bullets-col">
+            <div class="bullet-item">✓ Personalized for your dog</div>
+            <div class="bullet-item">✓ Real surface temperatures</div>
+            <div class="bullet-item">✓ Best walk windows</div>
+            <div class="bullet-item">✓ Private & ad-free</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="footer-sub">Before every adventure, check the surface.</div>
+          <div class="footer-url">northpawapp.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-slot">
+      <div class="card">
+        <div class="card-header">
+          <strong>NORTHPAW</strong>
+          <span>Know Before You Go.</span>
+        </div>
+        <div class="card-middle">
+          <div class="phone-col"><img src="flyerimage.png" alt="App"></div>
+          <div class="qr-col"><div class="qr-callout">Download Free</div><img src="../images/qr_northpawapp.png" alt="QR"></div>
+          <div class="bullets-col">
+            <div class="bullet-item">✓ Personalized for your dog</div>
+            <div class="bullet-item">✓ Real surface temperatures</div>
+            <div class="bullet-item">✓ Best walk windows</div>
+            <div class="bullet-item">✓ Private & ad-free</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="footer-sub">Before every adventure, check the surface.</div>
+          <div class="footer-url">northpawapp.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-slot">
+      <div class="card">
+        <div class="card-header">
+          <strong>NORTHPAW</strong>
+          <span>Know Before You Go.</span>
+        </div>
+        <div class="card-middle">
+          <div class="phone-col"><img src="flyerimage.png" alt="App"></div>
+          <div class="qr-col"><div class="qr-callout">Download Free</div><img src="../images/qr_northpawapp.png" alt="QR"></div>
+          <div class="bullets-col">
+            <div class="bullet-item">✓ Personalized for your dog</div>
+            <div class="bullet-item">✓ Real surface temperatures</div>
+            <div class="bullet-item">✓ Best walk windows</div>
+            <div class="bullet-item">✓ Private & ad-free</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="footer-sub">Before every adventure, check the surface.</div>
+          <div class="footer-url">northpawapp.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-slot">
+      <div class="card">
+        <div class="card-header">
+          <strong>NORTHPAW</strong>
+          <span>Know Before You Go.</span>
+        </div>
+        <div class="card-middle">
+          <div class="phone-col"><img src="flyerimage.png" alt="App"></div>
+          <div class="qr-col"><div class="qr-callout">Download Free</div><img src="../images/qr_northpawapp.png" alt="QR"></div>
+          <div class="bullets-col">
+            <div class="bullet-item">✓ Personalized for your dog</div>
+            <div class="bullet-item">✓ Real surface temperatures</div>
+            <div class="bullet-item">✓ Best walk windows</div>
+            <div class="bullet-item">✓ Private & ad-free</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="footer-sub">Before every adventure, check the surface.</div>
+          <div class="footer-url">northpawapp.com</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

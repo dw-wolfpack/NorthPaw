@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NorthPaw - Know Before You Go (Flyer 8.5x11)</title>
+<style>
+  @page {
+    size: letter portrait;
+    margin: 0;
+  }
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact;
+  }
+  body {
+    margin: 0;
+    padding: 0.45in 0.6in;
+    width: 8.5in;
+    height: 11in;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #111;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: center;
+  }
+  
+  /* Centered Brand Header */
+  .brand {
+    font-size: 24pt;
+    font-weight: 900;
+    letter-spacing: 3.5px;
+    text-transform: uppercase;
+    color: #111;
+    text-align: center;
+  }
+  .title-section {
+    margin-top: 14px;
+    text-align: center;
+  }
+  .headline {
+    font-size: 35pt;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    color: #000;
+    line-height: 1.1;
+    text-align: center;
+  }
+  .subhead {
+    font-size: 15.5pt;
+    font-weight: 500;
+    color: #555;
+    margin-top: 6px;
+    text-align: center;
+  }
+  .context-line {
+    font-size: 15pt;
+    font-weight: 800;
+    color: #000;
+    margin-top: 14px;
+    text-align: center;
+  }
+
+  /* Centered Lead Copy Container */
+  .lead-copy-container {
+    margin: 14px auto 0 auto;
+    width: 98%;
+    text-align: center;
+  }
+  .lead-sentence1 {
+    font-size: 13.5pt;
+    font-weight: 400; /* Regular weight, NOT BOLD */
+    color: #222;
+    line-height: 1.45;
+    text-align: center;
+  }
+  .lead-sentence2 {
+    font-size: 12pt;
+    font-weight: 400;
+    color: #222;
+    margin-top: 10px;
+    text-align: center;
+  }
+
+  /* Hairline Divider */
+  .divider {
+    height: 1px;
+    background-color: #D6D6D6;
+    margin: 16px 0;
+    width: 100%;
+  }
+
+  /* Hero Side-by-Side Section */
+  .hero-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    margin: 6px 0;
+  }
+  .phone-container {
+    flex: 1.2;
+    display: flex;
+    justify-content: center;
+  }
+  .phone-img {
+    max-height: 4.2in;
+    width: auto;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    border: 1px solid #E5E5E5;
+  }
+  .qr-container {
+    flex: 1.3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .callout-above-qr {
+    font-size: 16pt;
+    font-weight: 900;
+    color: #000;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .qr-box {
+    border: 2.5px solid #111;
+    padding: 10px;
+    background: #fff;
+    border-radius: 8px;
+  }
+  .qr-img {
+    width: 2.4in;
+    height: 2.4in;
+    display: block;
+  }
+  .qr-url {
+    font-size: 14pt;
+    font-weight: 900;
+    color: #000;
+    margin-top: 10px;
+    text-align: center;
+  }
+
+  /* Why NorthPaw Section (2x2 Grid) */
+  .why-title {
+    font-size: 16pt;
+    font-weight: 900;
+    color: #000;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .bullets-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 20px;
+    text-align: left;
+    max-width: 95%;
+    margin: 0 auto;
+  }
+  .bullet-item {
+    font-size: 12pt;
+    color: #222;
+    font-weight: 600;
+  }
+
+  /* Centered Footer */
+  .footer {
+    padding-top: 4px;
+    text-align: center;
+  }
+  .footer-brand {
+    font-size: 12pt;
+    font-weight: 800;
+    color: #000;
+  }
+  .footer-tag {
+    font-size: 10.5pt;
+    color: #666;
+    margin-top: 2px;
+  }
+  .footer-url-bottom {
+    font-size: 12pt;
+    font-weight: 900;
+    color: #000;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Top Block (100% Centered) -->
+  <div>
+    <div class="brand">NORTHPAW</div>
+    
+    <div class="title-section">
+      <div class="headline">Know Before You Go.</div>
+      <div class="subhead">Before every adventure, check the surface.</div>
+    </div>
+
+    <div class="context-line">Air temperature doesn’t tell the whole story.</div>
+
+    <div class="lead-copy-container">
+      <div class="lead-sentence1">Using local weather and personalized information about your dog, NorthPaw helps you choose the safest time to head outside.</div>
+      <div class="lead-sentence2">NorthPaw predicts the temperatures of the surfaces your dog actually walks on, including asphalt, concrete, and artificial turf.</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Hero Section: Screen + Callout + Larger QR Code -->
+    <div class="hero-section">
+      <div class="phone-container">
+        <img class="phone-img" src="flyerimage.png" alt="NorthPaw App Interface">
+      </div>
+
+      <div class="qr-container">
+        <div class="callout-above-qr">Scan to Get NorthPaw</div>
+        <div class="qr-box">
+          <img class="qr-img" src="../images/qr_northpawapp.png" alt="QR Code for northpawapp.com">
+        </div>
+        <div class="qr-url">northpawapp.com</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Why NorthPaw? (2x2 Grid) -->
+    <div>
+      <div class="why-title">Why NorthPaw?</div>
+      <div class="bullets-grid">
+        <div class="bullet-item">✓ Personalized for your dog</div>
+        <div class="bullet-item">✓ Real surface temperatures</div>
+        <div class="bullet-item">✓ Best walking times</div>
+        <div class="bullet-item">✓ Privacy-first and Ad Free</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Centered Footer -->
+  <div class="footer">
+    <div class="divider" style="margin: 8px 0;"></div>
+    <div class="footer-brand">NorthPaw</div>
+    <div class="footer-tag">Helping dog owners make safer outdoor decisions.</div>
+    <div class="footer-url-bottom">northpawapp.com</div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,589 @@
+import React, { useMemo } from 'react';
+import { StyleSheet, View, Text, Image, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
+
+interface ShareCardProps {
+  dogName: string;
+  dogBreed: string;
+  dogPhotoUri: string | null;
+  dogSnoutProfile: string;
+  dogCoatType: string;
+  locationName: string;
+  currentTempF: number;
+  currentNpi: number;
+  bestWindows: string[];
+  selectedSurface: string;
+  surfaceTempF: number;
+  roadBand: 'safe' | 'warm' | 'hot' | 'danger';
+  formattedDate: string;
+}
+
+export const ShareCard = React.forwardRef<View, ShareCardProps>(({
+  dogName,
+  dogBreed,
+  dogPhotoUri,
+  dogSnoutProfile,
+  dogCoatType,
+  locationName,
+  currentTempF,
+  currentNpi,
+  bestWindows,
+  selectedSurface,
+  surfaceTempF,
+  roadBand,
+  formattedDate,
+}, ref) => {
+  // 1. Map Road Band to status styling
+  const statusTheme = useMemo(() => {
+    switch (roadBand) {
+      case 'danger':
+        return {
+          statusEmoji: '🔴',
+          statusText: 'Danger',
+          npiRisk: 'High Heat Risk',
+          statusColor: '#B5443A',
+          bannerBg: 'rgba(181, 68, 58, 0.95)',
+          actionTitle: 'MANDATORY ACTION: GRASS ONLY',
+          actionDesc: 'Avoid paved surfaces. Stick to grass/shade.',
+          verdict: '⚠️ Restrict to short relief-only outings.',
+        };
+      case 'hot':
+        return {
+          statusEmoji: '🟠',
+          statusText: 'Warning',
+          npiRisk: 'Ember Heat Risk',
+          statusColor: '#C46A2D',
+          bannerBg: 'rgba(196, 106, 45, 0.95)',
+          actionTitle: 'WARNING: PROTECT PAWS',
+          actionDesc: 'Limit walks. Use booties or stick to shade.',
+          verdict: '⚠️ Walk early morning or late evening.',
+        };
+      case 'warm':
+        return {
+          statusEmoji: '🟡',
+          statusText: 'Caution',
+          npiRisk: 'Moderate Heat Risk',
+          statusColor: '#D4A017',
+          bannerBg: 'rgba(212, 160, 23, 0.95)',
+          actionTitle: 'CAUTION: MONITOR PAVEMENT',
+          actionDesc: 'Check road with 7-sec Hand Test.',
+          verdict: '⚠️ Choose grass or shaded sidewalks.',
+        };
+      case 'safe':
+      default:
+        return {
+          statusEmoji: '🟢',
+          statusText: 'Safe',
+          npiRisk: 'Low Heat Risk',
+          statusColor: '#2D6A4F',
+          bannerBg: 'rgba(45, 106, 79, 0.95)',
+          actionTitle: 'SAFE: GENERAL OUTING',
+          actionDesc: 'Pavement conditions clear.',
+          verdict: '✅ Great day for an adventure!',
+        };
+    }
+  }, [roadBand]);
+
+  // 2. Dog Breed & Snout Commentary Cues matching requested emojis
+  const breedCues = useMemo(() => {
+    const cues = [];
+    const isFlatSnout = dogSnoutProfile === 'flat';
+    const isDoubleCoat = dogCoatType === 'Double';
+
+    if (isDoubleCoat) {
+      cues.push('🐶 Double coat retains heat');
+    } else {
+      cues.push('🐶 Standard coat profile');
+    }
+
+    if (isFlatSnout) {
+      cues.push('😮💨 Flat snout limits cooling');
+    } else {
+      cues.push('🐕 Standard snout profile');
+    }
+
+    if (roadBand === 'danger' || roadBand === 'hot') {
+      cues.push('☀️ Watch during peak heat');
+    } else if (currentTempF > 80 && currentNpi > 4.0) {
+      cues.push('☀️ Watch during humid afternoons');
+    } else {
+      cues.push('☀️ Normal outdoor tolerance');
+    }
+
+    return cues;
+  }, [dogSnoutProfile, dogCoatType, roadBand, currentTempF, currentNpi]);
+
+  const surfaceLabel = useMemo(() => {
+    return selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1);
+  }, [selectedSurface]);
+
+  const platformName = useMemo(() => {
+    return Platform.OS === 'ios' ? 'iOS' : 'Android';
+  }, []);
+
+  return (
+    <View ref={ref} collapsable={false} style={styles.captureContainer}>
+      <LinearGradient
+        colors={['#0F1E15', '#162F20', '#0F1E15']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.backgroundGradient}
+      >
+        {/* Elegant Margins Border Frame tinted dynamically */}
+        <View style={[styles.borderFrame, { borderColor: statusTheme.statusColor + '26' }]} />
+
+        {/* 1. LEAD WITH Today's Outdoor Status */}
+        <BlurView intensity={25} tint="dark" style={[styles.answerHeader, { borderColor: statusTheme.statusColor }]}>
+          <Text style={styles.answerText}>
+            {statusTheme.statusEmoji} Today's Outdoor Status: {statusTheme.statusText}
+          </Text>
+          <Text style={styles.headerTelemetry}>NPI {currentNpi.toFixed(1)}</Text>
+        </BlurView>
+
+        {/* Personalization Title & Platform Info */}
+        <View style={styles.reportTitleContainer}>
+          <Text style={styles.reportTitle}>{dogName}'s Walk Report</Text>
+          <Text style={styles.reportSubtitle}>Generated by NorthPaw {platformName} app</Text>
+        </View>
+
+        {/* 2. DUAL CARDS (Left: Dog Profile; Right: Surface details) */}
+        <View style={styles.dualCardsRow}>
+          
+          {/* Left Card: Dog Identity & Personalization Moat */}
+          <View style={styles.leftDogCard}>
+            <View style={[styles.dogPhotoRing, { borderColor: statusTheme.statusColor }]}>
+              {dogPhotoUri ? (
+                <Image source={{ uri: dogPhotoUri }} style={styles.dogPhoto} />
+              ) : (
+                <View style={styles.dogPhotoPlaceholder}>
+                  <Text style={{ fontSize: 36 }}>🐶</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.npiRiskText}>
+              {dogName}'s Heat Profile
+            </Text>
+            <View style={styles.cuesContainer}>
+              {breedCues.map((cue, idx) => (
+                <Text key={`cue-${idx}`} style={styles.breedCueText}>{cue}</Text>
+              ))}
+            </View>
+          </View>
+
+          {/* Right Card: Dynamic Telemetry styled with swapped colors/sizes */}
+          <View style={styles.rightWeatherCard}>
+            <View style={styles.surfaceLabelRow}>
+              <Text style={{ fontSize: 16, marginRight: 4 }}>☀️</Text>
+              <Text style={styles.surfaceLabel}>{surfaceLabel}</Text>
+            </View>
+            
+            <View style={styles.tempReportBlock}>
+              {/* Estimated Surface: Bigger and Gold */}
+              <Text style={styles.tempReportValue}>
+                {Math.round(surfaceTempF)}°F
+              </Text>
+              <Text style={styles.tempReportLabel}>Estimated Surface</Text>
+              
+              {/* Air Temp: Smaller and White */}
+              <Text style={styles.tempReportAirValue}>
+                {Math.round(currentTempF)}°F
+              </Text>
+              <Text style={styles.tempReportAirLabel}>Air</Text>
+            </View>
+          </View>
+
+        </View>
+
+        {/* 3. BIG PAVEMENT RISK INSIGHT CARD (Enlarged) */}
+        <View style={[styles.enlargedRiskCard, { borderColor: statusTheme.statusColor }]}>
+          <View style={styles.riskHeaderRow}>
+            <Ionicons name="warning" size={16} color={statusTheme.statusColor} />
+            <Text style={styles.riskHeaderTitle}>PAVEMENT RISK WINDOW</Text>
+          </View>
+
+          {/* Large Bold Warning Hours */}
+          <Text style={styles.riskHoursBig}>
+            {roadBand === 'safe' ? 'Safe All Day' : '1:00 PM – 7:00 PM'}
+          </Text>
+
+          {/* Dynamic Highlight Action Banner */}
+          <View style={[styles.actionBanner, { backgroundColor: statusTheme.bannerBg }]}>
+            <Text style={styles.actionBannerText}>{statusTheme.actionTitle}</Text>
+            <Text style={styles.actionBannerSub}>{statusTheme.actionDesc}</Text>
+          </View>
+        </View>
+
+        {/* 4. SAFEST WALK WINDOWS (Supporting Multiple Timelines) */}
+        <BlurView intensity={15} tint="dark" style={styles.windowCard}>
+          <View style={styles.windowHeader}>
+            <Ionicons name="time" size={14} color="#D4AF37" style={{ marginRight: 6 }} />
+            <Text style={styles.windowLabel}>TODAY'S BEST WALKS</Text>
+          </View>
+          
+          <View style={styles.bestWindowsContainer}>
+            {bestWindows.map((winStr, idx) => (
+              <Text key={`best-win-${idx}`} style={styles.windowValue}>{winStr}</Text>
+            ))}
+          </View>
+          
+          <Text style={styles.windowVerdict}>{statusTheme.verdict}</Text>
+        </BlurView>
+
+        {/* 5. COMPACT THRESHOLD LEGEND */}
+        <View style={styles.legendContainer}>
+          <Text style={styles.legendTitle}>NorthPaw Safety Index Scale</Text>
+          <View style={styles.legendBar}>
+            <View style={[styles.legendSegment, { backgroundColor: '#2D6A4F' }]}>
+              <Text style={styles.legendText}>🟢 Safe (&lt;3.4)</Text>
+            </View>
+            <View style={[styles.legendSegment, { backgroundColor: '#D4A017' }]}>
+              <Text style={styles.legendText}>🟡 Caution (3.4-6.9)</Text>
+            </View>
+            <View style={[styles.legendSegment, { backgroundColor: '#B5443A' }]}>
+              <Text style={styles.legendText}>🔴 Danger (7.0+)</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* 6. BRAND PHILOSOPHY & DATE STAMP FOOTER */}
+        <View style={styles.footer}>
+          <Text style={styles.footerPhilosophy}>
+            Confidence for Every Adventure, Every Day
+          </Text>
+          <Text style={styles.footerBranding}>
+            📍 {locationName} • {formattedDate} • Generated by NorthPaw
+          </Text>
+        </View>
+
+      </LinearGradient>
+    </View>
+  );
+});
+
+const styles = StyleSheet.create({
+  captureContainer: {
+    width: 360,
+    height: 640,
+    backgroundColor: '#07140C',
+  },
+  backgroundGradient: {
+    width: 360,
+    height: 640,
+    paddingHorizontal: 18,
+    paddingTop: 24,
+    paddingBottom: 14,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  borderFrame: {
+    position: 'absolute',
+    top: 8,
+    bottom: 8,
+    left: 8,
+    right: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.12)',
+    borderRadius: 14,
+    pointerEvents: 'none',
+  },
+  answerHeader: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingLeft: 12,
+    paddingRight: 16, // Extra padding to keep NPI away from the right border
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  answerText: {
+    fontFamily: 'System',
+    fontSize: 10.5,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  headerTelemetry: {
+    fontFamily: 'System',
+    fontSize: 9.5,
+    fontWeight: '900',
+    color: '#D4AF37',
+    letterSpacing: 0.5,
+    marginLeft: 10,
+  },
+  reportTitleContainer: {
+    alignItems: 'center',
+    marginVertical: 1,
+  },
+  reportTitle: {
+    fontFamily: 'System',
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#D4AF37',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  reportSubtitle: {
+    fontFamily: 'System',
+    fontSize: 7.5,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.45)',
+    marginTop: 2,
+    letterSpacing: 0.5,
+  },
+  dualCardsRow: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    gap: 10,
+  },
+  leftDogCard: {
+    flex: 1.05,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  dogPhotoRing: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0F2618',
+  },
+  dogPhoto: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+  },
+  dogPhotoPlaceholder: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: '#163522',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  npiRiskText: {
+    fontFamily: 'System',
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#D4AF37',
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 2,
+    letterSpacing: 0.2,
+  },
+  cuesContainer: {
+    width: '100%',
+    alignItems: 'flex-start',
+    paddingHorizontal: 4,
+  },
+  breedCueText: {
+    fontFamily: 'System',
+    fontSize: 8,
+    color: 'rgba(255, 255, 255, 0.75)',
+    marginTop: 3.5,
+    lineHeight: 10,
+  },
+  rightWeatherCard: {
+    flex: 0.95,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    padding: 10,
+    justifyContent: 'space-between',
+  },
+  surfaceLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  surfaceLabel: {
+    fontFamily: 'System',
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#FFF',
+  },
+  tempReportBlock: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  tempReportValue: {
+    fontFamily: 'System',
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#D4AF37', // Highlighted Golden Pavement Temp
+    lineHeight: 26,
+  },
+  tempReportLabel: {
+    fontFamily: 'System',
+    fontSize: 7.5,
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  tempReportAirValue: {
+    fontFamily: 'System',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFF', // Smaller White Air Temp
+    lineHeight: 14,
+  },
+  tempReportAirLabel: {
+    fontFamily: 'System',
+    fontSize: 7.5,
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontWeight: '700',
+  },
+  enlargedRiskCard: {
+    alignSelf: 'stretch',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    padding: 10,
+  },
+  riskHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  riskHeaderTitle: {
+    fontFamily: 'System',
+    fontSize: 9,
+    fontWeight: '900',
+    color: 'rgba(255, 255, 255, 0.5)',
+    letterSpacing: 1.5,
+    marginLeft: 5,
+  },
+  riskHoursBig: {
+    fontFamily: 'System',
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFF',
+    textAlign: 'center',
+    marginVertical: 4,
+    letterSpacing: 0.5,
+  },
+  actionBanner: {
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  actionBannerText: {
+    fontFamily: 'System',
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 0.2,
+  },
+  actionBannerSub: {
+    fontFamily: 'System',
+    fontSize: 7.5,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginTop: 1,
+    fontWeight: '500',
+  },
+  windowCard: {
+    alignSelf: 'stretch',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  windowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  windowLabel: {
+    fontFamily: 'System',
+    fontSize: 7.5,
+    fontWeight: '800',
+    color: 'rgba(212, 175, 55, 0.85)',
+    letterSpacing: 1.5,
+  },
+  bestWindowsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  windowValue: {
+    fontFamily: 'System',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 0.2,
+  },
+  windowVerdict: {
+    fontFamily: 'System',
+    fontSize: 8.5,
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  legendContainer: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  legendTitle: {
+    fontFamily: 'System',
+    fontSize: 7.5,
+    fontWeight: '800',
+    color: 'rgba(255, 255, 255, 0.35)',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  legendBar: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    height: 12,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  legendSegment: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  legendText: {
+    fontFamily: 'System',
+    fontSize: 6.5,
+    fontWeight: '800',
+    color: '#FFF',
+  },
+  footer: {
+    alignItems: 'center',
+  },
+  footerPhilosophy: {
+    fontFamily: 'System',
+    fontSize: 7.5,
+    fontWeight: '800',
+    color: 'rgba(212, 175, 55, 0.7)',
+    letterSpacing: 0.5,
+  },
+  footerBranding: {
+    fontFamily: 'System',
+    fontSize: 7.5,
+    color: 'rgba(255, 255, 255, 0.3)',
+    marginTop: 2,
+    fontWeight: '700',
+  },
+});

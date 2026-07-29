@@ -4,7 +4,8 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share } from 'react-native';
 import Constants from 'expo-constants';
-import { useCallback, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCallback, useEffect, useState } from 'react';
 import { trackEvent } from '@/lib/analytics';
 
 import { Text, View } from '@/components/Themed';
@@ -34,6 +35,26 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
+  const [isMockHotWeather, setIsMockHotWeather] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('@northpaw/mock_hot_weather_enabled').then(val => {
+      setIsMockHotWeather(val === 'true');
+    });
+  }, []);
+
+  const toggleMockHotWeather = async () => {
+    const nextVal = !isMockHotWeather;
+    setIsMockHotWeather(nextVal);
+    await AsyncStorage.setItem('@northpaw/mock_hot_weather_enabled', nextVal ? 'true' : 'false');
+    Alert.alert(
+      nextVal ? '☀️ Demo Mode Enabled' : '🌐 Live Weather Restored',
+      nextVal
+        ? 'Air temp set to 85°F (Asphalt ~134°F 🔴, Turf ~155°F 🔴) for App Store marketing screenshots.'
+        : 'Restored live local weather.'
+    );
+  };
+
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Settings' });
@@ -109,6 +130,35 @@ export default function SettingsScreen() {
         </View>
         <FontAwesome name="info-circle" size={16} color={palette.tint} />
       </Pressable>
+
+      {__DEV__ && (
+        <Pressable
+          onPress={() => {
+            hapticTap();
+            toggleMockHotWeather();
+          }}
+          style={({ pressed }) => [
+            styles.linkCard,
+            {
+              borderColor: isMockHotWeather ? palette.tint : palette.border,
+              backgroundColor: isMockHotWeather ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
+              opacity: pressed ? 0.92 : 1,
+              marginBottom: 8,
+            },
+          ]}>
+          <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+            <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+              {isMockHotWeather ? '☀️ Demo Mode Active (85°F Air)' : '☀️ App Store Screenshot Mode'}
+            </Text>
+            <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+              {isMockHotWeather
+                ? 'Air 85°F • Asphalt 134°F 🔴 • Turf 155°F 🔴. Tap to restore live weather.'
+                : 'Mock an 85°F sunny afternoon for high-contrast App Store marketing screenshots.'}
+            </Text>
+          </View>
+          <FontAwesome name={isMockHotWeather ? "sun-o" : "camera"} size={16} color={palette.tint} />
+        </Pressable>
+      )}
 
       <Text style={[styles.h1, { marginTop: 28 }]}>🐾 Help Improve NorthPaw</Text>
       <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>

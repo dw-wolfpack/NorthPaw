@@ -63,6 +63,9 @@ import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand } from '@/lib/weather/roadTemp';
 import { useColorScheme } from '@/components/useColorScheme';
+import { ShareCard } from '@/components/ShareCard';
+import { ShareButton } from '@/components/ShareButton';
+import { useShareCard } from '@/hooks/useShareCard';
 
 const FOREST = '#1B4332';
 const SAFETY_GREEN = '#2ECC71';
@@ -505,6 +508,8 @@ export default function HomeScreen() {
   const isDark = colorScheme === 'dark';
   const palette = Colors[colorScheme];
 
+  const { viewRef, isSharing, shareCard } = useShareCard();
+
   const textColors = useMemo(() => {
     return {
       primary: isDark ? 'rgba(234, 234, 234, 0.92)' : 'rgba(18, 31, 24, 0.92)',
@@ -535,6 +540,7 @@ export default function HomeScreen() {
   const verifyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrubHourHapticRef = useRef<number | null>(null);
   const confidencePulse = useRef(new Animated.Value(1)).current;
+  const isRefreshingWeatherRef = useRef(false);
   const [showSecondaryHazard, setShowSecondaryHazard] = useState(false);
   const [gearVaultBusy, setGearVaultBusy] = useState(false);
   const [dogProfile, setDogProfile] = useState<DogProfile | null>(null);
@@ -549,6 +555,7 @@ export default function HomeScreen() {
   const avatarRef = useRef<View>(null);
   const timelineRef = useRef<View>(null);
   const bellRef = useRef<View>(null);
+  const shareRef = useRef<View>(null);
   const { height: screenHeight } = Dimensions.get('window');
   
   // Spotlight Shared Values
@@ -596,7 +603,35 @@ export default function HomeScreen() {
           spotlightR.value = withTiming(24, { duration: 500 });
         });
       }, 600);
-    } else if (step === 2) { // Reminder Button
+    } else if (step === 2) { // Share Walk Report Button
+      mainScrollRef.current?.scrollTo({ y: 550, animated: true });
+      setTimeout(() => {
+        let measured = false;
+        if (shareRef.current) {
+          shareRef.current.measureInWindow((x, y, w, h) => {
+            if (w > 0 && h > 0) {
+              measured = true;
+              spotlightX.value = withTiming(x - 6, { duration: 500 });
+              spotlightY.value = withTiming(y - 6, { duration: 500 });
+              spotlightW.value = withTiming(w + 12, { duration: 500 });
+              spotlightH.value = withTiming(h + 12, { duration: 500 });
+              spotlightR.value = withTiming(24, { duration: 500 });
+            }
+          });
+        }
+        setTimeout(() => {
+          if (!measured) {
+            const buttonW = Math.min(screenWidth - 80, 260);
+            const buttonH = 52;
+            spotlightX.value = withTiming((screenWidth - buttonW) / 2, { duration: 500 });
+            spotlightY.value = withTiming(screenHeight / 2 + 60, { duration: 500 });
+            spotlightW.value = withTiming(buttonW, { duration: 500 });
+            spotlightH.value = withTiming(buttonH, { duration: 500 });
+            spotlightR.value = withTiming(24, { duration: 500 });
+          }
+        }, 100);
+      }, 600);
+    } else if (step === 3) { // Reminder Button
       mainScrollRef.current?.scrollTo({ y: 0, animated: true });
       setTimeout(() => {
         bellRef.current?.measureInWindow((x, y, w, h) => {
@@ -607,7 +642,7 @@ export default function HomeScreen() {
           spotlightR.value = withTiming((w + 8) / 2, { duration: 500 });
         });
       }, 600);
-    } else if (step === 3) { // Tabs
+    } else if (step === 4) { // Tabs
       mainScrollRef.current?.scrollTo({ y: 400, animated: true }); // Scroll down a bit to show tabs area if needed
       setTimeout(() => {
         const bottomPadding = insets.bottom > 0 ? insets.bottom : 12;
@@ -678,27 +713,38 @@ export default function HomeScreen() {
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
+        if (isRefreshingWeatherRef.current) return;
         try {
           const lastFetchStr = await AsyncStorage.getItem('@northpaw/last_weather_fetch_time');
           const lastFetch = lastFetchStr ? parseInt(lastFetchStr, 10) : 0;
           const staleThreshold = 30 * 60 * 1000; // 30 minutes
           if (Date.now() - lastFetch > staleThreshold) {
             console.log('[Home] Weather cache is stale. Refreshing...');
+            isRefreshingWeatherRef.current = true;
+            
+            // Set the timestamp immediately to prevent concurrent triggers
+            await AsyncStorage.setItem('@northpaw/last_weather_fetch_time', Date.now().toString());
+
             const freshWeather = await fetchWeatherForDeviceLocation();
             if (freshWeather.status === 'ok') {
               setWeather(freshWeather);
               await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(freshWeather));
-              await AsyncStorage.setItem('@northpaw/last_weather_fetch_time', Date.now().toString());
               if (freshWeather.latitude != null && freshWeather.longitude != null) {
                 await AsyncStorage.setItem(
                   '@northpaw/last_fetched_lat_lon',
                   JSON.stringify({ latitude: freshWeather.latitude, longitude: freshWeather.longitude })
                 );
               }
+            } else {
+              // If it was not successful, set a short cooldown (e.g. 2 minutes) to prevent immediate thrashing
+              const shortCooldown = Date.now() - staleThreshold + (2 * 60 * 1000);
+              await AsyncStorage.setItem('@northpaw/last_weather_fetch_time', shortCooldown.toString());
             }
           }
         } catch (err) {
           console.warn('[Home] Failed to auto-refresh weather on foreground', err);
+        } finally {
+          isRefreshingWeatherRef.current = false;
         }
       }
     };
@@ -865,6 +911,12 @@ export default function HomeScreen() {
 
   const placeLabel =
     weatherOk?.place ?? (weather.status === 'permission_denied' ? 'Location off' : '—');
+
+  const formattedDate = useMemo(() => {
+    const d = new Date();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[d.getMonth()]} ${d.getDate()}`;
+  }, []);
 
   const weatherCardBgSource = useMemo(() => {
     if (!weatherOk) return null;
@@ -1849,6 +1901,22 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : null}
+        
+        <View ref={shareRef} collapsable={false} style={{ marginVertical: 12 }}>
+          <ShareButton
+            onPress={() => shareCard({
+              dogName,
+              dogBreed: dogProfile?.dogBreed || 'Unknown',
+              currentNpi: npiScore ?? 0,
+              selectedSurface: selectedSurface,
+              surfaceTempF: currentRoadPoint?.roadTempF ?? 77,
+              currentTempF: weatherOk?.tempF ?? 77,
+              roadBand: currentRoadPoint?.roadBand || 'safe',
+            })}
+            loading={isSharing}
+            dogName={dogName}
+          />
+        </View>
       </ScrollView>
 
       <Modal
@@ -2445,7 +2513,8 @@ export default function HomeScreen() {
                 { position: 'absolute', left: 40, right: 40, zIndex: 9999, alignItems: 'center' },
                 walkthroughStep === 0 ? { top: 290 } :
                 walkthroughStep === 1 ? { top: 150 } : // Move tooltip above timeline
-                walkthroughStep === 2 ? { top: 150 } :
+                walkthroughStep === 2 ? { top: 150 } : // Move tooltip above Share button
+                walkthroughStep === 3 ? { top: 150 } : // Move tooltip above Bell button
                 { bottom: 180 } // Move tooltip above tabs
               ]}
             >
@@ -2468,13 +2537,21 @@ export default function HomeScreen() {
                 )}
                 {walkthroughStep === 2 && (
                   <>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Share Walk Report</Text>
+                    <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
+                      Tap here to share personalized, real-time surface safety cards with family, dog walkers, or friends.
+                    </Text>
+                  </>
+                )}
+                {walkthroughStep === 3 && (
+                  <>
                     <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Smart Reminders</Text>
                     <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
                       Tap the bell to set morning briefs or tick-check reminders for your outings.
                     </Text>
                   </>
                 )}
-                {walkthroughStep === 3 && (
+                {walkthroughStep === 4 && (
                   <>
                     <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Navigation</Text>
                     <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
@@ -2484,7 +2561,7 @@ export default function HomeScreen() {
                 )}
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: palette.textSecondary }}>Step {walkthroughStep + 1} of 4</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: palette.textSecondary }}>Step {walkthroughStep + 1} of 5</Text>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <Pressable
                       onPress={() => { hapticTap(); finishWalkthrough(); }}
@@ -2495,14 +2572,14 @@ export default function HomeScreen() {
                     </Pressable>
                     <Pressable 
                       onPress={() => {
-                        if (walkthroughStep < 3) triggerStep(walkthroughStep + 1);
+                        if (walkthroughStep < 4) triggerStep(walkthroughStep + 1);
                         else finishWalkthrough();
                       }} 
                       style={{ backgroundColor: palette.tint, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 }}
                       accessibilityRole="button"
-                      accessibilityLabel={walkthroughStep < 3 ? "Next tutorial step" : "Finish tutorial"}
+                      accessibilityLabel={walkthroughStep < 4 ? "Next tutorial step" : "Finish tutorial"}
                     >
-                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{walkthroughStep < 3 ? 'Next' : 'Got it'}</Text>
+                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{walkthroughStep < 4 ? 'Next' : 'Got it'}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -2604,6 +2681,25 @@ export default function HomeScreen() {
           </BlurView>
         </View>
       </Modal>
+      {/* Off-screen capture container */}
+      <View style={styles.shareCardHiddenWrapper}>
+        <ShareCard
+          ref={viewRef}
+          dogName={dogName}
+          dogBreed={dogProfile?.dogBreed || 'Unknown'}
+          dogPhotoUri={dogProfile?.dogPhotoUri || null}
+          dogSnoutProfile={dogProfile?.dogSnoutProfile || 'standard'}
+          dogCoatType={dogProfile?.dogCoatType || 'Standard'}
+          locationName={placeLabel}
+          currentTempF={weatherOk?.tempF ?? 77}
+          currentNpi={npiScore ?? 0}
+          bestWindows={bestWindows}
+          selectedSurface={selectedSurface}
+          surfaceTempF={currentRoadPoint?.roadTempF ?? 77}
+          roadBand={currentRoadPoint?.roadBand || 'safe'}
+          formattedDate={formattedDate}
+        />
+      </View>
     </View>
   );
 }
@@ -3535,4 +3631,10 @@ const styles = StyleSheet.create({
   },
   verifyClose: { marginTop: 12, paddingVertical: 6, paddingHorizontal: 12 },
   verifyCloseText: { fontSize: 13, fontWeight: '700' },
+  shareCardHiddenWrapper: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    overflow: 'hidden',
+  },
 });

@@ -61,6 +61,9 @@ const MEANINGFUL_EVENTS = new Set([
   'surface_changed',
   'feedback_submitted',
   'share_button_pressed',
+  'share_button_tapped',
+  'share_sheet_opened',
+  'share_completed',
   'support_contact_pressed',
 ]);
 

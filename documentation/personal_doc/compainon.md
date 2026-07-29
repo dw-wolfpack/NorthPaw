@@ -22,3 +22,22 @@ Companion
 * “Last time conditions were similar, your dog became tired after ~30 minutes.”
 
 Now you’re selling insight instead of access.
+
+
+NorthPaw exists to help dogs live longer, healthier, happier lives by giving owners better information—not by collecting more of their data.
+
+Every future feature should pass that test.
+
+Does it help dogs?
+
+Does it respect the owner’s privacy?
+
+Does it make the recommendation better?
+
+If the answer is yes…
+
+…build it.
+
+If not…
+
+…don’t.
