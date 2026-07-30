@@ -30,7 +30,7 @@ export default function GoingNowModal({ visible, dogName = 'your dog', snapshot,
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: duration * 60,
+          seconds: (duration + 5) * 60,
         },
       });
       notificationId = notifResponse;

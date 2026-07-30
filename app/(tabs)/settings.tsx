@@ -2,11 +2,11 @@ import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share, Switch } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
-import { trackEvent } from '@/lib/analytics';
+import { trackEvent, getAnalyticsEnvironment, isAnalyticsEnabledInNonProd, setAnalyticsEnabledInNonProd, isTestflightOrDevBuild } from '@/lib/analytics';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -38,6 +38,9 @@ export default function SettingsScreen() {
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [isMockHotWeather, setIsMockHotWeather] = useState(false);
   const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
+  const [sendAnalyticsInDev, setSendAnalyticsInDev] = useState(false);
+  const [showDevSettings, setShowDevSettings] = useState(false);
+  const [mixpanelEnabled, setMixpanelEnabled] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem('@northpaw/mock_hot_weather_enabled').then(val => {
@@ -45,6 +48,10 @@ export default function SettingsScreen() {
     });
     AsyncStorage.getItem('@northpaw_temp_unit').then(val => {
       if (val === 'C' || val === 'F') setTempUnit(val);
+    });
+    isAnalyticsEnabledInNonProd().then(val => {
+      setSendAnalyticsInDev(val);
+      setMixpanelEnabled(val);
     });
   }, []);
 
@@ -65,6 +72,15 @@ export default function SettingsScreen() {
         ? 'Air temp set to 85°F (Asphalt ~134°F 🔴, Turf ~155°F 🔴) for App Store marketing screenshots.'
         : 'Restored live local weather.'
     );
+  };
+
+  // Toggle Mixpanel analytics (used in Developer Settings)
+  const toggleMixpanel = async () => {
+    const next = !mixpanelEnabled;
+    setMixpanelEnabled(next);
+    setSendAnalyticsInDev(next);
+    // Persist the setting for non‑prod builds
+    await setAnalyticsEnabledInNonProd(next);
   };
 
   useFocusEffect(
@@ -175,35 +191,6 @@ export default function SettingsScreen() {
         <FontAwesome name="info-circle" size={16} color={palette.tint} />
       </Pressable>
 
-      {__DEV__ && (
-        <Pressable
-          onPress={() => {
-            hapticTap();
-            toggleMockHotWeather();
-          }}
-          style={({ pressed }) => [
-            styles.linkCard,
-            {
-              borderColor: isMockHotWeather ? palette.tint : palette.border,
-              backgroundColor: isMockHotWeather ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
-              opacity: pressed ? 0.92 : 1,
-              marginBottom: 8,
-            },
-          ]}>
-          <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-            <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-              {isMockHotWeather ? '☀️ Demo Mode Active (85°F Air)' : '☀️ App Store Screenshot Mode'}
-            </Text>
-            <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
-              {isMockHotWeather
-                ? 'Air 85°F • Asphalt 134°F 🔴 • Turf 155°F 🔴. Tap to restore live weather.'
-                : 'Mock an 85°F sunny afternoon for high-contrast App Store marketing screenshots.'}
-            </Text>
-          </View>
-          <FontAwesome name={isMockHotWeather ? "sun-o" : "camera"} size={16} color={palette.tint} />
-        </Pressable>
-      )}
-
       <Text style={[styles.h1, { marginTop: 28 }]}>🐾 Help Improve NorthPaw</Text>
       <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
         NorthPaw is independently built for people who love exploring with their dogs. Every suggestion is personally read and helps shape future updates.
@@ -248,29 +235,20 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
-      {/* 
-      <Text style={[styles.h1, { marginTop: 24 }]}>Subscription</Text>
+      <Text style={[styles.h1, { marginTop: 24 }]}>NorthPaw Companion</Text>
       <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}>
         <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-          {loading ? 'Checking Status...' : isPro ? 'NorthPaw Pro Active' : 'Free Library + Locked Pro Packs'}
+          Private On-Device Baseline Intelligence
         </Text>
         <Text style={{ color: palette.textSecondary, marginTop: 8, lineHeight: 20, fontSize: 14 }}>
-          {loading
-            ? 'Verifying subscription details...'
-            : isPro
-              ? 'Thank you for testing the NorthPaw Pro beta! You have access to all premium checklists and offline reference cards.'
-              : 'NorthPaw Pro is currently in beta. Unlock custom safety checklists, offline regional guide packs, and location logging.'}
+          Learns your dog's heat tolerance, similar-condition recall, and seasonal adaptation over time.
         </Text>
-        {error ? <Text style={{ color: palette.danger, marginTop: 10 }}>{error}</Text> : null}
-        {!loading && !isPro ? (
-          <Pressable
-            onPress={() => { hapticTap();  router.push('/paywall'); }}
-            style={[styles.cta, { backgroundColor: palette.tint, marginTop: 14 }]}>
-            <Text style={styles.ctaText}>Unlock Pro</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={() => { hapticTap(); router.push('/paywall'); }}
+          style={[styles.cta, { backgroundColor: palette.tint, marginTop: 14 }]}>
+          <Text style={styles.ctaText}>View NorthPaw Companion</Text>
+        </Pressable>
       </View>
-      */}
 
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Legal &amp; listing</Text>
@@ -342,9 +320,63 @@ export default function SettingsScreen() {
         RevenueCat when configured. Opening Privacy Policy or Support may use an in-app browser or your mail app.
       </Text>
 
-      {__DEV__ ? (
+      {isTestflightOrDevBuild() ? (
         <>
           <Text style={[styles.h1, { marginTop: 28, color: palette.tint }]}>Developer Settings</Text>
+          <Pressable
+            onPress={() => {
+              hapticTap();
+              toggleMockHotWeather();
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: isMockHotWeather ? palette.tint : palette.border,
+                backgroundColor: isMockHotWeather ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
+                opacity: pressed ? 0.92 : 1,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                {isMockHotWeather ? '☀️ Demo Mode Active (85°F Air)' : '☀️ App Store Screenshot Mode'}
+              </Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                {isMockHotWeather
+                  ? 'Air 85°F • Asphalt 134°F 🔴 • Turf 155°F 🔴. Tap to restore live weather.'
+                  : 'Mock an 85°F sunny afternoon for high-contrast App Store marketing screenshots.'}
+              </Text>
+            </View>
+            <FontAwesome name={isMockHotWeather ? "sun-o" : "camera"} size={16} color={palette.tint} />
+          </Pressable>
+
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              await toggleMixpanel();
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: mixpanelEnabled ? palette.tint : palette.border,
+                backgroundColor: mixpanelEnabled ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
+                opacity: pressed ? 0.92 : 1,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                {mixpanelEnabled ? 'Mixpanel Events: ON (Testflight)' : 'Mixpanel Events: OFF'}
+              </Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Toggle to disable analytics in Testflight builds. In production this toggle is hidden.
+              </Text>
+            </View>
+            <FontAwesome name={mixpanelEnabled ? "check-circle" : "close-circle"} size={16} color={palette.tint} />
+          </Pressable>
+
           <Pressable
             onPress={async () => {
               hapticTap();

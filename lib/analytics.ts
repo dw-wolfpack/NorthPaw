@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN || '';
 
@@ -75,14 +76,61 @@ export function resetTrackedActivity() {
   hasTrackedActivity = false;
 }
 
+const MUTE_TESTFLIGHT_ANALYTICS_KEY = '@northpaw_mute_testflight_analytics';
+
+export function isTestflightOrDevBuild(): boolean {
+  if (__DEV__) return true;
+  if (Constants.executionEnvironment === 'storeClient') return true;
+  if (process.env.EXPO_PUBLIC_ENV === 'production' && process.env.EXPO_PUBLIC_IS_TESTFLIGHT !== 'true') {
+    return false;
+  }
+  return true;
+}
+
+export function getAnalyticsEnvironment(): 'production' | 'testflight' | 'expo_go' | 'development' {
+  if (__DEV__) return 'development';
+  if (Constants.executionEnvironment === 'storeClient') return 'expo_go';
+  if (
+    process.env.EXPO_PUBLIC_ENV === 'testflight' ||
+    process.env.EXPO_PUBLIC_IS_TESTFLIGHT === 'true' ||
+    Constants.expoConfig?.extra?.isTestFlight === true
+  ) {
+    return 'testflight';
+  }
+  if (process.env.EXPO_PUBLIC_ENV === 'production') return 'production';
+  return 'testflight';
+}
+
+/** In non-prod (local/TestFlight), default Mixpanel sending is OFF (false). */
+export async function isAnalyticsEnabledInNonProd(): Promise<boolean> {
+  try {
+    const val = await AsyncStorage.getItem(MUTE_TESTFLIGHT_ANALYTICS_KEY);
+    if (val !== null) return val === 'true';
+  } catch (_) {}
+  // Default to OFF in local/TestFlight builds to prevent polluting production data
+  return false;
+}
+
+export async function setAnalyticsEnabledInNonProd(enabled: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(MUTE_TESTFLIGHT_ANALYTICS_KEY, String(enabled));
+  } catch (_) {}
+}
+
 export async function trackEvent(eventName: string, properties: Record<string, any> = {}) {
   if (MEANINGFUL_EVENTS.has(eventName)) {
     hasTrackedActivity = true;
   }
 
-  if (__DEV__ || !Device.isDevice) {
-    console.log(`[Analytics] (Dry Run) Event: "${eventName}"`, properties);
-    return;
+  const env = getAnalyticsEnvironment();
+
+  // In non-prod (TestFlight/Dev), default to OFF unless explicitly enabled in Settings
+  if (env !== 'production') {
+    const isEnabled = await isAnalyticsEnabledInNonProd();
+    if (!isEnabled) {
+      console.log(`[Analytics] (Muted Non-Prod) Event: "${eventName}" [env: ${env}]`, properties);
+      return;
+    }
   }
 
   if (!MIXPANEL_TOKEN) {
@@ -113,6 +161,9 @@ export async function trackEvent(eventName: string, properties: Record<string, a
             $app_version_string: appVersion,
             platform: Platform.OS,
             days_since_install: daysSinceInstall,
+            environment: env,
+            is_testflight: env === 'testflight',
+            build_type: env,
             ...properties,
           },
         },
@@ -124,9 +175,13 @@ export async function trackEvent(eventName: string, properties: Record<string, a
 }
 
 export async function setUserProperties(properties: Record<string, any>) {
-  if (__DEV__ || !Device.isDevice) {
-    console.log(`[Analytics] (Dry Run) Set User Properties:`, properties);
-    return;
+  const env = getAnalyticsEnvironment();
+  if (env !== 'production') {
+    const isEnabled = await isAnalyticsEnabledInNonProd();
+    if (!isEnabled) {
+      console.log(`[Analytics] (Muted Non-Prod) Set User Properties:`, properties);
+      return;
+    }
   }
 
   if (!MIXPANEL_TOKEN) {
@@ -155,9 +210,13 @@ export async function setUserProperties(properties: Record<string, any>) {
 }
 
 export async function incrementUserProperties(properties: Record<string, number>) {
-  if (__DEV__ || !Device.isDevice) {
-    console.log(`[Analytics] (Dry Run) Increment User Properties:`, properties);
-    return;
+  const env = getAnalyticsEnvironment();
+  if (env !== 'production') {
+    const isEnabled = await isAnalyticsEnabledInNonProd();
+    if (!isEnabled) {
+      console.log(`[Analytics] (Muted Non-Prod) Increment User Properties:`, properties);
+      return;
+    }
   }
 
   if (!MIXPANEL_TOKEN) {

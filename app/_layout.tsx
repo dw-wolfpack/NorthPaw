@@ -228,6 +228,14 @@ function RootLayoutNav() {
             }}
           />
           <Stack.Screen
+            name="post-walk"
+            options={{
+              title: 'Post-Walk Check-In',
+              presentation: 'modal',
+              headerBackTitle: 'Close',
+            }}
+          />
+          <Stack.Screen
             name="tick-check"
             options={{
               title: 'Tick Check',

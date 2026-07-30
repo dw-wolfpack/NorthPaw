@@ -91,14 +91,66 @@ export async function finishOuting(
   existingOutcomes.push(outcome);
   await AsyncStorage.setItem(OUTCOMES_STORAGE_KEY, JSON.stringify(existingOutcomes));
 
-  // Clear active outing
+  // Clear active outing and cancel pending notification if scheduled
+  if (active?.notificationId) {
+    try {
+      const Notifications = require('expo-notifications');
+      await Notifications.cancelScheduledNotificationAsync(active.notificationId);
+    } catch (_) {}
+  }
   await AsyncStorage.removeItem(ACTIVE_OUTING_KEY);
 
   return outcome;
 }
 
 export async function cancelActiveOuting(): Promise<void> {
+  const active = await getActiveOuting();
+  if (active?.notificationId) {
+    try {
+      const Notifications = require('expo-notifications');
+      await Notifications.cancelScheduledNotificationAsync(active.notificationId);
+    } catch (_) {}
+  }
   await AsyncStorage.removeItem(ACTIVE_OUTING_KEY);
+}
+
+export async function extendActiveOuting(additionalMinutes: number): Promise<ActiveOuting | null> {
+  const active = await getActiveOuting();
+  if (!active) return null;
+
+  let newNotificationId: string | null = active.notificationId;
+
+  if (active.notificationId) {
+    try {
+      const Notifications = require('expo-notifications');
+      await Notifications.cancelScheduledNotificationAsync(active.notificationId);
+
+      const elapsedSeconds = Math.max(0, Math.round((Date.now() - active.startedAt) / 1000));
+      const totalPlannedSeconds = (active.expectedDurationMinutes + additionalMinutes + 5) * 60;
+      const remainingSeconds = Math.max(60, totalPlannedSeconds - elapsedSeconds);
+
+      newNotificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `How did your dog handle the walk?`,
+          body: `Tap to record a 1-tap private check-in.`,
+          sound: true,
+          data: { type: 'post_walk_checkin' },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: remainingSeconds,
+        },
+      });
+    } catch (_) {}
+  }
+
+  const updated: ActiveOuting = {
+    ...active,
+    expectedDurationMinutes: active.expectedDurationMinutes + additionalMinutes,
+    notificationId: newNotificationId,
+  };
+  await AsyncStorage.setItem(ACTIVE_OUTING_KEY, JSON.stringify(updated));
+  return updated;
 }
 
 export async function getOutingOutcomes(): Promise<OutingOutcome[]> {

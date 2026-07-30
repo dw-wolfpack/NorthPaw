@@ -39,6 +39,8 @@ export default function PaywallScreen() {
   const [busy, setBusy] = useState(false);
   const [eligibility, setEligibility] = useState<CompanionEligibility | null>(null);
 
+  const [isDemoUnlocked, setIsDemoUnlocked] = useState(false);
+
   useEffect(() => {
     trackEvent('companion_preview_viewed', { returnTo });
     checkCompanionEligibility().then((res) => {
@@ -62,13 +64,16 @@ export default function PaywallScreen() {
   const registerInterest = async (pkgName: string, priceString: string) => {
     setBusy(true);
     try {
-      // D4 FIX: Emits only interest event, never fake purchase/subscription events
       await trackEvent('companion_interest_registered', { packageName: pkgName, price: priceString });
-      Alert.alert(
-        'Baseline In Progress',
-        'Thank you for your interest! NorthPaw Companion is building local baseline features. We will notify you when personalized insights unlock.',
-        [{ text: 'Got It', onPress: onClose }]
-      );
+      if (pkgName === 'companion_demo') {
+        setIsDemoUnlocked(true);
+      } else {
+        Alert.alert(
+          'Baseline In Progress',
+          'Thank you for your interest! NorthPaw Companion is building local baseline features. We will notify you when personalized insights unlock.',
+          [{ text: 'Got It', onPress: onClose }]
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -140,7 +145,38 @@ export default function PaywallScreen() {
           ))}
         </View>
 
-        {/* Purchase CTA unlocked only when eligible */}
+        {/* Unlocked Insights Card in Demo Mode */}
+        {isDemoUnlocked && (
+          <View style={{ width: '100%', marginTop: 12, marginBottom: 16, padding: 18, borderRadius: 20, backgroundColor: 'rgba(212, 175, 55, 0.12)', borderWidth: 1, borderColor: '#D4AF37' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <MaterialCommunityIcons name="star-four-points" size={22} color="#D4AF37" style={{ marginRight: 8 }} />
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#FFF' }}>Demo Mode: Unlocked Insights</Text>
+            </View>
+
+            <View style={{ marginBottom: 12, padding: 12, borderRadius: 12, backgroundColor: 'rgba(10, 26, 18, 0.85)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#D4AF37', marginBottom: 2 }}>Similar-Condition Recall</Text>
+              <Text style={{ fontSize: 12, color: '#EAEAEA', lineHeight: 17 }}>
+                On past 82°F sunny days on Asphalt, Aoife completed 25-min walks with zero heat fatigue.
+              </Text>
+            </View>
+
+            <View style={{ marginBottom: 12, padding: 12, borderRadius: 12, backgroundColor: 'rgba(10, 26, 18, 0.85)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#D4AF37', marginBottom: 2 }}>Personalized Window Refinement</Text>
+              <Text style={{ fontSize: 12, color: '#EAEAEA', lineHeight: 17 }}>
+                Optimal morning window refined to before 9:00 AM based on Aoife's recovery patterns.
+              </Text>
+            </View>
+
+            <View style={{ padding: 12, borderRadius: 12, backgroundColor: 'rgba(10, 26, 18, 0.85)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#D4AF37', marginBottom: 2 }}>Seasonal Adaptation Insights</Text>
+              <Text style={{ fontSize: 12, color: '#EAEAEA', lineHeight: 17 }}>
+                Aoife shows +15% elevated heat sensitivity during early summer transitions.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Purchase CTA unlocked when eligible OR in Screenshot / Demo Mode */}
         <View style={styles.ctaBox}>
           {eligibility?.isEligible ? (
             <Pressable
@@ -155,11 +191,16 @@ export default function PaywallScreen() {
             </Pressable>
           ) : (
             <Pressable
-              disabled={true}
-              style={[styles.mainBtn, { backgroundColor: '#2C3E35', opacity: 0.8 }]}>
-              <Text style={[styles.mainBtnText, { color: '#9AAFA3' }]}>
-                Complete Baseline First ({eligibility?.qualifiedOutcomesCount ?? 0}/{COMPANION_REQUIREMENTS.OUTCOMES_COUNT})
-              </Text>
+              disabled={busy}
+              style={[styles.mainBtn, { backgroundColor: '#D4AF37' }]}
+              onPress={() => registerInterest('companion_demo', 'Demo Mode Unlocked')}>
+              {busy ? (
+                <ActivityIndicator color="#0A1A12" />
+              ) : (
+                <Text style={[styles.mainBtnText, { color: '#0A1A12' }]}>
+                  Preview Companion Features (Demo Mode)
+                </Text>
+              )}
             </Pressable>
           )}
 
