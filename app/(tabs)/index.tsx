@@ -40,7 +40,7 @@ import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
 import { trackEvent, setUserProperties, incrementUserProperties } from '@/lib/analytics';
 import { ReviewPromptModal } from '@/components/ReviewPromptModal';
-import { recordUsageDay, checkReviewEligibility, getReviewData } from '@/lib/reviewPrompt';
+import { recordUsageDay, checkReviewEligibility, getReviewData, markShownThisSession } from '@/lib/reviewPrompt';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import {
@@ -1355,6 +1355,7 @@ export default function HomeScreen() {
               app_version: appVersion,
               unique_usage_days: data.uniqueUsageDays.length,
             });
+            markShownThisSession();
             setReviewModalOpen(true);
           }
         }, 1500);
