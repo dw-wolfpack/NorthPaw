@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Dimensions } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
@@ -39,23 +39,14 @@ export default function ScanScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
   const insets = useSafeAreaInsets();
-  const hasShownAlert = useRef(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     trackEvent('scan_screen_viewed');
-    
-    // Automatically trigger the excited alert on first mount
-    if (!hasShownAlert.current) {
-      hasShownAlert.current = true;
-      const timer = setTimeout(() => {
-        triggerExcitedAlert();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
   }, []);
 
   const triggerExcitedAlert = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       await trackEvent('scan_interest_registered');
@@ -64,11 +55,14 @@ export default function ScanScreen() {
         "Get ready to connect NorthPaw directly with the physical world! Soon you will be able to scan tags on your dog's gear, community flyers, and shared checklists to instantly sync location snapshots and custom lists. We are super excited to launch this in our upcoming Pro release!",
         [
           {
-            text: 'Awesome!',
+            text: 'Return Home',
             onPress: () => {
-              // Redirect back to index (Home) after acknowledging
               router.replace('/(tabs)');
             },
+          },
+          {
+            text: 'Got It',
+            style: 'cancel',
           },
         ]
       );
@@ -80,9 +74,23 @@ export default function ScanScreen() {
   return (
     <ScrollView
       style={[styles.scroll, { backgroundColor: palette.background }]}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 96 }]}
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 96 }]}
       showsVerticalScrollIndicator={false}
     >
+      {/* Escape route header nav */}
+      <View style={styles.topNav}>
+        <Pressable
+          onPress={() => router.replace('/(tabs)')}
+          style={({ pressed }) => [
+            styles.backBtn,
+            { backgroundColor: `${palette.tint}15`, opacity: pressed ? 0.75 : 1 },
+          ]}
+        >
+          <MaterialCommunityIcons name="arrow-left" size={18} color={palette.tint} style={{ marginRight: 4 }} />
+          <Text style={[styles.backBtnText, { color: palette.tint }]}>Home</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.header}>
         <Text style={[styles.title, { color: palette.text }]}>Real-Life Sync</Text>
         <Text style={[styles.desc, { color: palette.textSecondary }]}>
@@ -141,6 +149,15 @@ export default function ScanScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   container: { padding: 24 },
+  topNav: { flexDirection: 'row', marginBottom: 16 },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  backBtnText: { fontSize: 14, fontWeight: '700' },
   header: { marginBottom: 28 },
   title: { fontSize: 32, fontWeight: '800', letterSpacing: -0.6, marginBottom: 8 },
   desc: { fontSize: 16, lineHeight: 22 },

@@ -533,6 +533,7 @@ export default function HomeScreen() {
   const [verifyRunning, setVerifyRunning] = useState(false);
   const [verifyCountdown, setVerifyCountdown] = useState(7);
   const verifyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isTimerActiveRef = useRef(false);
   const scrubHourHapticRef = useRef<number | null>(null);
   const confidencePulse = useRef(new Animated.Value(1)).current;
   const [showSecondaryHazard, setShowSecondaryHazard] = useState(false);
@@ -1307,42 +1308,49 @@ export default function HomeScreen() {
     }
   }, [readinessPresentation, router]);
 
+  const stopAndClearVerifyTimer = useCallback(() => {
+    if (verifyTimerRef.current) {
+      clearInterval(verifyTimerRef.current);
+      verifyTimerRef.current = null;
+    }
+    isTimerActiveRef.current = false;
+    setVerifyRunning(false);
+  }, []);
+
   const startVerifySurface = useCallback(() => {
-    if (verifyRunning) return;
+    // Guaranteed single-instance timer check and cleanup
+    stopAndClearVerifyTimer();
+
     trackEvent('hand_test_started', { surface: selectedSurface });
     setVerifyRunning(true);
     setVerifyCountdown(7);
+    isTimerActiveRef.current = true;
+
     let t = 7;
     verifyTimerRef.current = setInterval(() => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       t -= 1;
-      setVerifyCountdown(Math.max(0, t));
+      const nextCount = Math.max(0, t);
+      setVerifyCountdown(nextCount);
+
       if (t <= 0) {
         trackEvent('hand_test_completed', { surface: selectedSurface, duration: 7 });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        if (verifyTimerRef.current) {
-          clearInterval(verifyTimerRef.current);
-          verifyTimerRef.current = null;
-        }
-        setVerifyRunning(false);
+        stopAndClearVerifyTimer();
       }
     }, 1000);
-  }, [verifyRunning, selectedSurface]);
+  }, [selectedSurface, stopAndClearVerifyTimer]);
 
   const closeVerifySurface = useCallback(() => {
     setVerifySurfaceOpen(false);
-    if (verifyRunning) {
+    if (isTimerActiveRef.current || verifyRunning) {
       trackEvent('hand_test_cancelled', {
         surface: selectedSurface,
         remainingSeconds: verifyCountdown,
       });
     }
-    setVerifyRunning(false);
-    if (verifyTimerRef.current) {
-      clearInterval(verifyTimerRef.current);
-      verifyTimerRef.current = null;
-    }
-  }, [verifyRunning, selectedSurface, verifyCountdown]);
+    stopAndClearVerifyTimer();
+  }, [selectedSurface, verifyCountdown, verifyRunning, stopAndClearVerifyTimer]);
 
   const cycleSurface = useCallback(() => {
     hapticTap();
@@ -1380,13 +1388,26 @@ export default function HomeScreen() {
     return () => loop.stop();
   }, [confidence?.label, confidencePulse]);
   useEffect(() => {
-    setShowSecondaryHazard(false);
-  }, [hazardInfo?.primary, hazardInfo?.secondary]);
+    if (!verifySurfaceOpen) {
+      stopAndClearVerifyTimer();
+    }
+  }, [verifySurfaceOpen, stopAndClearVerifyTimer]);
+
   useEffect(() => {
-    return () => {
-      if (verifyTimerRef.current) clearInterval(verifyTimerRef.current);
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        if (isTimerActiveRef.current) {
+          stopAndClearVerifyTimer();
+          setVerifyCountdown(7);
+        }
+      }
     };
-  }, []);
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+      stopAndClearVerifyTimer();
+    };
+  }, [stopAndClearVerifyTimer]);
 
   return (
     <View style={{ flex: 1, backgroundColor: isDark ? '#040806' : '#EAF2EE' }}>
@@ -1913,7 +1934,8 @@ export default function HomeScreen() {
         animationType="fade"
         onRequestClose={closeVerifySurface}>
         <View style={styles.verifyOverlay}>
-          <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeVerifySurface} />
+          <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} pointerEvents="none" />
           <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border }]}>
             <Text style={[styles.verifyTitle, { color: palette.text }]}>Verify Surface</Text>
             <Text style={[styles.verifySub, { color: palette.textSecondary }]}>
