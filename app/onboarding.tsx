@@ -79,8 +79,10 @@ export const BREEDS = [
   'Mixed Breed / Rescue',
   'Akita',
   'Alaskan Malamute',
+  'American Eskimo',
   'American Pit Bull Terrier',
   'American Staffordshire Terrier',
+  'Aussiedoodle',
   'Australian Cattle Dog',
   'Australian Shepherd',
   'Basset Hound',
@@ -111,6 +113,7 @@ export const BREEDS = [
   'Golden Retriever',
   'Goldendoodle',
   'Great Dane',
+  'Great Pyrenees',
   'Greater Swiss Mountain Dog',
   'Greyhound',
   'Havanese',
@@ -126,6 +129,7 @@ export const BREEDS = [
   'Miniature Schnauzer',
   'Newfoundland',
   'Nova Scotia Duck Tolling Retriever',
+  'Old English Sheepdog',
   'Papillon',
   'Pembroke Welsh Corgi',
   'Pomeranian',
@@ -140,6 +144,7 @@ export const BREEDS = [
   'Shiba Inu',
   'Siberian Husky',
   'Staffordshire Bull Terrier',
+  'Standard Schnauzer',
   'Vizsla',
   'Weimaraner',
   'West Highland White Terrier',
@@ -356,7 +361,12 @@ export default function OnboardingScreen() {
     const base = BREEDS.filter((b) => b !== 'Mixed Breed / Rescue');
     const q = breedQuery.trim().toLowerCase();
     if (!q) return base;
-    return base.filter((b) => b.toLowerCase().includes(q));
+    const compactQ = q.replace(/[\s\-]/g, '');
+    return base.filter((b) => {
+      const lower = b.toLowerCase();
+      const compactLower = lower.replace(/[\s\-]/g, '');
+      return lower.includes(q) || compactLower.includes(compactQ);
+    });
   }, [breedQuery]);
 
   const legacyStep = useMemo(() => {

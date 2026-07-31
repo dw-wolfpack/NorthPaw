@@ -76,7 +76,12 @@ export default function DogProfileScreen() {
     const base = BREEDS.filter((b) => b !== 'Mixed Breed / Rescue');
     const q = breedSearchQuery.trim().toLowerCase();
     if (!q) return base;
-    return base.filter((b) => b.toLowerCase().includes(q));
+    const compactQ = q.replace(/[\s\-]/g, '');
+    return base.filter((b) => {
+      const lower = b.toLowerCase();
+      const compactLower = lower.replace(/[\s\-]/g, '');
+      return lower.includes(q) || compactLower.includes(compactQ);
+    });
   }, [breedSearchQuery]);
 
   const pickPhoto = async () => {
