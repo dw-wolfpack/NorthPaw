@@ -1,8 +1,35 @@
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { HomeWeatherState, WeekendDayForecast, HazardTag } from './nwsWeather';
 import { TimelineSlot, buildTimelineSlotsFromHourly } from './timelineSlots';
 
 const TOMORROW_ORIGIN = 'https://api.tomorrow.io/v4/weather';
 const API_KEY = process.env.EXPO_PUBLIC_TOMORROW_IO_API_KEY;
+
+export async function notifyDeveloperSheetsOfRateLimit(providerName: string): Promise<void> {
+  const sheetsUrl = process.env.EXPO_PUBLIC_BREED_REQUEST_SHEETS_URL;
+  if (!sheetsUrl) return;
+
+  const appVersion = Constants?.expoConfig?.version || '1.0.0';
+
+  try {
+    await fetch(sheetsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'rate_limit_alert_429',
+        subject: `⚠️ ${providerName} API Rate Limit (429) Exceeded`,
+        notes: `Backend free tier limit reached on device platform ${Platform.OS}. User prompted to check back in 24 hours or contact support.`,
+        email: 'alert@northpawapp.com',
+        appVersion,
+      }),
+    });
+  } catch (e) {
+    console.warn('[RateLimitAlert] Failed to send alert to Google Sheets:', e);
+  }
+}
 
 const WEATHER_CODE_MAP: Record<number, string> = {
   1000: 'Clear, Sunny',
@@ -54,7 +81,12 @@ export async function fetchTomorrowWeatherAtCoordinates(
     const response = await fetch(url);
     if (!response.ok) {
       if (response.status === 429) {
-        return { status: 'unavailable', message: 'Tomorrow.io rate limit reached.' };
+        notifyDeveloperSheetsOfRateLimit('Tomorrow.io').catch(() => {});
+        return {
+          status: 'unavailable',
+          message:
+            'Backend free tier limit reached — notified the developer! Thank you for your patience. Please check back in 24 hours or contact support@northpawapp.com.',
+        };
       }
       return { status: 'unavailable', message: `Tomorrow.io error: ${response.status}` };
     }
