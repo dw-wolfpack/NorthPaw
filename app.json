@@ -22,7 +22,8 @@
         "UIBackgroundModes": [
           "fetch"
         ]
-      }
+      },
+      "appleTeamId": "5V6Q478U5L"
     },
     "android": {
       "adaptiveIcon": {
@@ -83,7 +84,24 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "26946416-fc70-4522-9d65-02746eae4ca7"
+        "projectId": "26946416-fc70-4522-9d65-02746eae4ca7",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "bundleIdentifier": "com.northpaw.app.widget",
+                  "targetName": "NorthPawWidget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.northpaw.app"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     }
   }
