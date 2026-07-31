@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { HomeWeatherState, WeekendDayForecast, HazardTag } from './nwsWeather';
@@ -6,24 +7,39 @@ import { TimelineSlot, buildTimelineSlotsFromHourly } from './timelineSlots';
 const TOMORROW_ORIGIN = 'https://api.tomorrow.io/v4/weather';
 const API_KEY = process.env.EXPO_PUBLIC_TOMORROW_IO_API_KEY;
 
+const ALERT_COOLDOWN_KEY = '@northpaw/last_rate_limit_alert_timestamp';
+const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+
 export async function notifyDeveloperSheetsOfRateLimit(providerName: string): Promise<void> {
   const sheetsUrl = process.env.EXPO_PUBLIC_BREED_REQUEST_SHEETS_URL;
   if (!sheetsUrl) return;
 
-  const appVersion = Constants?.expoConfig?.version || '1.0.0';
-
   try {
+    const lastAlertTimeStr = await AsyncStorage.getItem(ALERT_COOLDOWN_KEY);
+    const now = Date.now();
+    if (lastAlertTimeStr) {
+      const lastAlertTime = parseInt(lastAlertTimeStr, 10);
+      if (now - lastAlertTime < TWELVE_HOURS_MS) {
+        // Device-level cooldown: at most 1 alert per 12 hours per device
+        return;
+      }
+    }
+
+    await AsyncStorage.setItem(ALERT_COOLDOWN_KEY, now.toString());
+    const appVersion = Constants?.expoConfig?.version || '1.0.0';
+
     await fetch(sheetsUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        type: 'rate_limit_alert_429',
-        subject: `⚠️ ${providerName} API Rate Limit (429) Exceeded`,
-        notes: `Backend free tier limit reached on device platform ${Platform.OS}. User prompted to check back in 24 hours or contact support.`,
-        email: 'alert@northpawapp.com',
+        type: 'weather_api_alert_429',
+        subject: '⚠️ Weather API Rate Limit / Availability Warning',
+        notes: 'Rate limit or service bottleneck detected on device. Developer notified.',
+        email: 'system_alert@northpawapp.com',
         appVersion,
+        platform: Platform.OS,
       }),
     });
   } catch (e) {
@@ -85,7 +101,7 @@ export async function fetchTomorrowWeatherAtCoordinates(
         return {
           status: 'unavailable',
           message:
-            'Backend free tier limit reached — notified the developer! Thank you for your patience. Please check back in 24 hours or contact support@northpawapp.com.',
+            'Weather data is temporarily unavailable. NorthPaw has notified the developer. Please try again later, or contact support@northpawapp.com if the issue continues.',
         };
       }
       return { status: 'unavailable', message: `Tomorrow.io error: ${response.status}` };
