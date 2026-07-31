@@ -58,7 +58,7 @@ struct Provider: TimelineProvider {
     }
 }
 
-extension Provider.Entry {
+extension SimpleEntry {
     var statusColor: Color {
         if roadTempF >= 105 || npiScore < 50 {
             return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger)
