@@ -21,6 +21,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Dimensions,
   View,
@@ -64,6 +65,9 @@ import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand } from '@/lib/weather/roadTemp';
 import { useColorScheme } from '@/components/useColorScheme';
+import { ShareCard } from '@/components/ShareCard';
+import { ShareButton } from '@/components/ShareButton';
+import { useShareCard } from '@/hooks/useShareCard';
 
 const FOREST = '#1B4332';
 const SAFETY_GREEN = '#2ECC71';
@@ -546,6 +550,9 @@ export default function HomeScreen() {
   const [showUpgradeTermsModal, setShowUpgradeTermsModal] = useState(false);
   const [upgradeDisclaimerAgreed, setUpgradeDisclaimerAgreed] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+
+  const { viewRef, isSharing, shareCard } = useShareCard();
+  const shareRef = useRef<View>(null);
 
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -1959,6 +1966,22 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : null}
+
+        <View ref={shareRef} collapsable={false} style={{ marginVertical: 12 }}>
+          <ShareButton
+            onPress={() => shareCard({
+              dogName,
+              dogBreed: dogProfile?.dogBreed || 'Unknown',
+              currentNpi: npiScore ?? 0,
+              selectedSurface: selectedSurface,
+              surfaceTempF: currentRoadPoint?.roadTempF ?? 77,
+              currentTempF: (weather as any)?.tempF ?? 77,
+              roadBand: currentRoadPoint?.roadBand || 'safe',
+            })}
+            loading={isSharing}
+            dogName={dogName}
+          />
+        </View>
       </ScrollView>
 
       <Modal
@@ -2726,11 +2749,36 @@ export default function HomeScreen() {
           </BlurView>
         </View>
       </Modal>
+      {/* Off-screen capture container for image generation */}
+      <View style={styles.shareCardHiddenWrapper}>
+        <ShareCard
+          ref={viewRef}
+          dogName={dogName}
+          dogBreed={dogProfile?.dogBreed || 'Unknown'}
+          dogPhotoUri={dogProfile?.dogPhotoUri || null}
+          dogSnoutProfile={dogProfile?.dogSnoutProfile || 'standard'}
+          dogCoatType={dogProfile?.dogCoatType || 'Standard'}
+          locationName={(weather as any)?.place || 'Local Area'}
+          currentTempF={(weather as any)?.tempF ?? 77}
+          currentNpi={npiScore ?? 0}
+          bestWindows={bestWindows}
+          selectedSurface={selectedSurface}
+          surfaceTempF={currentRoadPoint?.roadTempF ?? 77}
+          roadBand={currentRoadPoint?.roadBand || 'safe'}
+          formattedDate={new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shareCardHiddenWrapper: {
+    position: 'absolute',
+    left: -9999,
+    top: -9999,
+    opacity: 0,
+  },
   container: { paddingHorizontal: 18, paddingBottom: 140 },
   headerRow: {
     flexDirection: 'row',

@@ -638,7 +638,7 @@ export default function OnboardingScreen() {
 
     if (scene === 'name') {
       return (
-        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+        <AnimatedReanimated.View key="name" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What&apos;s your dog&apos;s name?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>We will personalize every screen for your dog.</Text>
           <TextInput
@@ -725,7 +725,7 @@ export default function OnboardingScreen() {
 
     if (scene === 'breed-snout') {
       return (
-        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+        <AnimatedReanimated.View key="breed-snout" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
             Pick your dog’s breed for their profile. You’ll customize snout, coat, and activity next.
@@ -739,6 +739,8 @@ export default function OnboardingScreen() {
             autoCorrect={false}
             returnKeyType="search"
             clearButtonMode="while-editing"
+            editable={true}
+            selectTextOnFocus={true}
             style={[
               styles.input,
               {
@@ -771,6 +773,8 @@ export default function OnboardingScreen() {
               autoCorrect={false}
               returnKeyType="done"
               clearButtonMode="while-editing"
+              editable={true}
+              selectTextOnFocus={true}
               style={[
                 styles.input,
                 {
@@ -786,7 +790,7 @@ export default function OnboardingScreen() {
             style={styles.breedScroll}
             contentContainerStyle={styles.breedGrid}
             nestedScrollEnabled
-            keyboardShouldPersistTaps="handled">
+            keyboardShouldPersistTaps="always">
             {filteredBreeds.map((item) => {
               const selected = !isMixedBreed && breed === item;
               return (
@@ -873,7 +877,7 @@ export default function OnboardingScreen() {
 
     if (scene === 'biology-activity') {
       return (
-        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+        <AnimatedReanimated.View key="biology-activity" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>Let&apos;s finish {dogName}&apos;s custom profile.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
             Weight, coat, color, and energy help build safe outing guides and checklists.
@@ -1357,8 +1361,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View style={[styles.flex, screenFadeStyle]}>
           <ScrollView
             contentContainerStyle={styles.scroll}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag">
+            keyboardShouldPersistTaps="always">
           <AnimatedReanimated.View style={[styles.stepRow, headerFadeStyle]}>
             <Text style={[styles.stepLabel, { color: palette.textSecondary }]}>Scene {sceneIdx + 1} of {SCENES.length}</Text>
             {sceneIdx > 0 ? (
