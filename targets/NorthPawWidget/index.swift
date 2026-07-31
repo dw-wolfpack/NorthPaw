@@ -9,6 +9,7 @@ struct SimpleEntry: TimelineEntry {
     let roadTempF: Int
     let surfaceType: String
     let npiScore: Int
+    let actionableTime: String
 }
 
 struct Provider: TimelineProvider {
@@ -16,11 +17,12 @@ struct Provider: TimelineProvider {
         SimpleEntry(
             date: Date(),
             dogName: "Aoife",
-            statusText: "Great to go",
+            statusText: "SAFE TO WALK",
             airTempF: 74,
             roadTempF: 82,
             surfaceType: "Asphalt",
-            npiScore: 88
+            npiScore: 88,
+            actionableTime: "Best window until 2:15 PM"
         )
     }
 
@@ -31,7 +33,6 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SimpleEntry>) -> ()) {
         let entry = loadEntryFromAppGroup()
-        // Refresh every 15 minutes
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date().addingTimeInterval(900)
         let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
         completion(timeline)
@@ -39,21 +40,23 @@ struct Provider: TimelineProvider {
 
     private func loadEntryFromAppGroup() -> SimpleEntry {
         let defaults = UserDefaults(suiteName: "group.com.northpaw.app")
-        let dogName = defaults?.string(forKey: "dogName") ?? "Your Dog"
-        let statusText = defaults?.string(forKey: "statusText") ?? "Safe to Walk"
+        let dogName = defaults?.string(forKey: "dogName") ?? "Your pup"
+        let rawStatusText = defaults?.string(forKey: "statusText") ?? "Safe to Walk"
         let airTempF = defaults?.integer(forKey: "airTempF") ?? 74
         let roadTempF = defaults?.integer(forKey: "roadTempF") ?? 82
         let surfaceType = defaults?.string(forKey: "surfaceType") ?? "Asphalt"
         let npiScore = defaults?.integer(forKey: "npiScore") ?? 88
+        let actionableTime = defaults?.string(forKey: "actionableTime") ?? "Next update ~15m"
 
         return SimpleEntry(
             date: Date(),
             dogName: dogName,
-            statusText: statusText,
+            statusText: rawStatusText.uppercased(),
             airTempF: airTempF > 0 ? airTempF : 74,
             roadTempF: roadTempF > 0 ? roadTempF : 82,
             surfaceType: surfaceType,
-            npiScore: npiScore > 0 ? npiScore : 88
+            npiScore: npiScore > 0 ? npiScore : 88,
+            actionableTime: actionableTime
         )
     }
 }
@@ -65,7 +68,17 @@ extension SimpleEntry {
         } else if roadTempF >= 85 || npiScore < 75 {
             return Color(red: 0.95, green: 0.55, blue: 0.08) // Amber (Caution)
         } else {
-            return Color(red: 0.16, green: 0.65, blue: 0.38) // Emerald Green (Safe / Great to go)
+            return Color(red: 0.16, green: 0.65, blue: 0.38) // Emerald Green (Safe)
+        }
+    }
+
+    var statusDotIcon: String {
+        if roadTempF >= 105 || npiScore < 50 {
+            return "exclamationmark.circle.fill"
+        } else if roadTempF >= 85 || npiScore < 75 {
+            return "exclamationmark.triangle.fill"
+        } else {
+            return "checkmark.circle.fill"
         }
     }
 }
@@ -77,61 +90,65 @@ struct NorthPawWidgetEntryView : View {
     var body: some View {
         switch family {
         case .accessoryCircular:
-            // Lock Screen Circular Widget with Hero Status Ring
+            // Lock Screen Circular Complication (82° Hero Number + Ring)
             ZStack {
                 AccessoryWidgetBackground()
                 Circle()
-                    .stroke(entry.statusColor.opacity(0.35), lineWidth: 3)
+                    .stroke(entry.statusColor.opacity(0.35), lineWidth: 3.5)
                 Circle()
                     .trim(from: 0, to: CGFloat(min(max(entry.npiScore, 0), 100)) / 100.0)
-                    .stroke(entry.statusColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .stroke(entry.statusColor, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
 
-                VStack(spacing: -1) {
+                VStack(spacing: -2) {
                     Image(systemName: "pawprint.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundColor(entry.statusColor)
                     Text("\(entry.roadTempF)°")
-                        .font(.system(size: 14, weight: .heavy, design: .rounded))
-                        .minimumScaleFactor(0.75)
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .minimumScaleFactor(0.7)
                 }
             }
             .widgetURL(URL(string: "northpaw://")!)
 
         case .accessoryInline:
-            // Lock Screen Text Line above Clock
+            // Lock Screen Text Line
             ViewThatFits {
-                Label("🐾 \(entry.dogName): \(entry.statusText) (\(entry.roadTempF)° Pavement)", systemImage: "pawprint.fill")
-                Label("🐾 NorthPaw: \(entry.statusText) (\(entry.roadTempF)°)", systemImage: "pawprint.fill")
+                Label("🐾 \(entry.statusText) • Road \(entry.roadTempF)° (\(entry.dogName))", systemImage: "pawprint.fill")
+                Label("🐾 \(entry.statusText) • \(entry.roadTempF)°", systemImage: "pawprint.fill")
             }
             .widgetURL(URL(string: "northpaw://")!)
 
         case .accessoryRectangular:
-            // Lock Screen Rectangular Widget (Medium Lock Screen Box)
+            // Lock Screen Rectangular Box
             ZStack(alignment: .leading) {
                 AccessoryWidgetBackground()
                 VStack(alignment: .leading, spacing: 2) {
+                    // 1. Dominant Decision Header
                     HStack(spacing: 4) {
-                        Image(systemName: "pawprint.fill")
+                        Image(systemName: entry.statusDotIcon)
                             .font(.system(size: 10, weight: .bold))
                             .widgetAccentable()
-                        Text("\(entry.dogName.uppercased()) • \(entry.statusText.uppercased())")
-                            .font(.system(size: 10, weight: .bold))
+                        Text(entry.statusText)
+                            .font(.system(size: 11, weight: .bold))
                             .lineLimit(1)
                     }
                     
+                    // 2. Hero Road Temperature
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("Road \(entry.roadTempF)°")
+                        Text("Road \(entry.roadTempF)°F")
                             .font(.system(size: 16, weight: .heavy, design: .rounded))
                             .widgetAccentable()
                         Text("Air \(entry.airTempF)°")
-                            .font(.system(size: 12, weight: .semibold))
-                            .opacity(0.85)
+                            .font(.system(size: 11, weight: .semibold))
+                            .opacity(0.8)
                     }
                     
-                    Text("\(entry.surfaceType) • NPI \(entry.npiScore)/100")
-                        .font(.system(size: 10, weight: .medium))
+                    // 3. Actionable Time / Dog Name
+                    Text("\(entry.actionableTime) • \(entry.dogName)")
+                        .font(.system(size: 9, weight: .medium))
                         .opacity(0.75)
+                        .lineLimit(1)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -139,99 +156,131 @@ struct NorthPawWidgetEntryView : View {
             .widgetURL(URL(string: "northpaw://")!)
 
         case .systemSmall:
-            // Home Screen Small Card
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: "pawprint.fill")
-                        .foregroundColor(Color(red: 0.10, green: 0.26, blue: 0.19))
-                    Spacer()
-                    Text("\(entry.npiScore)")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color(red: 0.10, green: 0.26, blue: 0.19).opacity(0.12))
-                        .cornerRadius(6)
+            // Home Screen Small Card (Decision + Hero Number)
+            VStack(alignment: .leading, spacing: 4) {
+                // 1. Dominant Status Decision
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(entry.statusColor)
+                        .frame(width: 8, height: 8)
+                    Text(entry.statusText)
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundColor(entry.statusColor)
+                        .lineLimit(1)
+                }
+                
+                Text(entry.dogName)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                // 2. Hero Pavement Number
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("\(entry.roadTempF)°F")
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .foregroundColor(.primary)
+                    Text("PAVEMENT (\(entry.surfaceType.uppercased()))")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .tracking(0.5)
                 }
 
                 Spacer()
 
-                Text(entry.dogName)
-                    .font(.system(size: 15, weight: .bold))
-
-                Text(entry.statusText)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-
+                // 3. Actionable Context
                 HStack {
-                    VStack(alignment: .leading) {
-                        Text("PAVEMENT")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(.secondary)
-                        Text("\(entry.roadTempF)°F")
-                            .font(.system(size: 16, weight: .heavy, design: .rounded))
-                    }
+                    Text(entry.actionableTime)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                     Spacer()
-                    VStack(alignment: .trailing) {
-                        Text("AIR")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(.secondary)
-                        Text("\(entry.airTempF)°F")
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    }
+                    Text("NPI \(entry.npiScore)")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(entry.statusColor.opacity(0.15))
+                        .foregroundColor(entry.statusColor)
+                        .cornerRadius(4)
                 }
             }
-            .padding()
+            .padding(14)
             .containerBackground(for: .widget) {
                 Color(uiColor: .systemBackground)
             }
             .widgetURL(URL(string: "northpaw://")!)
 
         default:
-            // Home Screen Medium Card
+            // Home Screen Medium Card (Full App Distilled into a Glance)
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
+                // Left Column: Decision Dominance + Actionable Time
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
-                        Image(systemName: "pawprint.fill")
-                            .foregroundColor(Color(red: 0.10, green: 0.26, blue: 0.19))
-                        Text(entry.dogName)
-                            .font(.headline)
+                        Circle()
+                            .fill(entry.statusColor)
+                            .frame(width: 10, height: 10)
+                        Text(entry.statusText)
+                            .font(.system(size: 15, weight: .heavy))
+                            .foregroundColor(entry.statusColor)
+                            .lineLimit(1)
                     }
 
-                    Text(entry.statusText)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Color(red: 0.10, green: 0.26, blue: 0.19))
+                    Text(entry.dogName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary)
 
                     Spacer()
 
-                    Text("Updated \(entry.date.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    // Actionable Time Banner
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(entry.statusColor)
+                        Text(entry.actionableTime)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(6)
                 }
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("Pavement \(entry.roadTempF)°F")
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
-                    Text("Air \(entry.airTempF)°F • \(entry.surfaceType)")
-                        .font(.caption)
+                // Right Column: Hero Pavement Number + Air & Index
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(entry.roadTempF)°F")
+                        .font(.system(size: 38, weight: .black, design: .rounded))
+                        .foregroundColor(.primary)
+
+                    Text("PAVEMENT")
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.secondary)
-                    
+                        .tracking(1)
+
+                    Spacer()
+
+                    Text("Air \(entry.airTempF)°F • \(entry.surfaceType)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+
                     HStack(spacing: 4) {
                         Text("NorthPaw Index")
-                            .font(.caption2)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
                         Text("\(entry.npiScore)")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color(red: 0.10, green: 0.26, blue: 0.19).opacity(0.12))
+                            .background(entry.statusColor.opacity(0.15))
+                            .foregroundColor(entry.statusColor)
                             .cornerRadius(4)
                     }
-                    .padding(.top, 4)
+                    .padding(.top, 2)
                 }
             }
-            .padding()
+            .padding(16)
             .containerBackground(for: .widget) {
                 Color(uiColor: .systemBackground)
             }
@@ -249,7 +298,7 @@ struct NorthPawWidget: Widget {
             NorthPawWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("NorthPaw Paw-Safety")
-        .description("Keep an eye on pavement heat and dog safety scores right from your Lock Screen.")
+        .description("Instant walk decisions and pavement temperature alerts right from your Home or Lock Screen.")
         .supportedFamilies([
             .accessoryCircular,
             .accessoryRectangular,

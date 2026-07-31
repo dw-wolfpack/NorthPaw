@@ -856,17 +856,6 @@ export default function HomeScreen() {
             incrementUserProperties({
               total_safety_checks: 1,
             });
-
-            if (readinessState) {
-              syncWidgetData({
-                dogName: profile.dogName || 'Your Dog',
-                statusText: readinessState.presentation.statusText,
-                airTempF: result.tempF,
-                roadTempF: readinessState.calculatedRoadTempF,
-                surfaceType: selectedSurface,
-                npiScore: readinessState.npiScore,
-              }).catch(() => {});
-            }
           }
         }
       })();
@@ -920,7 +909,48 @@ export default function HomeScreen() {
       primaryChecklistId: checklistCtaId,
     });
     setReadinessPresentation(pres);
-  }, [weather.status, checklistCtaId, dogName]);
+    if (pres && weather.status === 'ok') {
+      let actionableTime = 'Next update ~15m';
+
+      if (Array.isArray(weather.hourlySamples) && weather.hourlySamples.length > 0) {
+        const now = new Date();
+        const hotUpcoming = weather.hourlySamples.find((s) => {
+          const d = new Date(s.timeIso);
+          return d > now && s.airTempF >= 82;
+        });
+
+        if (hotUpcoming && pres.calculatedRoadTempF < 85) {
+          const hotDate = new Date(hotUpcoming.timeIso);
+          const formattedHour = hotDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+          actionableTime = `Heating up after ${formattedHour}`;
+        } else if (pres.calculatedRoadTempF >= 85) {
+          const coolerUpcoming = weather.hourlySamples.find((s) => {
+            const d = new Date(s.timeIso);
+            return d > now && s.airTempF < 78;
+          });
+          if (coolerUpcoming) {
+            const coolDate = new Date(coolerUpcoming.timeIso);
+            const formattedHour = coolDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            actionableTime = `Cooler by ${formattedHour}`;
+          } else {
+            actionableTime = 'Hot conditions rest of day';
+          }
+        } else {
+          actionableTime = 'Great window for next 3+ hours';
+        }
+      }
+
+      syncWidgetData({
+        dogName: dogName,
+        statusText: pres.presentation.statusText,
+        airTempF: weather.tempF,
+        roadTempF: pres.calculatedRoadTempF,
+        surfaceType: selectedSurface,
+        npiScore: pres.npiScore,
+        actionableTime,
+      }).catch(() => {});
+    }
+  }, [weather, checklistCtaId, dogName, selectedSurface]);
 
   useFocusEffect(
     useCallback(() => {

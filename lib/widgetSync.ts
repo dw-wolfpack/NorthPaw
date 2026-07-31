@@ -8,18 +8,17 @@ export interface WidgetSyncData {
   roadTempF: number;
   surfaceType: string;
   npiScore: number;
+  actionableTime?: string;
 }
 
 const WIDGET_STORAGE_KEY = '@northpaw/widget_last_sync_v1';
 
 export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
   try {
-    // 1. Save locally for fallback
     await AsyncStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(data));
 
     if (Platform.OS !== 'ios') return;
 
-    // 2. Write to App Group UserDefaults via SharedGroupPreferences or UserDefaults module if linked
     const SharedGroupPreferences = NativeModules.SharedGroupPreferences;
     const groupName = 'group.com.northpaw.app';
 
@@ -30,6 +29,9 @@ export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
       await SharedGroupPreferences.setItem('roadTempF', data.roadTempF, groupName);
       await SharedGroupPreferences.setItem('surfaceType', data.surfaceType, groupName);
       await SharedGroupPreferences.setItem('npiScore', data.npiScore, groupName);
+      if (data.actionableTime) {
+        await SharedGroupPreferences.setItem('actionableTime', data.actionableTime, groupName);
+      }
     }
   } catch (e) {
     console.warn('[WidgetSync] Notice - widget data update:', e);
