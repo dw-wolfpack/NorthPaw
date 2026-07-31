@@ -66,11 +66,16 @@ struct NorthPawWidgetEntryView : View {
         switch family {
         case .accessoryCircular:
             // Lock Screen Circular Widget (Small Paw Badge)
-            VStack(spacing: 1) {
-                Image(systemName: "pawprint.fill")
-                    .font(.system(size: 13, weight: .bold))
-                Text("\(entry.roadTempF)°")
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+            ZStack {
+                AccessoryWidgetBackground()
+                VStack(spacing: 0) {
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .widgetAccentable()
+                    Text("\(entry.roadTempF)°")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .minimumScaleFactor(0.8)
+                }
             }
             .widgetURL(URL(string: "northpaw://")!)
 
@@ -84,26 +89,33 @@ struct NorthPawWidgetEntryView : View {
 
         case .accessoryRectangular:
             // Lock Screen Rectangular Widget (Medium Lock Screen Box)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Image(systemName: "pawprint.fill")
-                        .font(.caption2)
-                    Text("\(entry.dogName.uppercased()) • \(entry.statusText.uppercased())")
-                        .font(.system(size: 11, weight: .bold))
-                        .lineLimit(1)
+            ZStack(alignment: .leading) {
+                AccessoryWidgetBackground()
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pawprint.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .widgetAccentable()
+                        Text("\(entry.dogName.uppercased()) • \(entry.statusText.uppercased())")
+                            .font(.system(size: 10, weight: .bold))
+                            .lineLimit(1)
+                    }
+                    
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("Road \(entry.roadTempF)°")
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .widgetAccentable()
+                        Text("Air \(entry.airTempF)°")
+                            .font(.system(size: 12, weight: .semibold))
+                            .opacity(0.85)
+                    }
+                    
+                    Text("\(entry.surfaceType) • NPI \(entry.npiScore)/100")
+                        .font(.system(size: 10, weight: .medium))
+                        .opacity(0.75)
                 }
-                
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("Road \(entry.roadTempF)°")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
-                    Text("Air \(entry.airTempF)°")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-                
-                Text("\(entry.surfaceType) • NPI \(entry.npiScore)/100")
-                    .font(.system(size: 10, weight: .regular))
-                    .foregroundColor(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
             }
             .widgetURL(URL(string: "northpaw://")!)
 
