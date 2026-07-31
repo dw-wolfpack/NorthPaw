@@ -735,6 +735,10 @@ export default function OnboardingScreen() {
             onChangeText={setBreedQuery}
             placeholder="Search breeds"
             placeholderTextColor={palette.textSecondary}
+            autoCapitalize="words"
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
             style={[
               styles.input,
               {
@@ -763,6 +767,10 @@ export default function OnboardingScreen() {
               onChangeText={setMixedPrimary}
               placeholder="Primary mix (e.g. Lab mix)"
               placeholderTextColor={palette.textSecondary}
+              autoCapitalize="words"
+              autoCorrect={false}
+              returnKeyType="done"
+              clearButtonMode="while-editing"
               style={[
                 styles.input,
                 {
@@ -774,7 +782,11 @@ export default function OnboardingScreen() {
               ]}
             />
           ) : null}
-          <ScrollView style={styles.breedScroll} contentContainerStyle={styles.breedGrid}>
+          <ScrollView
+            style={styles.breedScroll}
+            contentContainerStyle={styles.breedGrid}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled">
             {filteredBreeds.map((item) => {
               const selected = !isMixedBreed && breed === item;
               return (
