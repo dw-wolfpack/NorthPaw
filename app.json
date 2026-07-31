@@ -74,7 +74,8 @@
           "enableBackgroundRemoteNotifications": false
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true

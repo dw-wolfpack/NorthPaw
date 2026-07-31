@@ -40,6 +40,7 @@ import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
 import type { ReadinessPresentation } from '@/lib/readiness/types';
 import { trackEvent, setUserProperties, incrementUserProperties } from '@/lib/analytics';
+import { syncWidgetData } from '@/lib/widgetSync';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import {
@@ -855,6 +856,17 @@ export default function HomeScreen() {
             incrementUserProperties({
               total_safety_checks: 1,
             });
+
+            if (readinessState) {
+              syncWidgetData({
+                dogName: profile.dogName || 'Your Dog',
+                statusText: readinessState.presentation.statusText,
+                airTempF: result.tempF,
+                roadTempF: readinessState.calculatedRoadTempF,
+                surfaceType: selectedSurface,
+                npiScore: readinessState.npiScore,
+              }).catch(() => {});
+            }
           }
         }
       })();
