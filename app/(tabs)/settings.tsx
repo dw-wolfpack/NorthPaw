@@ -5,7 +5,13 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share } from 'react-native';
 import Constants from 'expo-constants';
 import { useCallback, useState } from 'react';
-import { trackEvent } from '@/lib/analytics';
+import {
+  trackEvent,
+  isTestflightOrDevBuild,
+  isAnalyticsEnabledInNonProd,
+  setAnalyticsEnabledInNonProd,
+  setSendAnalyticsInDev,
+} from '@/lib/analytics';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -34,6 +40,22 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
+  const [mixpanelEnabled, setMixpanelEnabled] = useState(false);
+
+  // Load initial Mixpanel setting for non-prod
+  useFocusEffect(
+    useCallback(() => {
+      isAnalyticsEnabledInNonProd().then((val) => setMixpanelEnabled(val));
+    }, [])
+  );
+
+  const toggleMixpanel = async () => {
+    const next = !mixpanelEnabled;
+    setMixpanelEnabled(next);
+    setSendAnalyticsInDev(next);
+    await setAnalyticsEnabledInNonProd(next);
+  };
+
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Settings' });
@@ -248,9 +270,35 @@ export default function SettingsScreen() {
         RevenueCat when configured. Opening Privacy Policy or Support may use an in-app browser or your mail app.
       </Text>
 
-      {__DEV__ ? (
+      {isTestflightOrDevBuild() ? (
         <>
           <Text style={[styles.h1, { marginTop: 28, color: palette.tint }]}>Developer Settings</Text>
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              await toggleMixpanel();
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: mixpanelEnabled ? palette.tint : palette.border,
+                backgroundColor: mixpanelEnabled ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
+                opacity: pressed ? 0.92 : 1,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                {mixpanelEnabled ? 'Mixpanel Events: ON (Testflight)' : 'Mixpanel Events: OFF'}
+              </Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Toggle to disable analytics in Testflight builds. In production this toggle is hidden.
+              </Text>
+            </View>
+            <FontAwesome name={mixpanelEnabled ? "check-circle" : "close-circle"} size={16} color={palette.tint} />
+          </Pressable>
+
           <Pressable
             onPress={async () => {
               hapticTap();

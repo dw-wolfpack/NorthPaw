@@ -45,7 +45,10 @@ export async function fetchTomorrowWeatherAtCoordinates(
 
   const latStr = latitude.toFixed(4);
   const lonStr = longitude.toFixed(4);
-  const url = `${TOMORROW_ORIGIN}/forecast?location=${latStr},${lonStr}&apikey=${API_KEY}&units=imperial&timesteps=1h`;
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const startTimeIso = todayMidnight.toISOString();
+  const url = `${TOMORROW_ORIGIN}/forecast?location=${latStr},${lonStr}&apikey=${API_KEY}&units=imperial&timesteps=1h&startTime=${startTimeIso}`;
 
   try {
     const response = await fetch(url);
