@@ -1771,7 +1771,16 @@ export default function HomeScreen() {
                         />
                       ) : (
                         <View style={[styles.heroDogCircle, styles.heroDogPh]}>
-                          <MaterialCommunityIcons name="camera-plus" size={48} color="rgba(234, 234, 234, 0.4)" />
+                          <MaterialCommunityIcons
+                            name="dog-side"
+                            size={42}
+                            color={isDark ? 'rgba(255, 255, 255, 0.75)' : 'rgba(18, 31, 24, 0.7)'}
+                            style={{ marginBottom: 6 }}
+                          />
+                          <View style={[styles.customizeBadge, { backgroundColor: palette.tint }]}>
+                            <MaterialCommunityIcons name="camera" size={10} color="#fff" />
+                            <Text style={styles.customizeBadgeText}>Add photo</Text>
+                          </View>
                         </View>
                       )}
                     </Pressable>
@@ -2851,7 +2860,27 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(45,106,79,0.08)',
   },
-  heroDogPh: { alignItems: 'center', justifyContent: 'center' },
+  heroDogPh: { alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  customizeBadge: {
+    position: 'absolute',
+    bottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  customizeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
   hudCornerTl: {
     position: 'absolute',
     top: 0,

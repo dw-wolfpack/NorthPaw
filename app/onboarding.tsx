@@ -51,26 +51,24 @@ import { FeedbackModal } from '@/components/FeedbackModal';
 type SceneId =
   | 'welcome'
   | 'name'
-  | 'photo'
   | 'breed-snout'
-  | 'biology-activity'
   | 'age'
-  | 'outings'
+  | 'biology-activity'
   | 'location'
   | 'npi-activation'
+  | 'photo'
   | 'morning-brief'
   | 'commitment';
 
 const SCENES: SceneId[] = [
   'welcome',
   'name',
-  'photo',
   'breed-snout',
-  'biology-activity',
   'age',
-  'outings',
+  'biology-activity',
   'location',
   'npi-activation',
+  'photo',
   'morning-brief',
   'commitment',
 ];
@@ -681,9 +679,9 @@ export default function OnboardingScreen() {
     if (scene === 'photo') {
       return (
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>Add a photo of {dogName}.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Make it yours</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Optional. Photos stay on your device and are never uploaded.
+            Add a photo of {dogName} to personalize your NorthPaw experience. Photos stay strictly on your device.
           </Text>
           <Pressable
             onPress={() => {
@@ -702,16 +700,25 @@ export default function OnboardingScreen() {
               <Image source={{ uri: displayPhoto }} style={styles.photoImg} contentFit="cover" cachePolicy="none" />
             ) : (
               <View style={[styles.photoWarmPlaceholder, { backgroundColor: palette.border + '40' }]}>
-                <MaterialCommunityIcons name="dog-side" size={74} color={palette.textSecondary} />
-                <Text style={[styles.placeholderText, { color: palette.textSecondary }]}>Choose a photo of {dogName}</Text>
+                <MaterialCommunityIcons name="camera-plus" size={56} color={palette.tint} />
+                <Text style={[styles.placeholderText, { color: palette.text, fontWeight: '700', marginTop: 8 }]}>Tap to choose a photo</Text>
               </View>
             )}
           </Pressable>
-          <Pressable
-            onPress={() => { hapticTap(); void handlePhotoContinue(); }}
-            style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            <Text style={styles.ctaText}>Continue</Text>
-          </Pressable>
+
+          <View style={{ gap: 10, marginTop: 14 }}>
+            <Pressable
+              onPress={() => { hapticTap(); void handlePhotoContinue(); }}
+              style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+              <Text style={styles.ctaText}>{displayPhoto ? 'Continue with photo' : 'Choose a photo'}</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => { hapticTap(); advance(); }}
+              style={({ pressed }) => [styles.ghostBtn, { borderColor: palette.border, opacity: pressed ? 0.8 : 1 }]}>
+              <Text style={[styles.ghostText, { color: palette.textSecondary, textAlign: 'center' }]}>Skip for now</Text>
+            </Pressable>
+          </View>
         </AnimatedReanimated.View>
       );
     }
@@ -1123,7 +1130,7 @@ export default function OnboardingScreen() {
           </View>
           <Pressable
             disabled={!activationReady}
-            onPress={() => { hapticTap();  setSceneIdx(SCENES.indexOf('morning-brief')); }}
+            onPress={() => { hapticTap(); advance(); }}
             style={({ pressed }) => [
               styles.cta,
               { backgroundColor: activationReady ? palette.tint : palette.border, opacity: pressed ? 0.9 : 1 },
