@@ -2351,10 +2351,16 @@ export default function HomeScreen() {
               />
               <View style={styles.detailCardInner}>
                 <Text style={[styles.detailCardTitle, { color: palette.text }]}>Best window</Text>
-                <Text style={[styles.detailCardValue, { color: palette.text }]}>{bestWindowLabel}</Text>
-                <Text style={[styles.detailCardSub, { color: palette.textSecondary }]}>
-                  Daylight
-                  {daylightStart != null && daylightEnd != null ? `: ${rangeLabel(daylightStart, daylightEnd)}` : ': unavailable'}
+                <Text style={[styles.detailCardValue, { color: palette.text }]}>
+                  {bestWindowLabel && bestWindowLabel !== 'None' ? bestWindowLabel : 'No optimal window today'}
+                </Text>
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 2 }]}>
+                  {bestWindowLabel === 'None'
+                    ? 'Pavement heat remains high during peak sun hours.'
+                    : 'Pavement temperatures stay below 77°F during this time.'}
+                </Text>
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 6, fontWeight: '600' }]}>
+                  Daylight: {daylightStart != null && daylightEnd != null ? rangeLabel(daylightStart, daylightEnd) : '6:00 AM – 8:20 PM'}
                 </Text>
 
                 <View style={[styles.detailDivider, { backgroundColor: palette.border }]} />

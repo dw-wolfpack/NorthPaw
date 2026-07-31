@@ -181,6 +181,7 @@ function SchedulePickers(props: {
 
   const [iosDateOpen, setIosDateOpen] = useState(false);
   const [androidDateOpen, setAndroidDateOpen] = useState(false);
+  const [androidTimeOpen, setAndroidTimeOpen] = useState(false);
 
   const timeAsDate = useMemo(() => {
     const d = new Date();
@@ -220,13 +221,30 @@ function SchedulePickers(props: {
     }
   };
 
+  const setNextFirstOfMonth = () => {
+    onIntervalDays(30);
+    const now = getTodayMidnight();
+    const target = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    onFirstDueDays(daysFromTodayToDate(target));
+  };
+
+  const setNextFifteenthOfMonth = () => {
+    onIntervalDays(30);
+    const now = getTodayMidnight();
+    let target = new Date(now.getFullYear(), now.getMonth(), 15);
+    if (target.getTime() <= now.getTime()) {
+      target = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    }
+    onFirstDueDays(daysFromTodayToDate(target));
+  };
+
   if (Platform.OS === 'web') {
     return (
       <>
         <View style={styles.scheduleBlock}>
           <Text style={[styles.scheduleBlockTitle, { color: palette.text }]}>How often?</Text>
           <Text style={[styles.scheduleBlockHint, { color: palette.textSecondary }]}>
-            On phone/tablet you get the full picker. Here: choose repeat cadence.
+            Choose repeat cadence for monthly or weekly care.
           </Text>
           <View style={[styles.chipScroll, { flexWrap: 'wrap' }]}>
             {INTERVAL_CHOICES.map((s) =>
@@ -238,6 +256,8 @@ function SchedulePickers(props: {
           <Text style={[styles.scheduleBlockTitle, { color: palette.text }]}>First reminder</Text>
           <View style={[styles.chipScroll, { flexWrap: 'wrap', marginBottom: 10 }]}>
             {chip('Today', firstDueDays === 0, () => onFirstDueDays(0), 'web-today')}
+            {chip('1st of Month', false, setNextFirstOfMonth, 'web-1st')}
+            {chip('15th of Month', false, setNextFifteenthOfMonth, 'web-15th')}
           </View>
           <Text style={[styles.scheduleBlockHint, { color: palette.textSecondary, marginBottom: 6 }]}>
             Days from today (0 = today)
@@ -294,7 +314,7 @@ function SchedulePickers(props: {
       <View style={styles.scheduleBlock}>
         <Text style={[styles.scheduleBlockTitle, { color: palette.text }]}>How often?</Text>
         <Text style={[styles.scheduleBlockHint, { color: palette.textSecondary }]}>
-          1 week, 2 weeks, or monthly (30 days), and confirm with your vet.
+          Choose 1 week, 2 weeks, or monthly (30 days).
         </Text>
         <View style={[styles.chipScroll, { flexWrap: 'wrap' }]}>
           {INTERVAL_CHOICES.map((s) =>
@@ -306,10 +326,12 @@ function SchedulePickers(props: {
       <View style={styles.scheduleBlock}>
         <Text style={[styles.scheduleBlockTitle, { color: palette.text }]}>First reminder</Text>
         <Text style={[styles.scheduleBlockHint, { color: palette.textSecondary }]}>
-          Start today or pick a date on the calendar.
+          Start today, pick a calendar date, or set to 1st/15th of the month.
         </Text>
-        <View style={[styles.dateRow, { gap: 10 }]}>
+        <View style={[styles.dateRow, { gap: 8, flexWrap: 'wrap' }]}>
           {chip('Today', firstDueDays === 0, () => onFirstDueDays(0), 'first-today')}
+          {chip('1st of Month', false, setNextFirstOfMonth, 'first-1st')}
+          {chip('15th of Month', false, setNextFifteenthOfMonth, 'first-15th')}
           <Pressable
             onPress={() => { hapticTap(); openCalendar(); }}
             style={({ pressed }) => [
@@ -319,7 +341,6 @@ function SchedulePickers(props: {
                 borderColor: palette.tint,
                 backgroundColor: palette.surface,
                 opacity: pressed ? 0.88 : 1,
-                flexGrow: 1,
               },
             ]}>
             <FontAwesome name="calendar" size={14} color={palette.tint} style={{ marginRight: 8 }} />
@@ -374,27 +395,64 @@ function SchedulePickers(props: {
       <View style={styles.scheduleBlock}>
         <Text style={[styles.scheduleBlockTitle, { color: palette.text }]}>Alert time</Text>
         <Text style={[styles.scheduleBlockHint, { color: palette.textSecondary }]}>
-          Scroll wheels to set the time (15-minute steps).
+          Select what time of day to receive your alert.
         </Text>
-        <View
-          style={[
-            styles.timeSpinnerWrap,
-            { backgroundColor: palette.background, borderColor: palette.border },
-          ]}>
-          <DateTimePicker
-            mode="time"
-            display="spinner"
-            themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
-            value={timeAsDate}
-            {...(Platform.OS === 'ios' ? { minuteInterval: 15 as const } : {})}
-            onChange={(_, date) => {
-              if (date) {
-                const s = snapTimeToQuarterHour(date.getHours(), date.getMinutes());
-                onTime(s.h, s.m);
-              }
-            }}
-          />
-        </View>
+        {Platform.OS === 'android' ? (
+          <View style={{ marginTop: 6 }}>
+            <Pressable
+              onPress={() => { hapticTap(); setAndroidTimeOpen(true); }}
+              style={({ pressed }) => [
+                styles.chip,
+                {
+                  borderColor: palette.tint,
+                  backgroundColor: palette.surface,
+                  borderWidth: 1.5,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  alignItems: 'center',
+                  opacity: pressed ? 0.88 : 1,
+                },
+              ]}>
+              <Text style={{ color: palette.tint, fontWeight: '800', fontSize: 15 }}>
+                ⏰ Alert Time: {timeAsDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </Text>
+            </Pressable>
+            {androidTimeOpen ? (
+              <DateTimePicker
+                mode="time"
+                display="default"
+                value={timeAsDate}
+                onChange={(e, date) => {
+                  setAndroidTimeOpen(false);
+                  if (e.type === 'set' && date) {
+                    const s = snapTimeToQuarterHour(date.getHours(), date.getMinutes());
+                    onTime(s.h, s.m);
+                  }
+                }}
+              />
+            ) : null}
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.timeSpinnerWrap,
+              { backgroundColor: palette.background, borderColor: palette.border },
+            ]}>
+            <DateTimePicker
+              mode="time"
+              display="spinner"
+              themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
+              value={timeAsDate}
+              minuteInterval={15}
+              onChange={(_, date) => {
+                if (date) {
+                  const s = snapTimeToQuarterHour(date.getHours(), date.getMinutes());
+                  onTime(s.h, s.m);
+                }
+              }}
+            />
+          </View>
+        )}
       </View>
     </>
   );
