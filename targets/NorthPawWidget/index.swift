@@ -58,6 +58,18 @@ struct Provider: TimelineProvider {
     }
 }
 
+extension Provider.Entry {
+    var statusColor: Color {
+        if roadTempF >= 105 || npiScore < 50 {
+            return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger)
+        } else if roadTempF >= 85 || npiScore < 75 {
+            return Color(red: 0.95, green: 0.55, blue: 0.08) // Amber (Caution)
+        } else {
+            return Color(red: 0.16, green: 0.65, blue: 0.38) // Emerald Green (Safe / Great to go)
+        }
+    }
+}
+
 struct NorthPawWidgetEntryView : View {
     var entry: Provider.Entry
     @Environment(\.widgetFamily) var family
@@ -65,16 +77,23 @@ struct NorthPawWidgetEntryView : View {
     var body: some View {
         switch family {
         case .accessoryCircular:
-            // Lock Screen Circular Widget (Small Paw Badge)
+            // Lock Screen Circular Widget with Hero Status Ring
             ZStack {
                 AccessoryWidgetBackground()
-                VStack(spacing: 0) {
+                Circle()
+                    .stroke(entry.statusColor.opacity(0.35), lineWidth: 3)
+                Circle()
+                    .trim(from: 0, to: CGFloat(min(max(entry.npiScore, 0), 100)) / 100.0)
+                    .stroke(entry.statusColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+
+                VStack(spacing: -1) {
                     Image(systemName: "pawprint.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .widgetAccentable()
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(entry.statusColor)
                     Text("\(entry.roadTempF)°")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
-                        .minimumScaleFactor(0.8)
+                        .font(.system(size: 14, weight: .heavy, design: .rounded))
+                        .minimumScaleFactor(0.75)
                 }
             }
             .widgetURL(URL(string: "northpaw://")!)
