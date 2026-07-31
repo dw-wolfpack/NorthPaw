@@ -224,7 +224,10 @@ function SchedulePickers(props: {
   const setNextFirstOfMonth = () => {
     onIntervalDays(30);
     const now = getTodayMidnight();
-    const target = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    let target = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (target.getTime() < now.getTime()) {
+      target = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    }
     onFirstDueDays(daysFromTodayToDate(target));
   };
 
@@ -232,11 +235,15 @@ function SchedulePickers(props: {
     onIntervalDays(30);
     const now = getTodayMidnight();
     let target = new Date(now.getFullYear(), now.getMonth(), 15);
-    if (target.getTime() <= now.getTime()) {
+    if (target.getTime() < now.getTime()) {
       target = new Date(now.getFullYear(), now.getMonth() + 1, 15);
     }
     onFirstDueDays(daysFromTodayToDate(target));
   };
+
+  const selectedDate = useMemo(() => dateFromDaysFromToday(firstDueDays), [firstDueDays]);
+  const isFirstOfMonthSelected = selectedDate.getDate() === 1 && firstDueDays !== 0;
+  const isFifteenthOfMonthSelected = selectedDate.getDate() === 15 && firstDueDays !== 0;
 
   if (Platform.OS === 'web') {
     return (
@@ -330,8 +337,8 @@ function SchedulePickers(props: {
         </Text>
         <View style={[styles.dateRow, { gap: 8, flexWrap: 'wrap' }]}>
           {chip('Today', firstDueDays === 0, () => onFirstDueDays(0), 'first-today')}
-          {chip('1st of Month', false, setNextFirstOfMonth, 'first-1st')}
-          {chip('15th of Month', false, setNextFifteenthOfMonth, 'first-15th')}
+          {chip('1st of Month', isFirstOfMonthSelected, setNextFirstOfMonth, 'first-1st')}
+          {chip('15th of Month', isFifteenthOfMonthSelected, setNextFifteenthOfMonth, 'first-15th')}
           <Pressable
             onPress={() => { hapticTap(); openCalendar(); }}
             style={({ pressed }) => [
