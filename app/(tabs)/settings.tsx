@@ -12,6 +12,12 @@ import {
   setAnalyticsEnabledInNonProd,
   setSendAnalyticsInDev,
 } from '@/lib/analytics';
+import {
+  getReviewData,
+  saveReviewData,
+  resetReviewDataForTesting,
+  handleLeaveAReview,
+} from '@/lib/reviewPrompt';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -297,6 +303,61 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <FontAwesome name={mixpanelEnabled ? "check-circle" : "close-circle"} size={16} color={palette.tint} />
+          </Pressable>
+
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              const data = await getReviewData();
+              Alert.alert(
+                '⭐️ Test App Review Flow',
+                `State: ${data.reviewState}\nUnique Usage Days: ${data.uniqueUsageDays.length}\nLast Prompt: ${data.lastPromptDate || 'None'}`,
+                [
+                  {
+                    text: 'Launch Native Flow',
+                    onPress: async () => {
+                      await handleLeaveAReview();
+                    },
+                  },
+                  {
+                    text: 'Simulate 7 Usage Days',
+                    onPress: async () => {
+                      const dates = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'];
+                      await saveReviewData({ ...data, reviewState: 'neverShown', uniqueUsageDays: dates });
+                      Alert.alert('Simulated 7 Days', 'Stored 7 unique usage days and reset reviewState to neverShown.');
+                    },
+                  },
+                  {
+                    text: 'Reset Review State',
+                    style: 'destructive',
+                    onPress: async () => {
+                      await resetReviewDataForTesting();
+                      Alert.alert('Reset Complete', 'Review prompt storage cleared.');
+                    },
+                  },
+                  { text: 'Cancel', style: 'cancel' },
+                ]
+              );
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.92 : 1,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                ⭐️ Test App Review Prompt
+              </Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Simulate 7 usage days, launch native review flow, or reset review prompt storage state.
+              </Text>
+            </View>
+            <FontAwesome name="star" size={16} color={palette.tint} />
           </Pressable>
 
           <Pressable

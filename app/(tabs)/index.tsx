@@ -38,8 +38,9 @@ import { getChecklistCheckedIds } from '@/lib/database';
 import { getDogProfile, toggleGearVaultItem, type DogProfile } from '@/lib/profile';
 import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
-import type { ReadinessPresentation } from '@/lib/readiness/types';
 import { trackEvent, setUserProperties, incrementUserProperties } from '@/lib/analytics';
+import { ReviewPromptModal } from '@/components/ReviewPromptModal';
+import { recordUsageDay, checkReviewEligibility, getReviewData } from '@/lib/reviewPrompt';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import {
@@ -544,6 +545,7 @@ export default function HomeScreen() {
   const [readinessPresentation, setReadinessPresentation] = useState<ReadinessPresentation | null>(null);
   const [showUpgradeTermsModal, setShowUpgradeTermsModal] = useState(false);
   const [upgradeDisclaimerAgreed, setUpgradeDisclaimerAgreed] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -1299,6 +1301,83 @@ export default function HomeScreen() {
     [timelineAxis.endHour, timelineAxis.startHour, timelineBarWidth]
   );
 
+  // Record legitimate foreground usage day on Home screen focus
+  useFocusEffect(
+    useCallback(() => {
+      recordUsageDay().catch(() => {});
+    }, [])
+  );
+
+  // Evaluate Review Prompt Eligibility when idle
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const evaluateReviewEligibility = async () => {
+      const isCriticalFlow =
+        verifySurfaceOpen ||
+        verifyRunning ||
+        weatherModalOpen ||
+        npiModalOpen ||
+        roadTempModalOpen ||
+        feedbackModalOpen ||
+        showUpgradeTermsModal ||
+        gearVaultBusy;
+
+      if (!dogProfile?.onboardingDone || isCriticalFlow) return;
+
+      const isEligible = await checkReviewEligibility({
+        onboardingDone: true,
+        isCriticalFlow: false,
+      });
+
+      if (isEligible) {
+        timer = setTimeout(async () => {
+          const reCheck = await checkReviewEligibility({
+            onboardingDone: true,
+            isCriticalFlow:
+              verifySurfaceOpen ||
+              verifyRunning ||
+              weatherModalOpen ||
+              npiModalOpen ||
+              roadTempModalOpen ||
+              feedbackModalOpen ||
+              showUpgradeTermsModal,
+          });
+          if (reCheck) {
+            const data = await getReviewData();
+            const appVersion = Constants.expoConfig?.version || '1.0.0';
+            await trackEvent('review_prompt_eligible', {
+              platform: Platform.OS,
+              app_version: appVersion,
+              unique_usage_days: data.uniqueUsageDays.length,
+            });
+            await trackEvent('review_prompt_shown', {
+              platform: Platform.OS,
+              app_version: appVersion,
+              unique_usage_days: data.uniqueUsageDays.length,
+            });
+            setReviewModalOpen(true);
+          }
+        }, 1500);
+      }
+    };
+
+    evaluateReviewEligibility().catch(() => {});
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [
+    dogProfile?.onboardingDone,
+    verifySurfaceOpen,
+    verifyRunning,
+    weatherModalOpen,
+    npiModalOpen,
+    roadTempModalOpen,
+    feedbackModalOpen,
+    showUpgradeTermsModal,
+    gearVaultBusy,
+  ]);
+
   const onReadinessPrimaryCta = useCallback(() => {
     if (!readinessPresentation) return;
     if (readinessPresentation.ctaAction.kind === 'open_weather') {
@@ -1973,6 +2052,11 @@ export default function HomeScreen() {
           </AnimatedReanimated.View>
         </View>
       </Modal>
+
+      <ReviewPromptModal
+        visible={reviewModalOpen}
+        onClose={() => setReviewModalOpen(false)}
+      />
 
       <Modal
         visible={weatherModalOpen && weather.status === 'ok'}
