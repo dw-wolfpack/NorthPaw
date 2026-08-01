@@ -10,17 +10,17 @@
 export const PRIVACY_POLICY_URL =
   process.env.EXPO_PUBLIC_NORTHPAW_PRIVACY_URL ??
   process.env.EXPO_PUBLIC_TRAILREADY_PRIVACY_URL ??
-  'https://northpaw.nextstepsbeyond.online/privacy/';
+  'https://northpawapp.com/privacy';
 
 export const TERMS_OF_USE_URL =
   process.env.EXPO_PUBLIC_NORTHPAW_TERMS_URL ??
   process.env.EXPO_PUBLIC_TRAILREADY_TERMS_URL ??
-  'https://northpaw.nextstepsbeyond.online/';
+  'https://northpawapp.com/';
 
 /** Support page or mailto link shown in Settings. */
 export const SUPPORT_URL =
   process.env.EXPO_PUBLIC_NORTHPAW_SUPPORT_URL ??
   process.env.EXPO_PUBLIC_TRAILREADY_SUPPORT_URL ??
-  'https://northpaw.nextstepsbeyond.online/';
+  'https://northpawapp.com/support';
 
 export const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
