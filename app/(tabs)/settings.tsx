@@ -224,6 +224,14 @@ export default function SettingsScreen() {
       />
 
       <LinkButton
+        label="Terms of Use"
+        hint={TERMS_OF_USE_URL}
+        disabled={!TERMS_OF_USE_URL}
+        palette={palette}
+        onPress={() => { hapticTap();  openExternalLink(TERMS_OF_USE_URL); }}
+      />
+
+      <LinkButton
         label="Support"
         hint={SUPPORT_URL}
         disabled={!SUPPORT_URL}
