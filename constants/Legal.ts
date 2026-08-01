@@ -24,3 +24,6 @@ export const SUPPORT_URL =
   'https://northpawapp.com/support';
 
 export const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
+
+/** Version identifier for terms & liability disclaimer. Only bump this if legal policy changes! */
+export const REQUIRED_DISCLAIMER_VERSION = 'v1.0';

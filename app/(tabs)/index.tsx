@@ -43,6 +43,7 @@ import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
 import { trackEvent, setUserProperties, incrementUserProperties } from '@/lib/analytics';
 import { ReviewPromptModal } from '@/components/ReviewPromptModal';
+import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
 import { recordUsageDay, checkReviewEligibility, getReviewData, markShownThisSession } from '@/lib/reviewPrompt';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -752,8 +753,7 @@ export default function HomeScreen() {
           AsyncStorage.getItem('@northpaw/disclaimer_accepted_version'),
         ]);
         if (!gone) {
-          const expectedVer = Constants?.expoConfig?.version ? `v${Constants.expoConfig.version}` : 'v5.3';
-          if (profile && profile.onboardingDone && acceptedVer !== expectedVer) {
+          if (profile && profile.onboardingDone && acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
             setShowUpgradeTermsModal(true);
           }
           if (result.status === 'ok') {
@@ -2726,8 +2726,7 @@ export default function HomeScreen() {
                   hapticTap();
                   trackEvent('disclaimer_accepted', { is_upgrade_flow: true });
                   try {
-                    const currentVer = Constants?.expoConfig?.version ? `v${Constants.expoConfig.version}` : 'v5.3';
-                    await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', currentVer);
+                    await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', REQUIRED_DISCLAIMER_VERSION);
                     setShowUpgradeTermsModal(false);
                   } catch (err) {
                     console.warn('[Home] Failed to save disclaimer version to AsyncStorage', err);

@@ -47,6 +47,7 @@ import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
 import { trackEvent, setUserProperties } from '@/lib/analytics';
 import { FeedbackModal } from '@/components/FeedbackModal';
+import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
 
 type SceneId =
   | 'welcome'
@@ -533,8 +534,8 @@ export default function OnboardingScreen() {
       });
 
       try {
-        const currentVer = Constants?.expoConfig?.version ? `v${Constants.expoConfig.version}` : 'v5.3';
-        await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', currentVer);
+        await AsyncStorage.setItem('@northpaw/onboarding_completed_at', Date.now().toString());
+        await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', REQUIRED_DISCLAIMER_VERSION);
       } catch (err) {
         console.warn('[Onboarding] Failed to save completed timestamp/disclaimer to AsyncStorage', err);
       }

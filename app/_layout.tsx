@@ -35,7 +35,9 @@ export const unstable_settings = {
   initialRouteName: 'index',
 };
 
-SplashScreen.preventAutoHideAsync().catch(() => {});
+try {
+  SplashScreen.preventAutoHideAsync();
+} catch (e) {}
 const MIN_SPLASH_MS = 2000;
 
 export default function RootLayout() {
@@ -61,12 +63,8 @@ export default function RootLayout() {
   useEffect(() => {
     if (!loaded || !dbReady) return;
 
-    const timer = setTimeout(async () => {
-      try {
-        await SplashScreen.hideAsync();
-      } catch (e) {
-        // Native splash screen already dismissed or not registered in dev client
-      }
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
     }, MIN_SPLASH_MS);
 
     return () => clearTimeout(timer);
