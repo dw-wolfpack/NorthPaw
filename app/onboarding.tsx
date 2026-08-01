@@ -533,8 +533,8 @@ export default function OnboardingScreen() {
       });
 
       try {
-        await AsyncStorage.setItem('@northpaw/onboarding_completed_at', Date.now().toString());
-        await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', 'v4.3');
+        const currentVer = Constants?.expoConfig?.version ? `v${Constants.expoConfig.version}` : 'v5.3';
+        await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', currentVer);
       } catch (err) {
         console.warn('[Onboarding] Failed to save completed timestamp/disclaimer to AsyncStorage', err);
       }
