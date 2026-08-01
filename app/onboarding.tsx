@@ -961,10 +961,28 @@ export default function OnboardingScreen() {
           </AnimatedReanimated.Text>
 
           <View style={[styles.rowButtons, { marginTop: 10 }]}>
-            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}>
+            <Pressable
+              onPress={() => {
+                hapticTap();
+                if (pickedUri) {
+                  trackEvent('onboarding_photo_uploaded');
+                } else {
+                  trackEvent('onboarding_photo_skipped');
+                }
+                advance();
+              }}
+              style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}
+            >
                <Text style={[styles.ghostText, { color: palette.text, textAlign: 'center' }]}>Continue</Text>
             </Pressable>
-            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}>
+            <Pressable
+              onPress={() => {
+                hapticTap();
+                trackEvent('onboarding_photo_skipped');
+                advance();
+              }}
+              style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}
+            >
                <Text style={[styles.ghostText, { color: palette.textSecondary, textAlign: 'center' }]}>Skip for now</Text>
             </Pressable>
           </View>
