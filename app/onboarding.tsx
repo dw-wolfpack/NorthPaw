@@ -1192,6 +1192,14 @@ export default function OnboardingScreen() {
                   key={t}
                   onPress={() => {
                     selectionTick();
+                    if (t === 'Custom') {
+                      Alert.alert(
+                        'Custom Time Alerts Coming Soon!',
+                        'Custom alert time pickers are coming in an upcoming release! For now, choose 7:00 AM or 8:00 AM for your daily Morning Brief.',
+                        [{ text: 'Got It', style: 'cancel' }]
+                      );
+                      return;
+                    }
                     setMorningBriefTime(t);
                     setPreviewInteracted(true);
                   }}
@@ -1202,8 +1210,15 @@ export default function OnboardingScreen() {
                       backgroundColor: selected ? palette.selectedBg : palette.surface,
                       opacity: pressed ? 0.92 : 1,
                     },
-                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-                  <Text style={[styles.cardTitle, { color: palette.text }]}>{t}</Text>
+                  ]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: palette.text }]}>{t}</Text>
+                    {t === 'Custom' ? (
+                      <View style={{ backgroundColor: `${palette.tint}20`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                        <Text style={{ color: palette.tint, fontSize: 10, fontWeight: '800' }}>Coming Soon</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </Pressable>
               );
             })}

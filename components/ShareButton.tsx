@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, Pressable, ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useColorScheme } from '@/components/useColorScheme';
 
 interface ShareButtonProps {
   onPress: () => void;
@@ -9,31 +10,44 @@ interface ShareButtonProps {
 }
 
 export const ShareButton: React.FC<ShareButtonProps> = ({ onPress, loading, dogName }) => {
+  const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
+
+  const goldTextColor = isDark ? '#F5D77F' : '#8B6508';
+  const goldBgColor = isDark ? 'rgba(212, 175, 55, 0.12)' : 'rgba(212, 175, 55, 0.14)';
+  const goldBorderColor = isDark ? 'rgba(212, 175, 55, 0.45)' : 'rgba(184, 134, 11, 0.55)';
+
   return (
     <Pressable
       onPress={onPress}
       disabled={loading}
       style={({ pressed }) => [
         styles.button,
+        {
+          backgroundColor: pressed
+            ? (isDark ? 'rgba(212, 175, 55, 0.25)' : 'rgba(212, 175, 55, 0.28)')
+            : goldBgColor,
+          borderColor: goldBorderColor,
+        },
         pressed && styles.buttonPressed,
         loading && styles.buttonDisabled,
       ]}
     >
       {({ pressed }) => (
         loading ? (
-          <ActivityIndicator size="small" color="#D4AF37" />
+          <ActivityIndicator size="small" color={goldTextColor} />
         ) : (
           <View style={styles.contentContainer}>
             <Ionicons 
               name="share-social" 
               size={18} 
-              color="#D4AF37" 
+              color={goldTextColor} 
               style={[
                 styles.icon,
                 pressed && styles.iconPressed
               ]} 
             />
-            <Text style={styles.text}>
+            <Text style={[styles.text, { color: goldTextColor }]}>
               {dogName ? `Share ${dogName}'s Walk Report` : 'Share Walk Report'}
             </Text>
           </View>

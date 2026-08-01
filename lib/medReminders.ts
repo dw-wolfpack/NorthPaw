@@ -301,36 +301,88 @@ async function scheduleOne(row: MedReminderRow, dogName: string): Promise<string
   });
 }
 
+let syncPromise: Promise<void> | null = null;
+
+async function dedupePresetMedReminders(db: any): Promise<void> {
+  const kinds: MedReminderKind[] = ['heartworm', 'flea_tick'];
+  for (const kind of kinds) {
+    const rows = await db.getAllAsync<MedReminderRow>(
+      `SELECT id, notification_id FROM med_reminders WHERE kind = ? AND enabled = 1 ORDER BY next_due_at DESC`,
+      [kind]
+    );
+    if (rows && rows.length > 1) {
+      // Keep row index 0, delete and cancel the rest
+      for (let i = 1; i < rows.length; i++) {
+        const extra = rows[i];
+        if (extra.notification_id) {
+          await cancelScheduledNotification(extra.notification_id);
+        }
+        await db.runAsync(`DELETE FROM med_reminders WHERE id = ?`, [extra.id]);
+      }
+    }
+  }
+}
+
 /**
  * Reconcile SQLite with OS schedule: cancel stale IDs, fix overdue next_due, schedule next alert.
  */
 export async function syncAllMedReminderNotifications(): Promise<void> {
   if (Platform.OS === 'web') return;
 
-  await ensureMedReminderAndroidChannel();
-  const perm = await Notifications.getPermissionsAsync();
-  if (!notificationsPermitted(perm)) return;
-
-  const profile = await getDogProfile();
-  const dogName = profile.dogName.trim();
-  const db = await getDb();
-  const rows = await db.getAllAsync<MedReminderRow>(
-    `SELECT * FROM med_reminders WHERE enabled = 1`
-  );
-
-  for (const row of rows) {
-    await cancelScheduledNotification(row.notification_id);
-
-    let next = row.next_due_at;
-    if (next <= Date.now()) {
-      next = rollNextDueForward(next, row.interval_days, row.hour_local, row.minute_local);
-      await db.runAsync(`UPDATE med_reminders SET next_due_at = ? WHERE id = ?`, [next, row.id]);
-    }
-
-    const updated = { ...row, next_due_at: next };
-    const nid = await scheduleOne(updated, dogName);
-    await db.runAsync(`UPDATE med_reminders SET notification_id = ? WHERE id = ?`, [nid, row.id]);
+  if (syncPromise) {
+    return syncPromise;
   }
+
+  syncPromise = (async () => {
+    try {
+      await ensureMedReminderAndroidChannel();
+      const perm = await Notifications.getPermissionsAsync();
+      if (!notificationsPermitted(perm)) return;
+
+      const profile = await getDogProfile();
+      const dogName = profile.dogName.trim();
+      const db = await getDb();
+
+      // 1. Deduplicate DB rows (ensure max 1 enabled row per preset kind)
+      await dedupePresetMedReminders(db);
+
+      // 2. Sweep OS scheduled notifications: cancel any existing notification for med reminders
+      try {
+        const scheduledOS = await Notifications.getAllScheduledNotificationsAsync();
+        for (const notif of scheduledOS) {
+          const reminderId = notif.content?.data?.reminderId;
+          if (reminderId || (notif.identifier && notif.identifier.startsWith('med-'))) {
+            await Notifications.cancelScheduledNotificationAsync(notif.identifier).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('[med reminders] failed to list scheduled OS notifications', e);
+      }
+
+      // 3. Query active enabled reminders from SQLite
+      const rows = await db.getAllAsync<MedReminderRow>(
+        `SELECT * FROM med_reminders WHERE enabled = 1`
+      );
+
+      for (const row of rows) {
+        await cancelScheduledNotification(row.notification_id);
+
+        let next = row.next_due_at;
+        if (next <= Date.now()) {
+          next = rollNextDueForward(next, row.interval_days, row.hour_local, row.minute_local);
+          await db.runAsync(`UPDATE med_reminders SET next_due_at = ? WHERE id = ?`, [next, row.id]);
+        }
+
+        const updated = { ...row, next_due_at: next };
+        const nid = await scheduleOne(updated, dogName);
+        await db.runAsync(`UPDATE med_reminders SET notification_id = ? WHERE id = ?`, [nid, row.id]);
+      }
+    } finally {
+      syncPromise = null;
+    }
+  })();
+
+  return syncPromise;
 }
 
 /** After row mutations from UI (no platform). */

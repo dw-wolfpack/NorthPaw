@@ -1,5 +1,5 @@
-import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { BlurView } from 'expo-blur';
 import AnimatedReanimated, { ZoomIn, FadeOut } from 'react-native-reanimated';
@@ -7,9 +7,11 @@ import AnimatedReanimated, { ZoomIn, FadeOut } from 'react-native-reanimated';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import {
-  handleLeaveAReview,
+  handleLeaveWrittenReview,
+  handleQuickStarRating,
   handleMaybeLater,
   handleNeverAskAgain,
+  openStoreFallback,
 } from '@/lib/reviewPrompt';
 
 interface ReviewPromptModalProps {
@@ -20,10 +22,33 @@ interface ReviewPromptModalProps {
 export function ReviewPromptModal({ visible, onClose }: ReviewPromptModalProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
+  const isDark = colorScheme === 'dark';
 
-  const onLeaveReview = async () => {
+  const [selectedStars, setSelectedStars] = useState(0);
+  const [rated, setRated] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setSelectedStars(0);
+      setRated(false);
+    }
+  }, [visible]);
+
+  const onSelectStar = async (starRating: number) => {
+    setSelectedStars(starRating);
+    setRated(true);
+    await handleQuickStarRating(starRating);
+    setTimeout(async () => {
+      onClose();
+      if (starRating >= 4) {
+        await openStoreFallback();
+      }
+    }, 900);
+  };
+
+  const onLeaveWrittenReview = async () => {
     onClose();
-    await handleLeaveAReview();
+    await handleLeaveWrittenReview();
   };
 
   const onMaybeLater = async () => {
@@ -47,7 +72,7 @@ export function ReviewPromptModal({ visible, onClose }: ReviewPromptModalProps) 
         <Pressable style={StyleSheet.absoluteFill} onPress={onMaybeLater} />
         <BlurView
           intensity={80}
-          tint={colorScheme === 'dark' ? 'dark' : 'light'}
+          tint={isDark ? 'dark' : 'light'}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
@@ -58,62 +83,90 @@ export function ReviewPromptModal({ visible, onClose }: ReviewPromptModalProps) 
           style={[
             styles.card,
             {
-              backgroundColor: colorScheme === 'dark' ? '#0F2015' : '#FFFFFF',
+              backgroundColor: isDark ? '#0F2015' : '#FFFFFF',
               borderColor: palette.border,
             },
           ]}
         >
           {/* Paw Icon Badge */}
-          <View style={[styles.iconCircle, { backgroundColor: `${palette.tint}18` }]}>
-            <MaterialCommunityIcons name="paw" size={32} color={palette.tint} />
+          <View style={[styles.iconCircle, { backgroundColor: rated ? 'rgba(243, 156, 18, 0.18)' : `${palette.tint}18` }]}>
+            <MaterialCommunityIcons name={rated ? "star" : "paw"} size={32} color={rated ? "#F39C12" : palette.tint} />
           </View>
 
           <Text style={[styles.title, { color: palette.text }]}>
-            Enjoying NorthPaw?
+            {rated ? 'Thank You! 🐾' : 'Enjoying NorthPaw?'}
           </Text>
 
-          <Text style={[styles.body, { color: palette.textSecondary }]}>
-            If NorthPaw has helped you make better outdoor decisions with your dog, a quick review would help other dog owners discover it.
+          <Text style={[styles.body, { color: palette.textSecondary, marginBottom: rated ? 12 : 16 }]}>
+            {rated 
+              ? `You rated NorthPaw ${selectedStars} Stars! Your feedback helps other dog owners explore safely.`
+              : 'Tap a quick star rating below or write a review on the App Store:'}
           </Text>
 
-          {/* Action 1: Leave a Review */}
-          <Pressable
-            onPress={onLeaveReview}
-            style={({ pressed }) => [
-              styles.primaryBtn,
-              { backgroundColor: palette.tint, opacity: pressed ? 0.88 : 1 },
-            ]}
-          >
-            <MaterialCommunityIcons name="star-outline" size={18} color="#FFF" style={{ marginRight: 6 }} />
-            <Text style={styles.primaryBtnText}>Leave a Review</Text>
-          </Pressable>
+          {!rated ? (
+            <>
+              {/* Interactive 5-Star Rating Rail */}
+              <View style={styles.starRow}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Pressable
+                    key={`star-${star}`}
+                    onPress={() => onSelectStar(star)}
+                    style={({ pressed }) => [
+                      styles.starBtn,
+                      { transform: [{ scale: pressed ? 1.25 : 1 }] }
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Rate ${star} out of 5 stars`}
+                  >
+                    <MaterialCommunityIcons
+                      name={star <= selectedStars ? "star" : "star-outline"}
+                      size={36}
+                      color={star <= selectedStars ? "#F39C12" : (isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.2)")}
+                    />
+                  </Pressable>
+                ))}
+              </View>
 
-          {/* Action 2: Maybe Later */}
-          <Pressable
-            onPress={onMaybeLater}
-            style={({ pressed }) => [
-              styles.secondaryBtn,
-              {
-                backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-          >
-            <Text style={[styles.secondaryBtnText, { color: palette.text }]}>Maybe Later</Text>
-          </Pressable>
+              {/* Action 1: Write a Review (App Store) */}
+              <Pressable
+                onPress={onLeaveWrittenReview}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  { backgroundColor: palette.tint, opacity: pressed ? 0.88 : 1, marginTop: 14 },
+                ]}
+              >
+                <MaterialCommunityIcons name="square-edit-outline" size={18} color="#FFF" style={{ marginRight: 6 }} />
+                <Text style={styles.primaryBtnText}>Write a Review on App Store</Text>
+              </Pressable>
 
-          {/* Action 3: Never Ask Again */}
-          <Pressable
-            onPress={onNeverAskAgain}
-            style={({ pressed }) => [
-              styles.tertiaryBtn,
-              { opacity: pressed ? 0.6 : 1 },
-            ]}
-          >
-            <Text style={[styles.tertiaryBtnText, { color: palette.textSecondary }]}>
-              Never Ask Again
-            </Text>
-          </Pressable>
+              {/* Action 2: Maybe Later */}
+              <Pressable
+                onPress={onMaybeLater}
+                style={({ pressed }) => [
+                  styles.secondaryBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.secondaryBtnText, { color: palette.textSecondary }]}>Maybe Later</Text>
+              </Pressable>
+
+              {/* Action 3: Never Ask Again */}
+              <Pressable
+                onPress={onNeverAskAgain}
+                style={({ pressed }) => [
+                  styles.tertiaryBtn,
+                  { opacity: pressed ? 0.6 : 1 },
+                ]}
+              >
+                <Text style={[styles.tertiaryBtnText, { color: palette.textSecondary }]}>
+                  Never Ask Again
+                </Text>
+              </Pressable>
+            </>
+          ) : null}
         </AnimatedReanimated.View>
       </View>
     </Modal>
@@ -159,7 +212,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
-    marginBottom: 24,
+  },
+  starRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginVertical: 12,
+  },
+  starBtn: {
+    padding: 4,
   },
   primaryBtn: {
     width: '100%',
@@ -168,7 +230,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   primaryBtnText: {
     color: '#FFFFFF',
@@ -181,7 +243,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   secondaryBtnText: {
     fontSize: 15,

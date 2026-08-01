@@ -572,6 +572,23 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Ready (Home)' });
+      getDogProfile().then(setDogProfile).catch(() => {});
+
+      // Automatic 7-day review prompt eligibility check
+      (async () => {
+        try {
+          await recordUsageDay();
+          const profile = await getDogProfile();
+          const eligible = await checkReviewEligibility({ onboardingDone: profile ? profile.onboardingDone : true });
+          if (eligible) {
+            markShownThisSession();
+            setReviewModalOpen(true);
+          }
+        } catch (err) {
+          console.warn('[Home] Review prompt check error', err);
+        }
+      })();
+
       FileSystem.getInfoAsync(FileSystem.documentDirectory + 'home_walkthrough.txt').then(info => {
         if (!info.exists) {
           triggerStep(0);
@@ -2048,7 +2065,7 @@ export default function HomeScreen() {
         <View style={styles.verifyOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeVerifySurface} />
           <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} pointerEvents="none" />
-          <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border }]}>
+          <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
             <Text style={[styles.verifyTitle, { color: palette.text }]}>Verify Surface</Text>
             <Text style={[styles.verifySub, { color: palette.textSecondary }]}>
               Press your hand to the pavement for a full 7 seconds.
@@ -2364,23 +2381,7 @@ export default function HomeScreen() {
                 </Text>
               </View>
             </View>
-            <ImageBackground
-              source={weatherCardBgSource ?? undefined}
-              style={[styles.detailHeroCard, { borderColor: palette.border }]}
-              imageStyle={styles.detailCardBgImage}
-              resizeMode="cover">
-              <LinearGradient
-                colors={weatherCardOverlay ?? (isDark ? ['rgba(8,16,12,0.2)', 'rgba(8,16,12,0.62)'] : ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.62)'])}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <LinearGradient
-                colors={WEATHER_CARD_SCRIM_COLORS}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0.85, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
+            <View style={[styles.detailHeroCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
               <View style={styles.detailCardInner}>
                 <Text style={[styles.detailCardTitle, { color: palette.text }]}>Best window</Text>
                 <Text style={[styles.detailCardValue, { color: palette.text }]}>
@@ -2408,7 +2409,7 @@ export default function HomeScreen() {
                         styles.roadDetailBadge,
                         { backgroundColor: roadBandColor(roadDetailPoint.roadBand) },
                       ]}>
-                      <Text style={styles.roadDetailBadgeText}>{Math.round(roadDetailPoint.roadTempF)}F</Text>
+                      <Text style={styles.roadDetailBadgeText}>{Math.round(roadDetailPoint.roadTempF)}°F</Text>
                     </View>
                     <Text style={[styles.roadDetailSelectedBand, { color: palette.textSecondary }]}>
                       {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {roadBandLabel(roadDetailPoint.roadBand)}
@@ -2418,7 +2419,6 @@ export default function HomeScreen() {
 
                 <View style={styles.surfaceComparisonGrid}>
                   {(['asphalt', 'concrete', 'cobblestone', 'sand', 'turf'] as SurfaceType[]).map((st) => {
-                    // We need the sample for the selected hour to calculate others
                     const sample = weatherOk?.hourlySamples.find(s => {
                        const h = new Date(s.timeIso).getHours();
                        return h === selectedRoadDetailHour;
@@ -2435,11 +2435,11 @@ export default function HomeScreen() {
                         onPress={() => { hapticTap(); setSelectedSurface(st); }}
                         style={[
                           styles.compareCard, 
-                          { borderColor: palette.border, backgroundColor: palette.surface },
-                          isActive && { borderColor: palette.tint, borderWidth: 2 }
+                          { borderColor: isActive ? palette.tint : palette.border, backgroundColor: isActive ? palette.selectedBg : palette.surface },
+                          isActive && { borderWidth: 2 }
                         ]}
                       >
-                        <Text style={[styles.compareLabel, { color: palette.textSecondary }]}>{st.toUpperCase()}</Text>
+                        <Text style={[styles.compareLabel, { color: palette.text, fontWeight: '700' }]}>{st.toUpperCase()}</Text>
                         <Text style={[styles.compareValue, { color: roadBandColor(band) }]}>{Math.round(temp)}°F</Text>
                         <Text style={[styles.compareBand, { color: palette.textSecondary }]}>{roadBandLabel(band)}</Text>
                       </Pressable>
@@ -2459,13 +2459,13 @@ export default function HomeScreen() {
                     Missing a surface? Suggest one →
                   </Text>
                 </Pressable>
-                <View style={[styles.roadDetailSpinner, { borderColor: palette.border }]}>
+                <View style={[styles.roadDetailSpinner, { borderColor: palette.border, backgroundColor: palette.background }]}>
                   <Pressable
-                    onPress={() => { hapticTap();  setRoadDetailHour((selectedRoadDetailHour + 23) % 24); }}
+                    onPress={() => { hapticTap(); setRoadDetailHour((selectedRoadDetailHour + 23) % 24); }}
                     style={[styles.roadDetailSpinnerBtn, { borderRightColor: palette.border }]}
                     accessibilityRole="button"
                     accessibilityLabel="Previous hour">
-                    <FontAwesome name="chevron-left" size={14} color={palette.textSecondary} />
+                    <FontAwesome name="chevron-left" size={14} color={palette.text} />
                   </Pressable>
                   <View style={styles.roadDetailSpinnerCenter}>
                     <Text style={[styles.roadDetailSpinnerValue, { color: palette.text }]}>
@@ -2476,11 +2476,11 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   <Pressable
-                    onPress={() => { hapticTap();  setRoadDetailHour((selectedRoadDetailHour + 1) % 24); }}
+                    onPress={() => { hapticTap(); setRoadDetailHour((selectedRoadDetailHour + 1) % 24); }}
                     style={[styles.roadDetailSpinnerBtn, { borderLeftColor: palette.border }]}
                     accessibilityRole="button"
                     accessibilityLabel="Next hour">
-                    <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
+                    <FontAwesome name="chevron-right" size={14} color={palette.text} />
                   </Pressable>
                 </View>
                 <ScrollView
@@ -2492,22 +2492,22 @@ export default function HomeScreen() {
                     return (
                       <Pressable
                         key={`hour-spin-${hour}`}
-                        onPress={() => { hapticTap();  setRoadDetailHour(hour); }}
+                        onPress={() => { hapticTap(); setRoadDetailHour(hour); }}
                         style={[
                           styles.roadDetailHourPill,
                           {
                             borderColor: active ? palette.tint : palette.border,
-                            backgroundColor: active ? 'rgba(45,106,79,0.22)' : 'rgba(255,255,255,0.05)',
+                            backgroundColor: active ? palette.tint : palette.surface,
                           },
                         ]}>
-                        <Text style={[styles.roadDetailHourPillText, { color: palette.text }]}>
+                        <Text style={[styles.roadDetailHourPillText, { color: active ? '#FFFFFF' : palette.text, fontWeight: active ? '800' : '600' }]}>
                           {hour.toString().padStart(2, '0')}
                         </Text>
                       </Pressable>
                     );
                   })}
                 </ScrollView>
-                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 6 }]}>
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 8 }]}>
                   Spinner includes all day hours (00 to 23). Timeline estimates are anchored to 5AM to 10PM forecast samples.
                 </Text>
 
@@ -2531,35 +2531,34 @@ export default function HomeScreen() {
                   <View style={styles.scienceSourceRow}>
                     <MaterialCommunityIcons name="book-open-variant" size={16} color={palette.tint} />
                     <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
-                      <Text style={{ fontWeight: '700' }}>JAMA Dermatology:</Text> "Thermal Injury from Hot Asphalt" (identifying 125°F as the threshold for second-degree contact burns).
+                      <Text style={{ fontWeight: '700', color: palette.text }}>JAMA Dermatology:</Text> "Thermal Injury from Hot Asphalt" (identifying 125°F as the threshold for second-degree contact burns).
                     </Text>
                   </View>
                   <View style={styles.scienceSourceRow}>
                     <MaterialCommunityIcons name="dog" size={16} color={palette.tint} />
                     <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
-                      <Text style={{ fontWeight: '700' }}>AKC / Vet Med:</Text> Validating the "7-Second Rule" and the increased risk for artificial turf.
+                      <Text style={{ fontWeight: '700', color: palette.text }}>AKC / Vet Med:</Text> Validating the "7-Second Rule" and the increased risk for artificial turf.
                     </Text>
                   </View>
                 </View>
                 <Pressable
-                  style={[styles.verifySurfaceButton, { marginTop: 16 }]}
+                  style={[styles.verifySurfaceButton, { marginTop: 16, backgroundColor: palette.tint }]}
                   onPress={() => {
                     setRoadTempModalOpen(false);
-                    // Use a short timeout so the first modal has time to close before opening the second
                     setTimeout(() => {
                       setVerifySurfaceOpen(true);
                       startVerifySurface();
                     }, 300);
                   }}>
-                  <Text style={[styles.verifySurfaceButtonText, { color: palette.text }]}>
+                  <Text style={[styles.verifySurfaceButtonText, { color: '#FFFFFF', fontWeight: '800' }]}>
                     Launch 7-Second Timer
                   </Text>
-                  <Text style={[styles.verifySurfaceButtonSub, { color: palette.textSecondary }]}>
+                  <Text style={[styles.verifySurfaceButtonSub, { color: 'rgba(255, 255, 255, 0.88)' }]}>
                     Test the pavement heat manually
                   </Text>
                 </Pressable>
               </View>
-            </ImageBackground>
+            </View>
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -2660,6 +2659,10 @@ export default function HomeScreen() {
         visible={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
         initialType={feedbackInitialType}
+      />
+      <ReviewPromptModal
+        visible={reviewModalOpen}
+        onClose={() => setReviewModalOpen(false)}
       />
       <Modal
         visible={showUpgradeTermsModal}

@@ -16,6 +16,7 @@ import {
   getReviewData,
   saveReviewData,
   resetReviewDataForTesting,
+  resetSessionGuard,
   handleLeaveAReview,
 } from '@/lib/reviewPrompt';
 
@@ -33,6 +34,7 @@ import { getDogProfile, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
 import * as FileSystem from 'expo-file-system/legacy';
 import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
+import { ReviewPromptModal } from '@/components/ReviewPromptModal';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -45,6 +47,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [mixpanelEnabled, setMixpanelEnabled] = useState(false);
 
@@ -263,19 +266,6 @@ export default function SettingsScreen() {
         <FontAwesome name="share-alt" size={16} color={palette.tint} />
       </Pressable>
 
-      <Text style={[styles.h1, { marginTop: 28 }]}>Disclaimer</Text>
-      <Text style={[styles.body, { color: palette.textSecondary }]}>
-        NorthPaw is for general outdoor education. It is not veterinary, legal, or emergency medical advice.
-        Always follow posted regulations and consult professionals for health or legal questions.
-      </Text>
-
-      <Text style={[styles.h1, { marginTop: 28 }]}>Privacy</Text>
-      <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
-        Favorites, checklist boxes, your dog&apos;s name and photo on Home, Pro outing logs (notes, place, photos,
-        optional GPS), and open history stay on your device. Subscription status is verified through Apple and
-        RevenueCat when configured. Opening Privacy Policy or Support may use an in-app browser or your mail app.
-      </Text>
-
       {isTestflightOrDevBuild() ? (
         <>
           <Text style={[styles.h1, { marginTop: 28, color: palette.tint }]}>Developer Settings</Text>
@@ -308,34 +298,18 @@ export default function SettingsScreen() {
           <Pressable
             onPress={async () => {
               hapticTap();
-              const data = await getReviewData();
+              const dates = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'];
+              await saveReviewData({ reviewState: 'neverShown', uniqueUsageDays: dates });
+              resetSessionGuard();
               Alert.alert(
-                '⭐️ Test App Review Flow',
-                `State: ${data.reviewState}\nUnique Usage Days: ${data.uniqueUsageDays.length}\nLast Prompt: ${data.lastPromptDate || 'None'}`,
+                '7 Usage Days Simulated! 🐾',
+                'Stored 7 unique usage days and reset session guard. Navigating Home will now automatically trigger the 7-day Review Prompt flow.',
                 [
                   {
-                    text: 'Launch Native Flow',
-                    onPress: async () => {
-                      await handleLeaveAReview();
-                    },
+                    text: 'Go to Home Screen',
+                    onPress: () => router.replace('/(tabs)'),
                   },
-                  {
-                    text: 'Simulate 7 Usage Days',
-                    onPress: async () => {
-                      const dates = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'];
-                      await saveReviewData({ ...data, reviewState: 'neverShown', uniqueUsageDays: dates });
-                      Alert.alert('Simulated 7 Days', 'Stored 7 unique usage days and reset reviewState to neverShown.');
-                    },
-                  },
-                  {
-                    text: 'Reset Review State',
-                    style: 'destructive',
-                    onPress: async () => {
-                      await resetReviewDataForTesting();
-                      Alert.alert('Reset Complete', 'Review prompt storage cleared.');
-                    },
-                  },
-                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Stay Here', style: 'cancel' },
                 ]
               );
             }}
@@ -351,10 +325,10 @@ export default function SettingsScreen() {
           >
             <View style={{ flex: 1, backgroundColor: 'transparent' }}>
               <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-                ⭐️ Test App Review Prompt
+                ⭐️ Mock 7-Day Review Trigger
               </Text>
               <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
-                Simulate 7 usage days, launch native review flow, or reset review prompt storage state.
+                Store 7 unique usage days & reset session guard to test automatic Home screen review prompt.
               </Text>
             </View>
             <FontAwesome name="star" size={16} color={palette.tint} />
