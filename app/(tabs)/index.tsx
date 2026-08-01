@@ -2403,14 +2403,14 @@ export default function HomeScreen() {
 
                 <View style={[styles.detailDivider, { backgroundColor: palette.border }]} />
 
-                <Text style={[styles.detailCardTitle, { color: palette.text }]}>Time vs pavement temp</Text>
+                <Text style={[styles.detailCardTitle, { color: palette.text }]}>Thermal Breakdown at {formatClockFromHour(selectedRoadDetailHour)}</Text>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginBottom: 8, fontWeight: '700' }]}>
-                  Air Temp Estimation: {selectedHourSample ? `${Math.round(selectedHourSample.airTempF)}°F` : (weatherOk ? `${Math.round(weatherOk.tempF)}°F` : '—')}
+                  Air Temp: {selectedHourSample ? `${Math.round(selectedHourSample.airTempF)}°F` : (weatherOk ? `${Math.round(weatherOk.tempF)}°F` : '—')}
                 </Text>
                 {roadDetailPoint ? (
                   <View style={styles.roadDetailSelected}>
                     <Text style={[styles.roadDetailSelectedTime, { color: palette.text }]}>
-                      {formatClockFromHour(selectedRoadDetailHour)}
+                      Surface Temp:
                     </Text>
                     <View
                       style={[
@@ -2420,7 +2420,7 @@ export default function HomeScreen() {
                       <Text style={styles.roadDetailBadgeText}>{Math.round(roadDetailPoint.roadTempF)}°F</Text>
                     </View>
                     <Text style={[styles.roadDetailSelectedBand, { color: palette.textSecondary }]}>
-                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {roadBandLabel(roadDetailPoint.roadBand)}
+                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} ({roadBandLabel(roadDetailPoint.roadBand)})
                     </Text>
                   </View>
                 ) : null}
