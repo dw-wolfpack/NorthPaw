@@ -173,7 +173,9 @@ export function buildTimelineBarsModel(input: {
     if (Number.isNaN(d.getTime())) continue;
     const h = d.getHours();
     if (h < AXIS_START_HOUR || h > AXIS_END_HOUR) continue;
-    byHour.set(h, sample);
+    if (!byHour.has(h)) {
+      byHour.set(h, sample);
+    }
   }
 
   const points: TimelineBarPoint[] = [];
