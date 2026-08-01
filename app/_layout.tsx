@@ -61,8 +61,12 @@ export default function RootLayout() {
   useEffect(() => {
     if (!loaded || !dbReady) return;
 
-    const timer = setTimeout(() => {
-      SplashScreen.hideAsync().catch(() => {});
+    const timer = setTimeout(async () => {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (e) {
+        // Native splash screen already dismissed or not registered in dev client
+      }
     }, MIN_SPLASH_MS);
 
     return () => clearTimeout(timer);

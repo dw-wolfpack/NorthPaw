@@ -2693,7 +2693,7 @@ export default function HomeScreen() {
               </Text>
               
               <Text style={{ color: palette.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
-                We've updated our safety guidelines and disclaimers to ensure you and your dog stay safe outdoors. Please review and accept to proceed.
+                We've updated our safety guidelines for NorthPaw. This reminder appears once per app update to keep safety standards current. Please review and accept to proceed.
               </Text>
 
               <View style={{ borderColor: palette.border, backgroundColor: palette.surface, padding: 14, borderRadius: 16, marginBottom: 20, borderWidth: 1, width: '100%' }}>
@@ -2726,7 +2726,8 @@ export default function HomeScreen() {
                   hapticTap();
                   trackEvent('disclaimer_accepted', { is_upgrade_flow: true });
                   try {
-                    await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', 'v4.3');
+                    const currentVer = Constants?.expoConfig?.version ? `v${Constants.expoConfig.version}` : 'v5.3';
+                    await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', currentVer);
                     setShowUpgradeTermsModal(false);
                   } catch (err) {
                     console.warn('[Home] Failed to save disclaimer version to AsyncStorage', err);
