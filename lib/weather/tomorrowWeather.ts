@@ -114,9 +114,19 @@ export async function fetchTomorrowWeatherAtCoordinates(
       return { status: 'unavailable', message: 'No forecast available from Tomorrow.io.' };
     }
 
-    // Tomorrow.io "realtime" is usually the first hourly or a separate call.
-    // For simplicity and efficiency, we use the first hourly point as "current".
-    const current = hourly[0];
+    // Find the hourly forecast sample closest to right now (Date.now())
+    const nowMs = Date.now();
+    let currentHourlyIndex = 0;
+    let closestDiff = Number.MAX_SAFE_INTEGER;
+    for (let i = 0; i < hourly.length; i++) {
+      const sampleMs = new Date(hourly[i].time).getTime();
+      const diff = Math.abs(sampleMs - nowMs);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        currentHourlyIndex = i;
+      }
+    }
+    const current = hourly[currentHourlyIndex] || hourly[0];
     const vals = current.values;
 
     const hourlySamples = hourly.slice(0, 36).map((h: any) => ({
