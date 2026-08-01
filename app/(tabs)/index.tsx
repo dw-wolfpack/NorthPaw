@@ -1182,6 +1182,11 @@ export default function HomeScreen() {
     const selected = roadDetailHour ?? fallback;
     return ((selected % 24) + 24) % 24;
   }, [roadDetailHour, timelineBars]);
+
+  const selectedHourSample = useMemo(() => {
+    if (!weatherOk?.hourlySamples?.length) return null;
+    return weatherOk.hourlySamples.find((s) => new Date(s.timeIso).getHours() === selectedRoadDetailHour) ?? null;
+  }, [weatherOk, selectedRoadDetailHour]);
   const petRoadInsight = useMemo(() => {
     if (!roadDetailPoint) {
       return {
@@ -2399,6 +2404,9 @@ export default function HomeScreen() {
                 <View style={[styles.detailDivider, { backgroundColor: palette.border }]} />
 
                 <Text style={[styles.detailCardTitle, { color: palette.text }]}>Time vs pavement temp</Text>
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginBottom: 8, fontWeight: '700' }]}>
+                  Air Temp Estimation: {selectedHourSample ? `${Math.round(selectedHourSample.airTempF)}°F` : (weatherOk ? `${Math.round(weatherOk.tempF)}°F` : '—')}
+                </Text>
                 {roadDetailPoint ? (
                   <View style={styles.roadDetailSelected}>
                     <Text style={[styles.roadDetailSelectedTime, { color: palette.text }]}>
