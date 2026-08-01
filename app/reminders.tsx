@@ -35,6 +35,8 @@ import {
   type MedReminderRow,
 } from '@/lib/medReminders';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getDetailScrollPadding } from '@/lib/layout';
 
 const DEFAULT_INTERVAL = 30;
 
@@ -469,8 +471,9 @@ const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).c
 
 export default function RemindersScreen() {
   const colorScheme = useColorScheme() ?? 'light';
-  const palette = Colors[colorScheme];
+  const palette = Colors[(colorScheme as 'light' | 'dark') ?? 'light'];
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { isPro } = useSubscription();
   const [rows, setRows] = useState<MedReminderRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -713,7 +716,7 @@ export default function RemindersScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={styles.container}>
+    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingBottom: getDetailScrollPadding(insets.bottom) }]}>
       {Platform.OS === 'web' ? (
         <View style={[styles.note, { borderColor: palette.border, backgroundColor: palette.surface }]}>
           <Text style={{ color: palette.textSecondary, lineHeight: 20 }}>

@@ -22,6 +22,8 @@ import { gradientForPack, IMAGES } from '@/lib/contentVisuals';
 import { useColorScheme } from '@/components/useColorScheme';
 import { trackEvent } from '@/lib/analytics';
 
+import { getTabScrollPadding } from '@/lib/layout';
+
 export default function LibraryScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
@@ -42,7 +44,7 @@ export default function LibraryScreen() {
   return (
     <ScrollView
       style={[styles.scroll, { backgroundColor: palette.background }]}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: getTabScrollPadding(insets.bottom) }]}>
       <HeroImage height={168} source={IMAGES.homeHero} gradient={homeGrad} scrimOpacity={0.88}>
         <View style={styles.heroLabelRow}>
           <MaterialCommunityIcons name="paw" size={18} color="rgba(255,255,255,0.95)" />
@@ -60,10 +62,6 @@ export default function LibraryScreen() {
           Dog life year-round: neighborhood, car, trail. Quick checks when judgment beats guessing.
         </Text>
       </HeroImage>
-
-      <Text style={[styles.bodyLead, { color: palette.textSecondary }]}>
-        Educational reference only. Not veterinary or legal advice. Confirm local rules for trails, parks, and vehicles yourself.
-      </Text>
 
       {hazard ? (
         <View style={[styles.hazardCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
@@ -86,6 +84,10 @@ export default function LibraryScreen() {
           ))}
         </View>
       ) : null}
+
+      <Text style={[styles.bodyLead, { color: palette.textSecondary, marginTop: 12, marginBottom: 16 }]}>
+        Educational reference only. Not veterinary or legal advice. Confirm local rules for trails, parks, and vehicles yourself.
+      </Text>
 
       <View style={styles.sectionRow}>
         <MaterialCommunityIcons name="map-search" size={20} color={palette.tint} />

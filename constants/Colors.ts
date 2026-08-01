@@ -9,8 +9,8 @@ const tintColorDark = sage;
 
 export default {
   light: {
-    text: ink,
-    textSecondary: '#374151', // High contrast dark slate gray (WCAG AAA compliant)
+    text: '#111827', // High contrast dark charcoal (WCAG AAA)
+    textSecondary: '#374151', // High contrast dark slate gray (WCAG AAA)
     background: '#F8FBF9',
     readyMint: '#E8F5F0',
     surface: '#ffffff',
@@ -21,10 +21,15 @@ export default {
     accent: forest,
     danger: '#B91C1C',
     selectedBg: 'rgba(45, 106, 79, 0.10)',
+    cautionText: '#1E1B4B', // Dark Navy Black text over amber pill (WCAG AAA)
+    cautionBg: '#F59E0B',
+    disclaimerText: '#1F2937',
+    cardOpaque: '#FFFFFF',
+    handTestRing: 'rgba(18, 31, 24, 0.14)',
   },
   dark: {
-    text: cream,
-    textSecondary: '#D1D5DB', // High contrast silver gray (WCAG AAA compliant)
+    text: '#F9FAFB', // Pure bright white neutral (WCAG AAA)
+    textSecondary: '#E5E7EB', // High contrast silver gray (WCAG AAA)
     background: '#0F1713',
     readyMint: '#0f1f18',
     surface: '#18241D',
@@ -35,5 +40,10 @@ export default {
     accent: sage,
     danger: '#EF4444',
     selectedBg: 'rgba(64, 145, 108, 0.20)',
+    cautionText: '#FEF3C7',
+    cautionBg: '#B45309',
+    disclaimerText: '#F3F4F6',
+    cardOpaque: '#122017',
+    handTestRing: 'rgba(255, 255, 255, 0.20)',
   },
 };

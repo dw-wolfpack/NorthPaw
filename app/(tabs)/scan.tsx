@@ -34,6 +34,8 @@ const BENEFITS = [
   },
 ] as const;
 
+import { getTabScrollPadding } from '@/lib/layout';
+
 export default function ScanScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
@@ -74,23 +76,9 @@ export default function ScanScreen() {
   return (
     <ScrollView
       style={[styles.scroll, { backgroundColor: palette.background }]}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 96 }]}
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 16, paddingBottom: getTabScrollPadding(insets.bottom) }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* Escape route header nav */}
-      <View style={styles.topNav}>
-        <Pressable
-          onPress={() => router.replace('/(tabs)')}
-          style={({ pressed }) => [
-            styles.backBtn,
-            { backgroundColor: `${palette.tint}15`, opacity: pressed ? 0.75 : 1 },
-          ]}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={18} color={palette.tint} style={{ marginRight: 4 }} />
-          <Text style={[styles.backBtnText, { color: palette.tint }]}>Home</Text>
-        </Pressable>
-      </View>
-
       <View style={styles.header}>
         <Text style={[styles.title, { color: palette.text }]}>Real-Life Sync</Text>
         <Text style={[styles.desc, { color: palette.textSecondary }]}>

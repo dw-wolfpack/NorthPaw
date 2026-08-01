@@ -10,7 +10,6 @@ import {
   isTestflightOrDevBuild,
   isAnalyticsEnabledInNonProd,
   setAnalyticsEnabledInNonProd,
-  setSendAnalyticsInDev,
 } from '@/lib/analytics';
 import {
   getReviewData,
@@ -40,6 +39,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
+import { getTabScrollPadding } from '@/lib/layout';
+
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
@@ -61,7 +62,6 @@ export default function SettingsScreen() {
   const toggleMixpanel = async () => {
     const next = !mixpanelEnabled;
     setMixpanelEnabled(next);
-    setSendAnalyticsInDev(next);
     await setAnalyticsEnabledInNonProd(next);
   };
 
@@ -72,7 +72,7 @@ export default function SettingsScreen() {
   );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 96 }]}>
+    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: getTabScrollPadding(insets.bottom) }]}>
       <Text style={styles.h1}>Your dog</Text>
       <Pressable
         onPress={() => { hapticTap();  router.push('/dog-profile'); }}
@@ -292,7 +292,7 @@ export default function SettingsScreen() {
                 Toggle to disable analytics in Testflight builds. In production this toggle is hidden.
               </Text>
             </View>
-            <FontAwesome name={mixpanelEnabled ? "check-circle" : "close-circle"} size={16} color={palette.tint} />
+            <FontAwesome name={mixpanelEnabled ? "check-circle" : "times-circle"} size={16} color={palette.tint} />
           </Pressable>
 
           <Pressable
@@ -332,6 +332,33 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <FontAwesome name="star" size={16} color={palette.tint} />
+          </Pressable>
+
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              await resetReviewDataForTesting();
+              Alert.alert('Review State Cleared', 'Cleared stored review dates and reset state to fresh.');
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.92 : 1,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                🗑️ Clear Review State (Reset Mock)
+              </Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Clear stored review dates and reset prompt state so it stops triggering on Home.
+              </Text>
+            </View>
+            <FontAwesome name="trash" size={16} color={palette.danger} />
           </Pressable>
 
           <Pressable

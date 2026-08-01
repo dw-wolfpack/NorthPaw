@@ -306,7 +306,7 @@ let syncPromise: Promise<void> | null = null;
 async function dedupePresetMedReminders(db: any): Promise<void> {
   const kinds: MedReminderKind[] = ['heartworm', 'flea_tick'];
   for (const kind of kinds) {
-    const rows = await db.getAllAsync<MedReminderRow>(
+    const rows: MedReminderRow[] = await db.getAllAsync(
       `SELECT id, notification_id FROM med_reminders WHERE kind = ? AND enabled = 1 ORDER BY next_due_at DESC`,
       [kind]
     );

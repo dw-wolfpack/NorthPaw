@@ -35,7 +35,7 @@ export const unstable_settings = {
   initialRouteName: 'index',
 };
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 const MIN_SPLASH_MS = 2000;
 
 export default function RootLayout() {
@@ -62,7 +62,7 @@ export default function RootLayout() {
     if (!loaded || !dbReady) return;
 
     const timer = setTimeout(() => {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
     }, MIN_SPLASH_MS);
 
     return () => clearTimeout(timer);

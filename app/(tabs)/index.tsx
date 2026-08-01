@@ -1,3 +1,5 @@
+import { getTabScrollPadding } from '@/lib/layout';
+import type { ReadinessPresentation } from '@/lib/readiness/types';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { BlurView } from 'expo-blur';
@@ -574,8 +576,8 @@ export default function HomeScreen() {
       trackEvent('screen_viewed', { screenName: 'Ready (Home)' });
       getDogProfile().then(setDogProfile).catch(() => {});
 
-      // Automatic 7-day review prompt eligibility check
-      (async () => {
+      // Automatic 7-day review prompt eligibility check (delayed so it never pops up instantly on launch)
+      const reviewTimer = setTimeout(async () => {
         try {
           await recordUsageDay();
           const profile = await getDogProfile();
@@ -587,13 +589,17 @@ export default function HomeScreen() {
         } catch (err) {
           console.warn('[Home] Review prompt check error', err);
         }
-      })();
+      }, 6000);
 
       FileSystem.getInfoAsync(FileSystem.documentDirectory + 'home_walkthrough.txt').then(info => {
         if (!info.exists) {
           triggerStep(0);
         }
       }).catch(() => {});
+
+      return () => {
+        clearTimeout(reviewTimer);
+      };
     }, [])
   );
 
@@ -1019,35 +1025,39 @@ export default function HomeScreen() {
     if (band === 'warm') {
       return {
         label: 'Caution',
-        color: '#D4A017',
-        bg: isDark ? 'rgba(212,160,23,0.12)' : 'rgba(212,160,23,0.14)',
-        border: isDark ? 'rgba(212,160,23,0.25)' : 'rgba(212,160,23,0.28)',
+        color: palette.cautionBg,
+        textColor: palette.cautionText,
+        bg: isDark ? 'rgba(245,158,11,0.22)' : 'rgba(245,158,11,0.26)',
+        border: isDark ? '#D97706' : '#B45309',
       };
     }
     if (band === 'hot') {
       return {
         label: 'Caution',
-        color: '#C46A2D',
-        bg: isDark ? 'rgba(196,106,45,0.12)' : 'rgba(196,106,45,0.14)',
-        border: isDark ? 'rgba(196,106,45,0.25)' : 'rgba(196,106,45,0.28)',
+        color: '#D97706',
+        textColor: palette.cautionText,
+        bg: isDark ? 'rgba(217,119,6,0.22)' : 'rgba(245,158,11,0.26)',
+        border: isDark ? '#B45309' : '#92400E',
       };
     }
     if (band === 'danger') {
       return {
         label: 'Danger',
-        color: '#C1121F',
-        bg: isDark ? 'rgba(193,18,31,0.12)' : 'rgba(193,18,31,0.14)',
-        border: isDark ? 'rgba(193,18,31,0.25)' : 'rgba(193,18,31,0.28)',
+        color: '#DC2626',
+        textColor: '#FFFFFF',
+        bg: isDark ? 'rgba(220,38,38,0.25)' : '#DC2626',
+        border: '#991B1B',
       };
     }
     // safe / default
     return {
       label: 'Ready',
-      color: isDark ? SAFETY_GREEN : '#0F7A3B',
-      bg: isDark ? 'rgba(46,204,113,0.12)' : 'rgba(20, 140, 72, 0.14)',
-      border: isDark ? 'rgba(46,204,113,0.25)' : 'rgba(20, 140, 72, 0.28)',
+      color: isDark ? SAFETY_GREEN : '#15803D',
+      textColor: isDark ? '#86EFAC' : '#064E3B',
+      bg: isDark ? 'rgba(46,204,113,0.14)' : 'rgba(22, 163, 74, 0.14)',
+      border: isDark ? 'rgba(46,204,113,0.30)' : 'rgba(22, 163, 74, 0.35)',
     };
-  }, [currentRoadPoint, isDark]);
+  }, [currentRoadPoint, isDark, palette]);
   const npiScore = useMemo(() => {
     if (!weatherOk) return null;
     const nearestHourly =
@@ -1412,18 +1422,22 @@ export default function HomeScreen() {
     }
   }, [readinessPresentation, router]);
 
-  const stopAndClearVerifyTimer = useCallback(() => {
+  const stopAndClearVerifyTimer = useCallback((options?: { resetCountdown?: boolean }) => {
+    const shouldReset = options?.resetCountdown ?? true;
     if (verifyTimerRef.current) {
       clearInterval(verifyTimerRef.current);
       verifyTimerRef.current = null;
     }
     isTimerActiveRef.current = false;
     setVerifyRunning(false);
+    if (shouldReset) {
+      setVerifyCountdown(7);
+    }
   }, []);
 
   const startVerifySurface = useCallback(() => {
     // Guaranteed single-instance timer check and cleanup
-    stopAndClearVerifyTimer();
+    stopAndClearVerifyTimer({ resetCountdown: true });
 
     trackEvent('hand_test_started', { surface: selectedSurface });
     setVerifyRunning(true);
@@ -1440,7 +1454,7 @@ export default function HomeScreen() {
       if (t <= 0) {
         trackEvent('hand_test_completed', { surface: selectedSurface, duration: 7 });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        stopAndClearVerifyTimer();
+        stopAndClearVerifyTimer({ resetCountdown: false });
       }
     }, 1000);
   }, [selectedSurface, stopAndClearVerifyTimer]);
@@ -1453,7 +1467,7 @@ export default function HomeScreen() {
         remainingSeconds: verifyCountdown,
       });
     }
-    stopAndClearVerifyTimer();
+    stopAndClearVerifyTimer({ resetCountdown: true });
   }, [selectedSurface, verifyCountdown, verifyRunning, stopAndClearVerifyTimer]);
 
   const cycleSurface = useCallback(() => {
@@ -1514,40 +1528,12 @@ export default function HomeScreen() {
   }, [stopAndClearVerifyTimer]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: isDark ? '#040806' : '#EAF2EE' }}>
-      {/* Background Image using high-performance expo-image */}
-      <Image
-        source={isDark ? require('../../assets/images/backgrounds/background-dark.png') : require('../../assets/images/backgrounds/background-light.png')}
-        style={[StyleSheet.absoluteFillObject, { opacity: isDark ? 0.7 : 0.5 }]}
-        contentFit="cover"
-      />
-
-
-      {/* Blending overlay */}
-      <LinearGradient
-        colors={isDark 
-          ? ['rgba(0, 0, 0, 0.2)', 'rgba(0, 0, 0, 0.6)'] 
-          : ['rgba(255, 255, 255, 0.25)', 'rgba(255, 255, 255, 0.5)']
-        }
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      {/* Vignette overlays */}
-      <LinearGradient
-        colors={isDark ? ['rgba(0,0,0,0.65)', 'transparent'] : ['rgba(255,255,255,0.5)', 'transparent']}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 160, zIndex: 1 }}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={isDark ? ['transparent', 'rgba(0,0,0,0.8)'] : ['transparent', 'rgba(0,0,0,0.15)']}
-        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 220, zIndex: 1 }}
-        pointerEvents="none"
-      />
+    <View style={{ flex: 1, backgroundColor: palette.background }}>
 
       <ScrollView
         ref={mainScrollRef}
         style={{ flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
+        contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: getTabScrollPadding(insets.bottom) }]}>
         {/* A. Identity strip — name + place; utilities stay quiet */}
         <View style={styles.headerRow}>
           <Pressable
@@ -1576,7 +1562,7 @@ export default function HomeScreen() {
                   <Text style={[
                     styles.statusPillText, 
                     { 
-                      color: statusBadge.color,
+                      color: statusBadge.textColor || statusBadge.color,
                       fontWeight: '800'
                     }
                   ]}>
@@ -1978,27 +1964,39 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
-            <Text style={{ color: textColors.tertiary, fontSize: 10, lineHeight: 14, fontStyle: 'italic', textAlign: 'center', marginTop: 10, paddingHorizontal: 12 }}>
-              Estimates only. Local shade, turf, and heat-islands can significantly change pavement temps. Always perform a physical Hand Test before walks.
-            </Text>
+            <View ref={shareRef} collapsable={false} style={{ marginTop: 16, marginBottom: 8 }}>
+              <ShareButton
+                onPress={() => shareCard({
+                  dogName,
+                  dogBreed: dogProfile?.dogBreed || 'Unknown',
+                  currentNpi: npiScore ?? 0,
+                  selectedSurface: selectedSurface,
+                  surfaceTempF: currentRoadPoint?.roadTempF ?? 77,
+                  currentTempF: (weather as any)?.tempF ?? 77,
+                  roadBand: currentRoadPoint?.roadBand || 'safe',
+                })}
+                loading={isSharing}
+                dogName={dogName}
+              />
+            </View>
+
+            <View style={{
+              backgroundColor: palette.surface,
+              borderColor: palette.border,
+              borderWidth: 1,
+              borderRadius: 14,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              marginTop: 10,
+              marginBottom: 16,
+              alignItems: 'center',
+            }}>
+              <Text style={{ color: palette.textSecondary, fontSize: 11, lineHeight: 16, textAlign: 'center', fontWeight: '500' }}>
+                Estimates only. Local shade, turf, and heat-islands can significantly change pavement temps. Always perform a physical Hand Test before walks.
+              </Text>
+            </View>
           </View>
         ) : null}
-
-        <View ref={shareRef} collapsable={false} style={{ marginVertical: 12 }}>
-          <ShareButton
-            onPress={() => shareCard({
-              dogName,
-              dogBreed: dogProfile?.dogBreed || 'Unknown',
-              currentNpi: npiScore ?? 0,
-              selectedSurface: selectedSurface,
-              surfaceTempF: currentRoadPoint?.roadTempF ?? 77,
-              currentTempF: (weather as any)?.tempF ?? 77,
-              roadBand: currentRoadPoint?.roadBand || 'safe',
-            })}
-            loading={isSharing}
-            dogName={dogName}
-          />
-        </View>
       </ScrollView>
 
       <Modal
@@ -2064,15 +2062,14 @@ export default function HomeScreen() {
         onRequestClose={closeVerifySurface}>
         <View style={styles.verifyOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeVerifySurface} />
-          <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} pointerEvents="none" />
-          <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+          <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border, backgroundColor: palette.cardOpaque }]}>
             <Text style={[styles.verifyTitle, { color: palette.text }]}>Verify Surface</Text>
             <Text style={[styles.verifySub, { color: palette.textSecondary }]}>
               Press your hand to the pavement for a full 7 seconds.
             </Text>
             <View style={styles.verifyCanvasWrap}>
               <Canvas style={{ width: 216, height: 216 }}>
-                <Circle cx={108} cy={108} r={88} color="rgba(255,255,255,0.2)" style="stroke" strokeWidth={10} />
+                <Circle cx={108} cy={108} r={88} color={(palette as any).handTestRing || (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(18,31,24,0.14)')} style="stroke" strokeWidth={10} />
                 <Path path={verifyArcPath} color="#F39C12" style="stroke" strokeWidth={10} strokeCap="round" />
                 <Circle cx={108} cy={108} r={76} color="rgba(243,156,18,0.2)">
                   <BlurMask blur={20} />
@@ -2593,7 +2590,7 @@ export default function HomeScreen() {
                 { bottom: 180 } // Move tooltip above tabs
               ]}
             >
-              <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={{ borderRadius: 20, padding: 20, borderWidth: 1, borderColor: palette.border, overflow: 'hidden', width: '100%' }}>
+              <View style={{ backgroundColor: palette.cardOpaque, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: palette.border, width: '100%', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 8 }}>
                 {walkthroughStep === 0 && (
                   <>
                     <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>NPI Status Ring</Text>
@@ -2650,7 +2647,7 @@ export default function HomeScreen() {
                     </Pressable>
                   </View>
                 </View>
-              </BlurView>
+              </View>
             </AnimatedReanimated.View>
           </View>
         </Modal>
@@ -3671,7 +3668,7 @@ const styles = StyleSheet.create({
   npiExplainRow: { fontSize: 14, lineHeight: 21, marginBottom: 6 },
   verifyOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(7,10,8,0.48)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -3682,11 +3679,10 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     padding: 20,
-    backgroundColor: 'rgba(15,23,20,0.7)',
     shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 10,
     alignItems: 'center',
   },

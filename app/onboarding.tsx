@@ -367,15 +367,12 @@ export default function OnboardingScreen() {
     });
   }, [breedQuery]);
 
-  const legacyStep = useMemo(() => {
+  const legacyStep = useMemo((): string => {
     if (scene === 'breed-snout') return 'breed';
     if (scene === 'biology-activity') return 'biology';
     if (scene === 'npi-activation') return 'aha';
     if (scene === 'morning-brief' || scene === 'commitment') return 'notifications';
-    if (scene === 'welcome' || scene === 'name' || scene === 'photo' || scene === 'age' || scene === 'outings' || scene === 'location') {
-      return scene;
-    }
-    return 'welcome';
+    return scene;
   }, [scene]);
 
   const canAdvance = useMemo(() => {
