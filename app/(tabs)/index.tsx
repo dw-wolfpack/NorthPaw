@@ -772,9 +772,12 @@ export default function HomeScreen() {
               console.warn('[Home] Failed to cache weather in AsyncStorage', err);
             }
 
+            const providerUsed = result.providerUsed || (result.isCacheHit ? 'cache' : 'nws');
+
             trackEvent('weather_loaded', {
               cache_hit: result.isCacheHit ?? false,
               load_time_ms: result.loadTimeMs ?? 0,
+              weather_provider_used: providerUsed,
             });
 
             // Calculate Time to Value (TTV)
@@ -806,6 +809,7 @@ export default function HomeScreen() {
               time_to_first_readiness_ms: timeToFirstMs,
               weather_load_time_ms: result.loadTimeMs ?? 0,
               weather_cache_hit: result.isCacheHit ?? false,
+              weather_provider_used: providerUsed,
               surface: selectedSurface,
               dog_breed: profile.dogBreed || 'Unknown',
               app_version: appVersion,

@@ -28,8 +28,8 @@ export type HazardTag = 'smoke' | 'haze' | 'pollen' | 'tick';
 
 export type HomeWeatherState =
   | { status: 'loading' }
-  | { status: 'permission_denied'; isCacheHit?: boolean; loadTimeMs?: number }
-  | { status: 'unavailable'; message: string; isCacheHit?: boolean; loadTimeMs?: number }
+  | { status: 'permission_denied'; isCacheHit?: boolean; loadTimeMs?: number; providerUsed?: 'nws' | 'tomorrow' | 'cache' }
+  | { status: 'unavailable'; message: string; isCacheHit?: boolean; loadTimeMs?: number; providerUsed?: 'nws' | 'tomorrow' | 'cache' }
   | {
       status: 'ok';
       latitude: number;
@@ -73,6 +73,7 @@ export type HomeWeatherState =
       mockRecentRain: boolean;
       isCacheHit?: boolean;
       loadTimeMs?: number;
+      providerUsed?: 'nws' | 'tomorrow' | 'cache';
     };
 
 type NwsJson = Record<string, unknown>;

@@ -129,22 +129,29 @@ export async function fetchWeatherForDeviceLocation(): Promise<
   const { latitude, longitude } = pos.coords;
 
   let result: Exclude<HomeWeatherState, { status: 'loading' }>;
+  let providerUsed: 'nws' | 'tomorrow' | 'cache' = 'nws';
 
   // 1. If in US, try NWS (Free)
   if (isInsideUS(latitude, longitude)) {
     const nwsResult = await fetchUsWeatherForDeviceLocation();
     if (nwsResult.status === 'ok') {
       result = nwsResult;
+      providerUsed = nwsResult.isCacheHit ? 'cache' : 'nws';
     } else {
-      result = await fetchTomorrowWeatherAtCoordinates(latitude, longitude);
+      const tomorrowResult = await fetchTomorrowWeatherAtCoordinates(latitude, longitude);
+      result = tomorrowResult;
+      providerUsed = tomorrowResult.isCacheHit ? 'cache' : 'tomorrow';
     }
   } else {
-    result = await fetchTomorrowWeatherAtCoordinates(latitude, longitude);
+    const tomorrowResult = await fetchTomorrowWeatherAtCoordinates(latitude, longitude);
+    result = tomorrowResult;
+    providerUsed = tomorrowResult.isCacheHit ? 'cache' : 'tomorrow';
   }
 
   const totalDuration = Date.now() - startTime;
   return {
     ...result,
+    providerUsed,
     isCacheHit: result.isCacheHit ?? false,
     loadTimeMs: result.loadTimeMs ?? totalDuration,
   };
