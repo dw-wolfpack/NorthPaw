@@ -565,7 +565,6 @@ export default function HomeScreen() {
   const [upgradeDisclaimerAgreed, setUpgradeDisclaimerAgreed] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
-  const { viewRef, isSharing, shareCard } = useShareCard();
   const shareRef = useRef<View>(null);
 
   const [showWalkthrough, setShowWalkthrough] = useState(false);
@@ -573,7 +572,6 @@ export default function HomeScreen() {
   const avatarRef = useRef<View>(null);
   const timelineRef = useRef<View>(null);
   const bellRef = useRef<View>(null);
-  const shareRef = useRef<View>(null);
   const { height: screenHeight } = Dimensions.get('window');
   
   // Spotlight Shared Values
@@ -941,6 +939,7 @@ export default function HomeScreen() {
     setReadinessPresentation(pres);
     if (pres && weather.status === 'ok') {
       let actionableTime = 'Next update ~15m';
+      const calcRoadTemp = currentRoadPoint?.roadTempF ?? weather.tempF;
 
       if (Array.isArray(weather.hourlySamples) && weather.hourlySamples.length > 0) {
         const now = new Date();
@@ -949,11 +948,11 @@ export default function HomeScreen() {
           return d > now && s.airTempF >= 82;
         });
 
-        if (hotUpcoming && pres.calculatedRoadTempF < 85) {
+        if (hotUpcoming && calcRoadTemp < 85) {
           const hotDate = new Date(hotUpcoming.timeIso);
           const formattedHour = hotDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
           actionableTime = `Heating up after ${formattedHour}`;
-        } else if (pres.calculatedRoadTempF >= 85) {
+        } else if (calcRoadTemp >= 85) {
           const coolerUpcoming = weather.hourlySamples.find((s) => {
             const d = new Date(s.timeIso);
             return d > now && s.airTempF < 78;
@@ -972,11 +971,11 @@ export default function HomeScreen() {
 
       syncWidgetData({
         dogName: dogName,
-        statusText: pres.presentation.statusText,
+        statusText: pres.title,
         airTempF: weather.tempF,
-        roadTempF: pres.calculatedRoadTempF,
+        roadTempF: calcRoadTemp,
         surfaceType: selectedSurface,
-        npiScore: pres.npiScore,
+        npiScore: npiScore ?? 0,
         actionableTime,
       }).catch(() => {});
     }
@@ -3312,12 +3311,6 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
-=======
-          roadBand={currentRoadPoint?.roadBand || 'safe'}
-          formattedDate={new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-        />
-      </View>
->>>>>>> main
     </View>
   );
 }
@@ -4274,10 +4267,4 @@ const styles = StyleSheet.create({
   },
   verifyClose: { marginTop: 12, paddingVertical: 6, paddingHorizontal: 12 },
   verifyCloseText: { fontSize: 13, fontWeight: '700' },
-  shareCardHiddenWrapper: {
-    position: 'absolute',
-    width: 0,
-    height: 0,
-    overflow: 'hidden',
-  },
 });

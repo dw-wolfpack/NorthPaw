@@ -148,7 +148,7 @@ export default function SettingsScreen() {
             opacity: pressed ? 0.92 : 1,
             marginBottom: 8,
           },
-        ]}>sed ? 0.98 : 1 }] }]}>
+        ]}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Name &amp; photo</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
@@ -165,6 +165,8 @@ export default function SettingsScreen() {
             borderColor: palette.border,
             backgroundColor: palette.surface,
             opacity: pressed ? 0.92 : 1,
+            marginBottom: 8,
+          },
         ]}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Care reminders</Text>
@@ -349,32 +351,6 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <FontAwesome name={isMockHotWeather ? "sun-o" : "camera"} size={16} color={palette.tint} />
-          </Pressable>
-
-          <Pressable
-            onPress={async () => {
-              hapticTap();
-              await toggleMixpanel();
-            }}
-            style={({ pressed }) => [
-              styles.linkCard,
-              {
-                borderColor: mixpanelEnabled ? palette.tint : palette.border,
-                backgroundColor: mixpanelEnabled ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
-                opacity: pressed ? 0.92 : 1,
-                marginBottom: 8,
-              },
-            ]}
-          >
-            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-                {mixpanelEnabled ? 'Mixpanel Events: ON (Testflight)' : 'Mixpanel Events: OFF'}
-              </Text>
-              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
-                Toggle to disable analytics in Testflight builds. In production this toggle is hidden.
-              </Text>
-            </View>
-            <FontAwesome name={mixpanelEnabled ? "check-circle" : "close-circle"} size={16} color={palette.tint} />
           </Pressable>
 
           <Pressable
