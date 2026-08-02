@@ -11,17 +11,21 @@
         "simulator": true
       }
     },
-    "preview": {
-      "distribution": "internal",
+    "testflight": {
+      "distribution": "store",
       "env": {
-        "EXPO_PUBLIC_IS_TESTFLIGHT": "false",
-        "EXPO_PUBLIC_ENV": "production"
+        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "true"
       },
       "ios": {
-        "simulator": false
+        "resourceClass": "m-medium",
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     },
     "production": {
+      "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "false"
+      },
       "ios": {
         "resourceClass": "m-medium",
         "image": "macos-sequoia-15.6-xcode-26.2"
