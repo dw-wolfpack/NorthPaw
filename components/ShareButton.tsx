@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, Pressable, ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useColorScheme } from '@/components/useColorScheme';
 
 interface ShareButtonProps {
   onPress: () => void;
@@ -9,31 +10,44 @@ interface ShareButtonProps {
 }
 
 export const ShareButton: React.FC<ShareButtonProps> = ({ onPress, loading, dogName }) => {
+  const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
+
+  const goldTextColor = isDark ? '#F5D77F' : '#8B6508';
+  const goldBgColor = isDark ? 'rgba(212, 175, 55, 0.12)' : 'rgba(212, 175, 55, 0.14)';
+  const goldBorderColor = isDark ? 'rgba(212, 175, 55, 0.45)' : 'rgba(184, 134, 11, 0.55)';
+
   return (
     <Pressable
       onPress={onPress}
       disabled={loading}
       style={({ pressed }) => [
         styles.button,
+        {
+          backgroundColor: pressed
+            ? (isDark ? 'rgba(212, 175, 55, 0.25)' : 'rgba(212, 175, 55, 0.28)')
+            : goldBgColor,
+          borderColor: goldBorderColor,
+        },
         pressed && styles.buttonPressed,
         loading && styles.buttonDisabled,
       ]}
     >
       {({ pressed }) => (
         loading ? (
-          <ActivityIndicator size="small" color="#D4AF37" />
+          <ActivityIndicator size="small" color={goldTextColor} />
         ) : (
           <View style={styles.contentContainer}>
             <Ionicons 
               name="share-social" 
               size={18} 
-              color="#D4AF37" 
+              color={goldTextColor} 
               style={[
                 styles.icon,
                 pressed && styles.iconPressed
               ]} 
             />
-            <Text style={styles.text}>
+            <Text style={[styles.text, { color: goldTextColor }]}>
               {dogName ? `Share ${dogName}'s Walk Report` : 'Share Walk Report'}
             </Text>
           </View>
@@ -53,25 +67,18 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingVertical: 14, // Taller button
     paddingHorizontal: 22,
-    marginTop: 18,
-    alignSelf: 'center',
-    minWidth: 220,
-    // Gold shadow glow effect
+    marginVertical: 12,
     shadowColor: '#D4AF37',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, // Stronger glow visibility
-    shadowRadius: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
     elevation: 4,
   },
   buttonPressed: {
-    backgroundColor: 'rgba(212, 175, 55, 0.15)',
-    borderColor: 'rgba(212, 175, 55, 0.7)',
-    transform: [{ scale: 0.96 }], // Slightly deeper press feedback
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
+    transform: [{ scale: 0.98 }],
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
   },
   contentContainer: {
     flexDirection: 'row',
@@ -79,17 +86,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   icon: {
-    marginRight: 10,
-    transform: [{ scale: 1 }, { rotate: '0deg' }],
+    marginRight: 8,
   },
   iconPressed: {
-    transform: [{ scale: 1.25 }, { rotate: '12deg' }], // Playful pop and tilt on press
+    transform: [{ rotate: '-10deg' }],
   },
   text: {
-    fontFamily: 'System',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
-    color: '#FFF',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 });

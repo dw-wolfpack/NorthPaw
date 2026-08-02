@@ -79,12 +79,13 @@ export function resetTrackedActivity() {
 const MUTE_TESTFLIGHT_ANALYTICS_KEY = '@northpaw_mute_testflight_analytics';
 
 export function isTestflightOrDevBuild(): boolean {
+  // Local Metro/Expo Go development build — always show dev settings.
   if (__DEV__) return true;
-  if (Constants.executionEnvironment === 'storeClient') return true;
-  if (process.env.EXPO_PUBLIC_ENV === 'production' && process.env.EXPO_PUBLIC_IS_TESTFLIGHT !== 'true') {
-    return false;
-  }
-  return true;
+  // Explicit TestFlight signal set by the 'preview' EAS profile.
+  if (process.env.EXPO_PUBLIC_IS_TESTFLIGHT === 'true') return true;
+  if (process.env.EXPO_PUBLIC_ENV === 'testflight') return true;
+  // Default-deny: production builds (and anything else) hide developer settings.
+  return false;
 }
 
 export function getAnalyticsEnvironment(): 'production' | 'testflight' | 'expo_go' | 'development' {

@@ -21,6 +21,8 @@ import { parseOutingPhotoUris } from '@/lib/outingPhotoUris';
 import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
 import { useColorScheme } from '@/components/useColorScheme';
 
+import { getTabScrollPadding } from '@/lib/layout';
+
 export default function ChecklistsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
@@ -70,7 +72,7 @@ export default function ChecklistsScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: palette.background }}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: getTabScrollPadding(insets.bottom) }]}>
       <HeroImage height={132} source={IMAGES.card} gradient={heroGrad} scrimOpacity={0.85}>
         <View style={styles.heroRow}>
           <MaterialCommunityIcons name="clipboard-check" size={22} color="rgba(255,255,255,0.95)" />

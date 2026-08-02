@@ -47,30 +47,29 @@ import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
 import { trackEvent, setUserProperties } from '@/lib/analytics';
 import { FeedbackModal } from '@/components/FeedbackModal';
+import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
 
 type SceneId =
   | 'welcome'
   | 'name'
-  | 'photo'
   | 'breed-snout'
-  | 'biology-activity'
   | 'age'
-  | 'outings'
+  | 'biology-activity'
   | 'location'
   | 'npi-activation'
+  | 'photo'
   | 'morning-brief'
   | 'commitment';
 
 const SCENES: SceneId[] = [
   'welcome',
   'name',
-  'photo',
   'breed-snout',
-  'biology-activity',
   'age',
-  'outings',
+  'biology-activity',
   'location',
   'npi-activation',
+  'photo',
   'morning-brief',
   'commitment',
 ];
@@ -79,8 +78,10 @@ export const BREEDS = [
   'Mixed Breed / Rescue',
   'Akita',
   'Alaskan Malamute',
+  'American Eskimo',
   'American Pit Bull Terrier',
   'American Staffordshire Terrier',
+  'Aussiedoodle',
   'Australian Cattle Dog',
   'Australian Shepherd',
   'Aussiedoodle',
@@ -112,6 +113,7 @@ export const BREEDS = [
   'Golden Retriever',
   'Goldendoodle',
   'Great Dane',
+  'Great Pyrenees',
   'Greater Swiss Mountain Dog',
   'Greyhound',
   'Havanese',
@@ -142,6 +144,7 @@ export const BREEDS = [
   'Shiba Inu',
   'Siberian Husky',
   'Staffordshire Bull Terrier',
+  'Standard Schnauzer',
   'Vizsla',
   'Weimaraner',
   'West Highland White Terrier',
@@ -358,18 +361,20 @@ export default function OnboardingScreen() {
     const base = BREEDS.filter((b) => b !== 'Mixed Breed / Rescue');
     const q = breedQuery.trim().toLowerCase();
     if (!q) return base;
-    return base.filter((b) => b.toLowerCase().includes(q));
+    const compactQ = q.replace(/[\s\-]/g, '');
+    return base.filter((b) => {
+      const lower = b.toLowerCase();
+      const compactLower = lower.replace(/[\s\-]/g, '');
+      return lower.includes(q) || compactLower.includes(compactQ);
+    });
   }, [breedQuery]);
 
-  const legacyStep = useMemo(() => {
+  const legacyStep = useMemo((): string => {
     if (scene === 'breed-snout') return 'breed';
     if (scene === 'biology-activity') return 'biology';
     if (scene === 'npi-activation') return 'aha';
     if (scene === 'morning-brief' || scene === 'commitment') return 'notifications';
-    if (scene === 'welcome' || scene === 'name' || scene === 'photo' || scene === 'age' || scene === 'outings' || scene === 'location') {
-      return scene;
-    }
-    return 'welcome';
+    return scene;
   }, [scene]);
 
   const canAdvance = useMemo(() => {
@@ -531,7 +536,7 @@ export default function OnboardingScreen() {
 
       try {
         await AsyncStorage.setItem('@northpaw/onboarding_completed_at', Date.now().toString());
-        await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', 'v4.3');
+        await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', REQUIRED_DISCLAIMER_VERSION);
       } catch (err) {
         console.warn('[Onboarding] Failed to save completed timestamp/disclaimer to AsyncStorage', err);
       }
@@ -632,7 +637,7 @@ export default function OnboardingScreen() {
 
     if (scene === 'name') {
       return (
-        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+        <AnimatedReanimated.View key="name" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What&apos;s your dog&apos;s name?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>We will personalize every screen for your dog.</Text>
           <TextInput
@@ -673,9 +678,9 @@ export default function OnboardingScreen() {
     if (scene === 'photo') {
       return (
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>Add a photo of {dogName}.</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>Make it yours</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Optional. Photos stay on your device and are never uploaded.
+            Add a photo of {dogName} to personalize your NorthPaw experience. Photos stay strictly on your device.
           </Text>
           <Pressable
             onPress={() => {
@@ -694,23 +699,32 @@ export default function OnboardingScreen() {
               <Image source={{ uri: displayPhoto }} style={styles.photoImg} contentFit="cover" cachePolicy="none" />
             ) : (
               <View style={[styles.photoWarmPlaceholder, { backgroundColor: palette.border + '40' }]}>
-                <MaterialCommunityIcons name="dog-side" size={74} color={palette.textSecondary} />
-                <Text style={[styles.placeholderText, { color: palette.textSecondary }]}>Choose a photo of {dogName}</Text>
+                <MaterialCommunityIcons name="camera-plus" size={56} color={palette.tint} />
+                <Text style={[styles.placeholderText, { color: palette.text, fontWeight: '700', marginTop: 8 }]}>Tap to choose a photo</Text>
               </View>
             )}
           </Pressable>
-          <Pressable
-            onPress={() => { hapticTap(); void handlePhotoContinue(); }}
-            style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-            <Text style={styles.ctaText}>Continue</Text>
-          </Pressable>
+
+          <View style={{ gap: 10, marginTop: 14 }}>
+            <Pressable
+              onPress={() => { hapticTap(); void handlePhotoContinue(); }}
+              style={({ pressed }) => [styles.cta, { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+              <Text style={styles.ctaText}>{displayPhoto ? 'Continue with photo' : 'Choose a photo'}</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => { hapticTap(); advance(); }}
+              style={({ pressed }) => [styles.ghostBtn, { borderColor: palette.border, opacity: pressed ? 0.8 : 1 }]}>
+              <Text style={[styles.ghostText, { color: palette.textSecondary, textAlign: 'center' }]}>Skip for now</Text>
+            </Pressable>
+          </View>
         </AnimatedReanimated.View>
       );
     }
 
     if (scene === 'breed-snout') {
       return (
-        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+        <AnimatedReanimated.View key="breed-snout" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
             Pick your dog’s breed for their profile. You’ll customize snout, coat, and activity next.
@@ -720,6 +734,12 @@ export default function OnboardingScreen() {
             onChangeText={setBreedQuery}
             placeholder="Search breeds"
             placeholderTextColor={palette.textSecondary}
+            autoCapitalize="words"
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            editable={true}
+            selectTextOnFocus={true}
             style={[
               styles.input,
               {
@@ -748,6 +768,12 @@ export default function OnboardingScreen() {
               onChangeText={setMixedPrimary}
               placeholder="Primary mix (e.g. Lab mix)"
               placeholderTextColor={palette.textSecondary}
+              autoCapitalize="words"
+              autoCorrect={false}
+              returnKeyType="done"
+              clearButtonMode="while-editing"
+              editable={true}
+              selectTextOnFocus={true}
               style={[
                 styles.input,
                 {
@@ -759,7 +785,11 @@ export default function OnboardingScreen() {
               ]}
             />
           ) : null}
-          <ScrollView style={styles.breedScroll} contentContainerStyle={styles.breedGrid}>
+          <ScrollView
+            style={styles.breedScroll}
+            contentContainerStyle={styles.breedGrid}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="always">
             {filteredBreeds.map((item) => {
               const selected = !isMixedBreed && breed === item;
               return (
@@ -846,7 +876,7 @@ export default function OnboardingScreen() {
 
     if (scene === 'biology-activity') {
       return (
-        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+        <AnimatedReanimated.View key="biology-activity" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>Let&apos;s finish {dogName}&apos;s custom profile.</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
             Weight, coat, color, and energy help build safe outing guides and checklists.
@@ -933,10 +963,28 @@ export default function OnboardingScreen() {
           </AnimatedReanimated.Text>
 
           <View style={[styles.rowButtons, { marginTop: 10 }]}>
-            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}>
+            <Pressable
+              onPress={() => {
+                hapticTap();
+                if (pickedUri) {
+                  trackEvent('onboarding_photo_uploaded');
+                } else {
+                  trackEvent('onboarding_photo_skipped');
+                }
+                advance();
+              }}
+              style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}
+            >
                <Text style={[styles.ghostText, { color: palette.text, textAlign: 'center' }]}>Continue</Text>
             </Pressable>
-            <Pressable onPress={() => { hapticTap(); advance(); }} style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}>
+            <Pressable
+              onPress={() => {
+                hapticTap();
+                trackEvent('onboarding_photo_skipped');
+                advance();
+              }}
+              style={[styles.ghostBtn, { borderColor: palette.border, flex: 1 }]}
+            >
                <Text style={[styles.ghostText, { color: palette.textSecondary, textAlign: 'center' }]}>Skip for now</Text>
             </Pressable>
           </View>
@@ -1115,7 +1163,7 @@ export default function OnboardingScreen() {
           </View>
           <Pressable
             disabled={!activationReady}
-            onPress={() => { hapticTap();  setSceneIdx(SCENES.indexOf('morning-brief')); }}
+            onPress={() => { hapticTap(); advance(); }}
             style={({ pressed }) => [
               styles.cta,
               { backgroundColor: activationReady ? palette.tint : palette.border, opacity: pressed ? 0.9 : 1 },
@@ -1161,6 +1209,14 @@ export default function OnboardingScreen() {
                   key={t}
                   onPress={() => {
                     selectionTick();
+                    if (t === 'Custom') {
+                      Alert.alert(
+                        'Custom Time Alerts Coming Soon!',
+                        'Custom alert time pickers are coming in an upcoming release! For now, choose 7:00 AM or 8:00 AM for your daily Morning Brief.',
+                        [{ text: 'Got It', style: 'cancel' }]
+                      );
+                      return;
+                    }
                     setMorningBriefTime(t);
                     setPreviewInteracted(true);
                   }}
@@ -1171,8 +1227,15 @@ export default function OnboardingScreen() {
                       backgroundColor: selected ? palette.selectedBg : palette.surface,
                       opacity: pressed ? 0.92 : 1,
                     },
-                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-                  <Text style={[styles.cardTitle, { color: palette.text }]}>{t}</Text>
+                  ]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: palette.text }]}>{t}</Text>
+                    {t === 'Custom' ? (
+                      <View style={{ backgroundColor: `${palette.tint}20`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                        <Text style={{ color: palette.tint, fontSize: 10, fontWeight: '800' }}>Coming Soon</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </Pressable>
               );
             })}
@@ -1330,8 +1393,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View style={[styles.flex, screenFadeStyle]}>
           <ScrollView
             contentContainerStyle={styles.scroll}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag">
+            keyboardShouldPersistTaps="always">
           <AnimatedReanimated.View style={[styles.stepRow, headerFadeStyle]}>
             <Text style={[styles.stepLabel, { color: palette.textSecondary }]}>Scene {sceneIdx + 1} of {SCENES.length}</Text>
             {sceneIdx > 0 ? (

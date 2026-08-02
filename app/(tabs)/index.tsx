@@ -1,3 +1,5 @@
+import { getTabScrollPadding } from '@/lib/layout';
+import type { ReadinessPresentation } from '@/lib/readiness/types';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { BlurView } from 'expo-blur';
@@ -21,6 +23,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Dimensions,
   View,
@@ -38,9 +41,11 @@ import { getChecklistCheckedIds } from '@/lib/database';
 import { getDogProfile, toggleGearVaultItem, type DogProfile } from '@/lib/profile';
 import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
-import type { ReadinessPresentation } from '@/lib/readiness/types';
 import { trackEvent, setUserProperties, incrementUserProperties } from '@/lib/analytics';
 import { syncWidgetData } from '@/lib/widgetSync';
+import { ReviewPromptModal } from '@/components/ReviewPromptModal';
+import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
+import { recordUsageDay, checkReviewEligibility, getReviewData, markShownThisSession } from '@/lib/reviewPrompt';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import {
@@ -546,6 +551,7 @@ export default function HomeScreen() {
   const [verifyRunning, setVerifyRunning] = useState(false);
   const [verifyCountdown, setVerifyCountdown] = useState(7);
   const verifyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isTimerActiveRef = useRef(false);
   const scrubHourHapticRef = useRef<number | null>(null);
   const confidencePulse = useRef(new Animated.Value(1)).current;
   const isRefreshingWeatherRef = useRef(false);
@@ -557,6 +563,10 @@ export default function HomeScreen() {
   const [readinessPresentation, setReadinessPresentation] = useState<ReadinessPresentation | null>(null);
   const [showUpgradeTermsModal, setShowUpgradeTermsModal] = useState(false);
   const [upgradeDisclaimerAgreed, setUpgradeDisclaimerAgreed] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+
+  const { viewRef, isSharing, shareCard } = useShareCard();
+  const shareRef = useRef<View>(null);
 
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -584,11 +594,31 @@ export default function HomeScreen() {
       AsyncStorage.getItem('@northpaw_temp_unit').then(val => {
         if (val === 'C' || val === 'F') setTempUnit(val as 'F' | 'C');
       }).catch(() => {});
+      getDogProfile().then(setDogProfile).catch(() => {});
+
+      // Automatic 7-day review prompt eligibility check (delayed so it never pops up instantly on launch)
+      const reviewTimer = setTimeout(async () => {
+        try {
+          await recordUsageDay();
+          const profile = await getDogProfile();
+          const eligible = await checkReviewEligibility({ onboardingDone: profile ? profile.onboardingDone : true });
+          if (eligible) {
+            markShownThisSession();
+            setReviewModalOpen(true);
+          }
+        } catch (err) {
+          console.warn('[Home] Review prompt check error', err);
+        }
+      }, 6000);
       FileSystem.getInfoAsync(FileSystem.documentDirectory + 'home_walkthrough.txt').then(info => {
         if (!info.exists) {
           triggerStep(0);
         }
       }).catch(() => {});
+
+      return () => {
+        clearTimeout(reviewTimer);
+      };
     }, [])
   );
 
@@ -783,13 +813,13 @@ export default function HomeScreen() {
         ]);
         if (!gone) {
           setDogProfile(profile);
+          if (profile && profile.onboardingDone && acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
+            setShowUpgradeTermsModal(true);
+          }
           if (result.status === 'ok') {
             const mergedHourly = await mergeAndSaveDailyHourlySamples(result.hourlySamples);
             const updatedWeather = { ...result, hourlySamples: mergedHourly };
             setWeather(updatedWeather);
-            if (profile && profile.onboardingDone && acceptedVer !== 'v4.3') {
-              setShowUpgradeTermsModal(true);
-            }
             try {
               await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(updatedWeather));
               await AsyncStorage.setItem('@northpaw/last_weather_fetch_time', Date.now().toString());
@@ -804,15 +834,14 @@ export default function HomeScreen() {
             }
           } else {
             setWeather(result);
-            if (profile && profile.onboardingDone && acceptedVer !== 'v4.3') {
-              setShowUpgradeTermsModal(true);
-            }
           }
 
           if (result.status === 'ok') {
+            const providerUsed = result.providerUsed || (result.isCacheHit ? 'cache' : 'nws');
             trackEvent('weather_loaded', {
               cache_hit: result.isCacheHit ?? false,
               load_time_ms: result.loadTimeMs ?? 0,
+              weather_provider_used: providerUsed,
             });
 
             // Calculate Time to Value (TTV)
@@ -844,6 +873,7 @@ export default function HomeScreen() {
               time_to_first_readiness_ms: timeToFirstMs,
               weather_load_time_ms: result.loadTimeMs ?? 0,
               weather_cache_hit: result.isCacheHit ?? false,
+              weather_provider_used: providerUsed,
               surface: selectedSurface,
               dog_breed: profile.dogBreed || 'Unknown',
               app_version: appVersion,
@@ -1118,35 +1148,39 @@ export default function HomeScreen() {
     if (band === 'warm') {
       return {
         label: 'Caution',
-        color: '#D4A017',
-        bg: isDark ? 'rgba(212,160,23,0.12)' : 'rgba(212,160,23,0.14)',
-        border: isDark ? 'rgba(212,160,23,0.25)' : 'rgba(212,160,23,0.28)',
+        color: palette.cautionBg,
+        textColor: palette.cautionText,
+        bg: isDark ? 'rgba(245,158,11,0.22)' : 'rgba(245,158,11,0.26)',
+        border: isDark ? '#D97706' : '#B45309',
       };
     }
     if (band === 'hot') {
       return {
         label: 'Caution',
-        color: '#C46A2D',
-        bg: isDark ? 'rgba(196,106,45,0.12)' : 'rgba(196,106,45,0.14)',
-        border: isDark ? 'rgba(196,106,45,0.25)' : 'rgba(196,106,45,0.28)',
+        color: '#D97706',
+        textColor: palette.cautionText,
+        bg: isDark ? 'rgba(217,119,6,0.22)' : 'rgba(245,158,11,0.26)',
+        border: isDark ? '#B45309' : '#92400E',
       };
     }
     if (band === 'danger') {
       return {
         label: 'Danger',
-        color: '#C1121F',
-        bg: isDark ? 'rgba(193,18,31,0.12)' : 'rgba(193,18,31,0.14)',
-        border: isDark ? 'rgba(193,18,31,0.25)' : 'rgba(193,18,31,0.28)',
+        color: '#DC2626',
+        textColor: '#FFFFFF',
+        bg: isDark ? 'rgba(220,38,38,0.25)' : '#DC2626',
+        border: '#991B1B',
       };
     }
     // safe / default
     return {
       label: 'Ready',
-      color: isDark ? SAFETY_GREEN : '#0F7A3B',
-      bg: isDark ? 'rgba(46,204,113,0.12)' : 'rgba(20, 140, 72, 0.14)',
-      border: isDark ? 'rgba(46,204,113,0.25)' : 'rgba(20, 140, 72, 0.28)',
+      color: isDark ? SAFETY_GREEN : '#15803D',
+      textColor: isDark ? '#86EFAC' : '#064E3B',
+      bg: isDark ? 'rgba(46,204,113,0.14)' : 'rgba(22, 163, 74, 0.14)',
+      border: isDark ? 'rgba(46,204,113,0.30)' : 'rgba(22, 163, 74, 0.35)',
     };
-  }, [currentRoadPoint, isDark]);
+  }, [currentRoadPoint, isDark, palette]);
   const npiScore = useMemo(() => {
     if (!weatherOk) return null;
     const nearestHourly =
@@ -1268,6 +1302,11 @@ export default function HomeScreen() {
     const selected = roadDetailHour ?? fallback;
     return ((selected % 24) + 24) % 24;
   }, [roadDetailHour, timelineBars]);
+
+  const selectedHourSample = useMemo(() => {
+    if (!weatherOk?.hourlySamples?.length) return null;
+    return weatherOk.hourlySamples.find((s) => new Date(s.timeIso).getHours() === selectedRoadDetailHour) ?? null;
+  }, [weatherOk, selectedRoadDetailHour]);
   const petRoadInsight = useMemo(() => {
     if (!roadDetailPoint) {
       return {
@@ -1424,6 +1463,84 @@ export default function HomeScreen() {
     [timelineAxis.endHour, timelineAxis.startHour, timelineBarWidth]
   );
 
+  // Record legitimate foreground usage day on Home screen focus
+  useFocusEffect(
+    useCallback(() => {
+      recordUsageDay().catch(() => {});
+    }, [])
+  );
+
+  // Evaluate Review Prompt Eligibility when idle
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const evaluateReviewEligibility = async () => {
+      const isCriticalFlow =
+        verifySurfaceOpen ||
+        verifyRunning ||
+        weatherModalOpen ||
+        npiModalOpen ||
+        roadTempModalOpen ||
+        feedbackModalOpen ||
+        showUpgradeTermsModal ||
+        gearVaultBusy;
+
+      if (!dogProfile?.onboardingDone || isCriticalFlow) return;
+
+      const isEligible = await checkReviewEligibility({
+        onboardingDone: true,
+        isCriticalFlow: false,
+      });
+
+      if (isEligible) {
+        timer = setTimeout(async () => {
+          const reCheck = await checkReviewEligibility({
+            onboardingDone: true,
+            isCriticalFlow:
+              verifySurfaceOpen ||
+              verifyRunning ||
+              weatherModalOpen ||
+              npiModalOpen ||
+              roadTempModalOpen ||
+              feedbackModalOpen ||
+              showUpgradeTermsModal,
+          });
+          if (reCheck) {
+            const data = await getReviewData();
+            const appVersion = Constants.expoConfig?.version || '1.0.0';
+            await trackEvent('review_prompt_eligible', {
+              platform: Platform.OS,
+              app_version: appVersion,
+              unique_usage_days: data.uniqueUsageDays.length,
+            });
+            await trackEvent('review_prompt_shown', {
+              platform: Platform.OS,
+              app_version: appVersion,
+              unique_usage_days: data.uniqueUsageDays.length,
+            });
+            markShownThisSession();
+            setReviewModalOpen(true);
+          }
+        }, 1500);
+      }
+    };
+
+    evaluateReviewEligibility().catch(() => {});
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [
+    dogProfile?.onboardingDone,
+    verifySurfaceOpen,
+    verifyRunning,
+    weatherModalOpen,
+    npiModalOpen,
+    roadTempModalOpen,
+    feedbackModalOpen,
+    showUpgradeTermsModal,
+    gearVaultBusy,
+  ]);
+
   const onReadinessPrimaryCta = useCallback(() => {
     if (!readinessPresentation) return;
     if (readinessPresentation.ctaAction.kind === 'open_weather') {
@@ -1433,42 +1550,53 @@ export default function HomeScreen() {
     }
   }, [readinessPresentation, router]);
 
+  const stopAndClearVerifyTimer = useCallback((options?: { resetCountdown?: boolean }) => {
+    const shouldReset = options?.resetCountdown ?? true;
+    if (verifyTimerRef.current) {
+      clearInterval(verifyTimerRef.current);
+      verifyTimerRef.current = null;
+    }
+    isTimerActiveRef.current = false;
+    setVerifyRunning(false);
+    if (shouldReset) {
+      setVerifyCountdown(7);
+    }
+  }, []);
+
   const startVerifySurface = useCallback(() => {
-    if (verifyRunning) return;
+    // Guaranteed single-instance timer check and cleanup
+    stopAndClearVerifyTimer({ resetCountdown: true });
+
     trackEvent('hand_test_started', { surface: selectedSurface });
     setVerifyRunning(true);
     setVerifyCountdown(7);
+    isTimerActiveRef.current = true;
+
     let t = 7;
     verifyTimerRef.current = setInterval(() => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       t -= 1;
-      setVerifyCountdown(Math.max(0, t));
+      const nextCount = Math.max(0, t);
+      setVerifyCountdown(nextCount);
+
       if (t <= 0) {
         trackEvent('hand_test_completed', { surface: selectedSurface, duration: 7 });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        if (verifyTimerRef.current) {
-          clearInterval(verifyTimerRef.current);
-          verifyTimerRef.current = null;
-        }
-        setVerifyRunning(false);
+        stopAndClearVerifyTimer({ resetCountdown: false });
       }
     }, 1000);
-  }, [verifyRunning, selectedSurface]);
+  }, [selectedSurface, stopAndClearVerifyTimer]);
 
   const closeVerifySurface = useCallback(() => {
     setVerifySurfaceOpen(false);
-    if (verifyRunning) {
+    if (isTimerActiveRef.current || verifyRunning) {
       trackEvent('hand_test_cancelled', {
         surface: selectedSurface,
         remainingSeconds: verifyCountdown,
       });
     }
-    setVerifyRunning(false);
-    if (verifyTimerRef.current) {
-      clearInterval(verifyTimerRef.current);
-      verifyTimerRef.current = null;
-    }
-  }, [verifyRunning, selectedSurface, verifyCountdown]);
+    stopAndClearVerifyTimer({ resetCountdown: true });
+  }, [selectedSurface, verifyCountdown, verifyRunning, stopAndClearVerifyTimer]);
 
   const cycleSurface = useCallback(() => {
     hapticTap();
@@ -1506,49 +1634,34 @@ export default function HomeScreen() {
     return () => loop.stop();
   }, [confidence?.label, confidencePulse]);
   useEffect(() => {
-    setShowSecondaryHazard(false);
-  }, [hazardInfo?.primary, hazardInfo?.secondary]);
+    if (!verifySurfaceOpen) {
+      stopAndClearVerifyTimer();
+    }
+  }, [verifySurfaceOpen, stopAndClearVerifyTimer]);
+
   useEffect(() => {
-    return () => {
-      if (verifyTimerRef.current) clearInterval(verifyTimerRef.current);
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        if (isTimerActiveRef.current) {
+          stopAndClearVerifyTimer();
+          setVerifyCountdown(7);
+        }
+      }
     };
-  }, []);
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+      stopAndClearVerifyTimer();
+    };
+  }, [stopAndClearVerifyTimer]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: isDark ? '#040806' : '#EAF2EE' }}>
-      {/* Background Image using high-performance expo-image */}
-      <Image
-        source={isDark ? require('../../assets/images/backgrounds/background-dark.png') : require('../../assets/images/backgrounds/background-light.png')}
-        style={[StyleSheet.absoluteFillObject, { opacity: isDark ? 0.7 : 0.5 }]}
-        contentFit="cover"
-      />
-
-
-      {/* Blending overlay */}
-      <LinearGradient
-        colors={isDark 
-          ? ['rgba(0, 0, 0, 0.2)', 'rgba(0, 0, 0, 0.6)'] 
-          : ['rgba(255, 255, 255, 0.25)', 'rgba(255, 255, 255, 0.5)']
-        }
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      {/* Vignette overlays */}
-      <LinearGradient
-        colors={isDark ? ['rgba(0,0,0,0.65)', 'transparent'] : ['rgba(255,255,255,0.5)', 'transparent']}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 160, zIndex: 1 }}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={isDark ? ['transparent', 'rgba(0,0,0,0.8)'] : ['transparent', 'rgba(0,0,0,0.15)']}
-        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 220, zIndex: 1 }}
-        pointerEvents="none"
-      />
+    <View style={{ flex: 1, backgroundColor: palette.background }}>
 
       <ScrollView
         ref={mainScrollRef}
         style={{ flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={[styles.container, { paddingTop: insets.top + 20 }]}>
+        contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: getTabScrollPadding(insets.bottom) }]}>
         {/* A. Identity strip — name + place; utilities stay quiet */}
         <View style={styles.headerRow}>
           <Pressable
@@ -1577,7 +1690,7 @@ export default function HomeScreen() {
                   <Text style={[
                     styles.statusPillText, 
                     { 
-                      color: statusBadge.color,
+                      color: statusBadge.textColor || statusBadge.color,
                       fontWeight: '800'
                     }
                   ]}>
@@ -1840,7 +1953,16 @@ export default function HomeScreen() {
                         />
                       ) : (
                         <View style={[styles.heroDogCircle, styles.heroDogPh]}>
-                          <MaterialCommunityIcons name="camera-plus" size={48} color="rgba(234, 234, 234, 0.4)" />
+                          <MaterialCommunityIcons
+                            name="dog-side"
+                            size={42}
+                            color={isDark ? 'rgba(255, 255, 255, 0.75)' : 'rgba(18, 31, 24, 0.7)'}
+                            style={{ marginBottom: 6 }}
+                          />
+                          <View style={[styles.customizeBadge, { backgroundColor: palette.tint }]}>
+                            <MaterialCommunityIcons name="camera" size={10} color="#fff" />
+                            <Text style={styles.customizeBadgeText}>Add photo</Text>
+                          </View>
                         </View>
                       )}
                     </Pressable>
@@ -2030,9 +2152,37 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
-            <Text style={{ color: textColors.tertiary, fontSize: 10, lineHeight: 14, fontStyle: 'italic', textAlign: 'center', marginTop: 10, paddingHorizontal: 12 }}>
-              Estimates only. Local shade, turf, and heat-islands can significantly change pavement temps. Always perform a physical Hand Test before walks.
-            </Text>
+            <View ref={shareRef} collapsable={false} style={{ marginTop: 16, marginBottom: 8 }}>
+              <ShareButton
+                onPress={() => shareCard({
+                  dogName,
+                  dogBreed: dogProfile?.dogBreed || 'Unknown',
+                  currentNpi: npiScore ?? 0,
+                  selectedSurface: selectedSurface,
+                  surfaceTempF: currentRoadPoint?.roadTempF ?? 77,
+                  currentTempF: (weather as any)?.tempF ?? 77,
+                  roadBand: currentRoadPoint?.roadBand || 'safe',
+                })}
+                loading={isSharing}
+                dogName={dogName}
+              />
+            </View>
+
+            <View style={{
+              backgroundColor: palette.surface,
+              borderColor: palette.border,
+              borderWidth: 1,
+              borderRadius: 14,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              marginTop: 10,
+              marginBottom: 16,
+              alignItems: 'center',
+            }}>
+              <Text style={{ color: palette.textSecondary, fontSize: 11, lineHeight: 16, textAlign: 'center', fontWeight: '500' }}>
+                Estimates only. Local shade, turf, and heat-islands can significantly change pavement temps. Always perform a physical Hand Test before walks.
+              </Text>
+            </View>
           </View>
         ) : null}
         
@@ -2202,15 +2352,15 @@ export default function HomeScreen() {
         animationType="fade"
         onRequestClose={closeVerifySurface}>
         <View style={styles.verifyOverlay}>
-          <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-          <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeVerifySurface} />
+          <AnimatedReanimated.View entering={ZoomIn.springify().damping(28).stiffness(120)} exiting={FadeOut} style={[styles.verifyCard, { borderColor: palette.border, backgroundColor: palette.cardOpaque }]}>
             <Text style={[styles.verifyTitle, { color: palette.text }]}>Verify Surface</Text>
             <Text style={[styles.verifySub, { color: palette.textSecondary }]}>
               Press your hand to the pavement for a full 7 seconds.
             </Text>
             <View style={styles.verifyCanvasWrap}>
               <Canvas style={{ width: 216, height: 216 }}>
-                <Circle cx={108} cy={108} r={88} color="rgba(255,255,255,0.2)" style="stroke" strokeWidth={10} />
+                <Circle cx={108} cy={108} r={88} color={(palette as any).handTestRing || (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(18,31,24,0.14)')} style="stroke" strokeWidth={10} />
                 <Path path={verifyArcPath} color="#F39C12" style="stroke" strokeWidth={10} strokeCap="round" />
                 <Circle cx={108} cy={108} r={76} color="rgba(243,156,18,0.2)">
                   <BlurMask blur={20} />
@@ -2240,6 +2390,11 @@ export default function HomeScreen() {
           </AnimatedReanimated.View>
         </View>
       </Modal>
+
+      <ReviewPromptModal
+        visible={reviewModalOpen}
+        onClose={() => setReviewModalOpen(false)}
+      />
 
       <Modal
         visible={weatherModalOpen && weather.status === 'ok'}
@@ -2579,34 +2734,27 @@ export default function HomeScreen() {
                 )}
               </View>
             </View>
-            <ImageBackground
-              source={weatherCardBgSource ?? undefined}
-              style={[styles.detailHeroCard, { borderColor: palette.border }]}
-              imageStyle={styles.detailCardBgImage}
-              resizeMode="cover">
-              <LinearGradient
-                colors={weatherCardOverlay ?? (isDark ? ['rgba(8,16,12,0.2)', 'rgba(8,16,12,0.62)'] : ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.62)'])}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <LinearGradient
-                colors={WEATHER_CARD_SCRIM_COLORS}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0.85, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
+            <View style={[styles.detailHeroCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
               <View style={styles.detailCardInner}>
                 <Text style={[styles.detailCardTitle, { color: palette.text }]}>Best window</Text>
-                <Text style={[styles.detailCardValue, { color: palette.text }]}>{bestWindowLabel}</Text>
-                <Text style={[styles.detailCardSub, { color: palette.textSecondary }]}>
-                  Daylight
-                  {daylightStart != null && daylightEnd != null ? `: ${rangeLabel(daylightStart, daylightEnd)}` : ': unavailable'}
+                <Text style={[styles.detailCardValue, { color: palette.text }]}>
+                  {bestWindowLabel && bestWindowLabel !== 'None' ? bestWindowLabel : 'No optimal window today'}
+                </Text>
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 2 }]}>
+                  {bestWindowLabel === 'None'
+                    ? 'Pavement heat remains high during peak sun hours.'
+                    : 'Pavement temperatures stay below 77°F during this time.'}
+                </Text>
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 6, fontWeight: '600' }]}>
+                  Daylight: {daylightStart != null && daylightEnd != null ? rangeLabel(daylightStart, daylightEnd) : '6:00 AM – 8:20 PM'}
                 </Text>
 
                 <View style={[styles.detailDivider, { backgroundColor: palette.border }]} />
 
                 <Text style={[styles.detailCardTitle, { color: palette.text }]}>Time vs pavement temp</Text>
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginBottom: 8, fontWeight: '700' }]}>
+                  Air Temp Estimation: {selectedHourSample ? `${Math.round(selectedHourSample.airTempF)}°F` : (weatherOk ? `${Math.round(weatherOk.tempF)}°F` : '—')}
+                </Text>
                 {roadDetailPoint ? (
                   <View style={styles.roadDetailSelected}>
                     <Text style={[styles.roadDetailSelectedTime, { color: palette.text }]}>
@@ -2627,7 +2775,6 @@ export default function HomeScreen() {
 
                 <View style={styles.surfaceComparisonGrid}>
                   {(['asphalt', 'concrete', 'cobblestone', 'sand', 'turf'] as SurfaceType[]).map((st) => {
-                    // We need the sample for the selected hour to calculate others
                     const sample = weatherOk?.hourlySamples.find(s => {
                        const h = new Date(s.timeIso).getHours();
                        return h === selectedRoadDetailHour;
@@ -2644,11 +2791,11 @@ export default function HomeScreen() {
                         onPress={() => { hapticTap(); setSelectedSurface(st); }}
                         style={[
                           styles.compareCard, 
-                          { borderColor: palette.border, backgroundColor: palette.surface },
-                          isActive && { borderColor: palette.tint, borderWidth: 2 }
+                          { borderColor: isActive ? palette.tint : palette.border, backgroundColor: isActive ? palette.selectedBg : palette.surface },
+                          isActive && { borderWidth: 2 }
                         ]}
                       >
-                        <Text style={[styles.compareLabel, { color: palette.textSecondary }]}>{st.toUpperCase()}</Text>
+                        <Text style={[styles.compareLabel, { color: palette.text, fontWeight: '700' }]}>{st.toUpperCase()}</Text>
                         <Text style={[styles.compareValue, { color: roadBandColor(band) }]}>{Math.round(temp)}°F</Text>
                         <Text style={[styles.compareBand, { color: palette.textSecondary }]}>{roadBandLabel(band)}</Text>
                       </Pressable>
@@ -2668,13 +2815,13 @@ export default function HomeScreen() {
                     Missing a surface? Suggest one →
                   </Text>
                 </Pressable>
-                <View style={[styles.roadDetailSpinner, { borderColor: palette.border }]}>
+                <View style={[styles.roadDetailSpinner, { borderColor: palette.border, backgroundColor: palette.background }]}>
                   <Pressable
-                    onPress={() => { hapticTap();  setRoadDetailHour((selectedRoadDetailHour + 23) % 24); }}
+                    onPress={() => { hapticTap(); setRoadDetailHour((selectedRoadDetailHour + 23) % 24); }}
                     style={[styles.roadDetailSpinnerBtn, { borderRightColor: palette.border }]}
                     accessibilityRole="button"
                     accessibilityLabel="Previous hour">
-                    <FontAwesome name="chevron-left" size={14} color={palette.textSecondary} />
+                    <FontAwesome name="chevron-left" size={14} color={palette.text} />
                   </Pressable>
                   <View style={styles.roadDetailSpinnerCenter}>
                     <Text style={[styles.roadDetailSpinnerValue, { color: palette.text }]}>
@@ -2685,11 +2832,11 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   <Pressable
-                    onPress={() => { hapticTap();  setRoadDetailHour((selectedRoadDetailHour + 1) % 24); }}
+                    onPress={() => { hapticTap(); setRoadDetailHour((selectedRoadDetailHour + 1) % 24); }}
                     style={[styles.roadDetailSpinnerBtn, { borderLeftColor: palette.border }]}
                     accessibilityRole="button"
                     accessibilityLabel="Next hour">
-                    <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
+                    <FontAwesome name="chevron-right" size={14} color={palette.text} />
                   </Pressable>
                 </View>
                 <ScrollView
@@ -2701,22 +2848,22 @@ export default function HomeScreen() {
                     return (
                       <Pressable
                         key={`hour-spin-${hour}`}
-                        onPress={() => { hapticTap();  setRoadDetailHour(hour); }}
+                        onPress={() => { hapticTap(); setRoadDetailHour(hour); }}
                         style={[
                           styles.roadDetailHourPill,
                           {
                             borderColor: active ? palette.tint : palette.border,
-                            backgroundColor: active ? 'rgba(45,106,79,0.22)' : 'rgba(255,255,255,0.05)',
+                            backgroundColor: active ? palette.tint : palette.surface,
                           },
                         ]}>
-                        <Text style={[styles.roadDetailHourPillText, { color: palette.text }]}>
+                        <Text style={[styles.roadDetailHourPillText, { color: active ? '#FFFFFF' : palette.text, fontWeight: active ? '800' : '600' }]}>
                           {hour.toString().padStart(2, '0')}
                         </Text>
                       </Pressable>
                     );
                   })}
                 </ScrollView>
-                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 6 }]}>
+                <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 8 }]}>
                   Spinner includes all day hours (00 to 23). Timeline estimates are anchored to 5AM to 10PM forecast samples.
                 </Text>
 
@@ -2740,13 +2887,13 @@ export default function HomeScreen() {
                   <View style={styles.scienceSourceRow}>
                     <MaterialCommunityIcons name="book-open-variant" size={16} color={palette.tint} />
                     <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
-                      <Text style={{ fontWeight: '700' }}>JAMA Dermatology:</Text> "Thermal Injury from Hot Asphalt" (identifying 125°F as the threshold for second-degree contact burns).
+                      <Text style={{ fontWeight: '700', color: palette.text }}>JAMA Dermatology:</Text> "Thermal Injury from Hot Asphalt" (identifying 125°F as the threshold for second-degree contact burns).
                     </Text>
                   </View>
                   <View style={styles.scienceSourceRow}>
                     <MaterialCommunityIcons name="dog" size={16} color={palette.tint} />
                     <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
-                      <Text style={{ fontWeight: '700' }}>AKC / Vet Med:</Text> Validating the "7-Second Rule" and the increased risk for artificial turf.
+                      <Text style={{ fontWeight: '700', color: palette.text }}>AKC / Vet Med:</Text> Validating the "7-Second Rule" and the increased risk for artificial turf.
                     </Text>
                   </View>
                 </View>
@@ -2772,24 +2919,23 @@ export default function HomeScreen() {
                   </Pressable>
                 </View>
                 <Pressable
-                  style={[styles.verifySurfaceButton, { marginTop: 16 }]}
+                  style={[styles.verifySurfaceButton, { marginTop: 16, backgroundColor: palette.tint }]}
                   onPress={() => {
                     setRoadTempModalOpen(false);
-                    // Use a short timeout so the first modal has time to close before opening the second
                     setTimeout(() => {
                       setVerifySurfaceOpen(true);
                       startVerifySurface();
                     }, 300);
                   }}>
-                  <Text style={[styles.verifySurfaceButtonText, { color: palette.text }]}>
+                  <Text style={[styles.verifySurfaceButtonText, { color: '#FFFFFF', fontWeight: '800' }]}>
                     Launch 7-Second Timer
                   </Text>
-                  <Text style={[styles.verifySurfaceButtonSub, { color: palette.textSecondary }]}>
+                  <Text style={[styles.verifySurfaceButtonSub, { color: 'rgba(255, 255, 255, 0.88)' }]}>
                     Test the pavement heat manually
                   </Text>
                 </Pressable>
               </View>
-            </ImageBackground>
+            </View>
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -2825,7 +2971,7 @@ export default function HomeScreen() {
                 { bottom: 180 } // Move tooltip above tabs
               ]}
             >
-              <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={{ borderRadius: 20, padding: 20, borderWidth: 1, borderColor: palette.border, overflow: 'hidden', width: '100%' }}>
+              <View style={{ backgroundColor: palette.cardOpaque, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: palette.border, width: '100%', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 8 }}>
                 {walkthroughStep === 0 && (
                   <>
                     <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>NPI Status Ring</Text>
@@ -2890,7 +3036,7 @@ export default function HomeScreen() {
                     </Pressable>
                   </View>
                 </View>
-              </BlurView>
+              </View>
             </AnimatedReanimated.View>
           </View>
         </Modal>
@@ -2899,6 +3045,10 @@ export default function HomeScreen() {
         visible={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
         initialType={feedbackInitialType}
+      />
+      <ReviewPromptModal
+        visible={reviewModalOpen}
+        onClose={() => setReviewModalOpen(false)}
       />
       <Modal
         visible={showUpgradeTermsModal}
@@ -2929,7 +3079,7 @@ export default function HomeScreen() {
               </Text>
               
               <Text style={{ color: palette.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
-                We've updated our safety guidelines and disclaimers to ensure you and your dog stay safe outdoors. Please review and accept to proceed.
+                We've updated our safety guidelines for NorthPaw. This reminder appears once per app update to keep safety standards current. Please review and accept to proceed.
               </Text>
 
               <View style={{ borderColor: palette.border, backgroundColor: palette.surface, padding: 14, borderRadius: 16, marginBottom: 20, borderWidth: 1, width: '100%' }}>
@@ -2962,7 +3112,7 @@ export default function HomeScreen() {
                   hapticTap();
                   trackEvent('disclaimer_accepted', { is_upgrade_flow: true });
                   try {
-                    await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', 'v4.3');
+                    await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', REQUIRED_DISCLAIMER_VERSION);
                     setShowUpgradeTermsModal(false);
                   } catch (err) {
                     console.warn('[Home] Failed to save disclaimer version to AsyncStorage', err);
@@ -2988,7 +3138,7 @@ export default function HomeScreen() {
           </BlurView>
         </View>
       </Modal>
-      {/* Off-screen capture container */}
+      {/* Off-screen capture container for image generation */}
       <View style={styles.shareCardHiddenWrapper}>
         <ShareCard
           ref={viewRef}
@@ -3162,11 +3312,23 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+=======
+          roadBand={currentRoadPoint?.roadBand || 'safe'}
+          formattedDate={new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        />
+      </View>
+>>>>>>> main
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shareCardHiddenWrapper: {
+    position: 'absolute',
+    left: -9999,
+    top: -9999,
+    opacity: 0,
+  },
   container: { paddingHorizontal: 18, paddingBottom: 140 },
   headerRow: {
     flexDirection: 'row',
@@ -3296,7 +3458,27 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(45,106,79,0.08)',
   },
-  heroDogPh: { alignItems: 'center', justifyContent: 'center' },
+  heroDogPh: { alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  customizeBadge: {
+    position: 'absolute',
+    bottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  customizeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
   hudCornerTl: {
     position: 'absolute',
     top: 0,
@@ -4036,7 +4218,7 @@ const styles = StyleSheet.create({
   npiExplainRow: { fontSize: 14, lineHeight: 21, marginBottom: 6 },
   verifyOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(7,10,8,0.48)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -4047,11 +4229,10 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     padding: 20,
-    backgroundColor: 'rgba(15,23,20,0.7)',
     shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 10,
     alignItems: 'center',
   },

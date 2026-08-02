@@ -28,8 +28,8 @@ export type HazardTag = 'smoke' | 'haze' | 'pollen' | 'tick';
 
 export type HomeWeatherState =
   | { status: 'loading' }
-  | { status: 'permission_denied'; isCacheHit?: boolean; loadTimeMs?: number }
-  | { status: 'unavailable'; message: string; isCacheHit?: boolean; loadTimeMs?: number }
+  | { status: 'permission_denied'; isCacheHit?: boolean; loadTimeMs?: number; providerUsed?: 'nws' | 'tomorrow' | 'cache' }
+  | { status: 'unavailable'; message: string; isCacheHit?: boolean; loadTimeMs?: number; providerUsed?: 'nws' | 'tomorrow' | 'cache' }
   | {
       status: 'ok';
       latitude: number;
@@ -73,6 +73,7 @@ export type HomeWeatherState =
       mockRecentRain: boolean;
       isCacheHit?: boolean;
       loadTimeMs?: number;
+      providerUsed?: 'nws' | 'tomorrow' | 'cache';
     };
 
 type NwsJson = Record<string, unknown>;
@@ -661,7 +662,25 @@ export async function fetchUsWeatherAtCoordinates(
       : null;
   const isDaytime = p0.isDaytime !== false;
 
-  const currentObsTemp = obs?.tempF != null ? Math.round(obs.tempF) : tempF;
+  // Extract current hourly air temperature closest to right now (Date.now())
+  const nowMs = Date.now();
+  let currentHourlyTemp: number | null = null;
+  if (hourlySamplesResolved && hourlySamplesResolved.length > 0) {
+    let closestDiff = Number.MAX_SAFE_INTEGER;
+    for (const sample of hourlySamplesResolved) {
+      const sampleMs = new Date(sample.timeIso).getTime();
+      const diff = Math.abs(sampleMs - nowMs);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        currentHourlyTemp = Math.round(sample.airTempF);
+      }
+    }
+    if (closestDiff > 2.5 * 60 * 60 * 1000) {
+      currentHourlyTemp = null;
+    }
+  }
+
+  const currentObsTemp = obs?.tempF != null ? Math.round(obs.tempF) : (currentHourlyTemp ?? tempF);
   const currentObsSummary = obs?.summary || forecastShort;
   const currentObsWind = obs?.windLine ?? (p0.windSpeed ? `${p0.windSpeed} ${p0.windDirection || ''}`.trim() : null);
 
@@ -669,7 +688,6 @@ export async function fetchUsWeatherAtCoordinates(
   const updatedLabel = formatUpdated(updatedIso);
 
   const weekendOutlook = extractWeekendOutlook(forecastJson.properties?.periods || []);
-
   const hazards = scanHazards(currentObsSummary, forecastShort, forecastJson.properties?.periods || []);
 
   const result: Exclude<HomeWeatherState, { status: 'loading' }> = {

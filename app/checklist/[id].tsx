@@ -4,7 +4,7 @@ import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/n
 import { Image } from 'expo-image';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -40,30 +40,40 @@ import { captureLocationForOuting, pickOutingPhotos } from '@/lib/outingCaptureH
 import { useColorScheme } from '@/components/useColorScheme';
 import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
 import { trackEvent } from '@/lib/analytics';
+import { requireCompanionAccess } from '@/lib/companionGuard';
+import { CompanionModeModal } from '@/components/CompanionModeModal';
 
 const MAX_PHOTOS = 3;
 
 function AnimatedCheckbox({ isOn, tintColor, borderColor }: { isOn: boolean; tintColor: string; borderColor: string; }) {
-  const scale = useSharedValue(isOn ? 1 : 0);
+  const scale = useSharedValue(isOn ? 1 : 0.85);
 
   useEffect(() => {
-    scale.value = withSpring(isOn ? 1 : 0, { stiffness: 350, damping: 25 });
+    scale.value = withSpring(isOn ? 1 : 0.85, { damping: 15, stiffness: 200 });
   }, [isOn, scale]);
 
-  const style = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: 0.8 + scale.value * 0.2 }],
-      backgroundColor: isOn ? tintColor : 'transparent',
-      borderColor: isOn ? tintColor : borderColor,
-    };
-  });
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   return (
-    <Animated.View style={[styles.box, style]}>
-      {isOn ? <Text style={{ color: '#fff', fontWeight: '800' }}>✓</Text> : null}
+    <Animated.View
+      style={[
+        styles.box,
+        {
+          backgroundColor: isOn ? tintColor : 'transparent',
+          borderColor: isOn ? tintColor : borderColor,
+        },
+        animatedStyle,
+      ]}
+    >
+      {isOn ? <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>✓</Text> : null}
     </Animated.View>
   );
 }
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getDetailScrollPadding } from '@/lib/layout';
 
 export default function ChecklistDetailScreen() {
   const { id: idParam } = useLocalSearchParams<{ id?: string | string[] }>();
@@ -84,6 +94,8 @@ export default function ChecklistDetailScreen() {
   const [quickLogEnergy, setQuickLogEnergy] = useState<'low' | 'normal' | 'high' | null>(null);
   const [quickLogBusy, setQuickLogBusy] = useState(false);
   const [quickLogSaved, setQuickLogSaved] = useState(false);
+  const [companionModalOpen, setCompanionModalOpen] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -147,6 +159,12 @@ export default function ChecklistDetailScreen() {
   const toggle = async (itemId: string) => {
     if (!id) return;
     const next = !checked.has(itemId);
+    setChecked((prev) => {
+      const updated = new Set(prev);
+      if (next) updated.add(itemId);
+      else updated.delete(itemId);
+      return updated;
+    });
     if (next) {
       Haptics.selectionAsync().catch(() => {});
     } else {
@@ -157,51 +175,10 @@ export default function ChecklistDetailScreen() {
   };
 
   const onSaveOuting = async () => {
-    if (!id || !isPro) {
-      router.push({ pathname: '/paywall', params: { returnTo: `/checklist/${id}` } });
-      return;
-    }
-    setOutingBusy(true);
-    try {
-      const ids = Array.from(checked);
-      let latitude: number | null = null;
-      let longitude: number | null = null;
-      if (includeGps) {
-        const pos = await captureLocationForOuting();
-        if (pos) {
-          latitude = pos.latitude;
-          longitude = pos.longitude;
-        } else {
-          Alert.alert(
-            'Location not attached',
-            'Permission was denied or location is unavailable. The log was still saved without GPS.'
-          );
-        }
-      }
-      await saveChecklistOuting({
-        checklistId: id,
-        notes: outingNotes.trim(),
-        checkedItemIds: ids,
-        placeLabel,
-        latitude,
-        longitude,
-        pendingPhotoUris,
-      });
-      trackEvent('outing_saved', {
-        checklistId: id,
-        itemCount: ids.length,
-        photoCount: pendingPhotoUris.length,
-        hasNotes: !!outingNotes.trim(),
-        hasGps: includeGps,
-      });
-      setOutingNotes('');
-      setPlaceLabel('');
-      setIncludeGps(false);
-      setPendingPhotoUris([]);
-      Alert.alert('Saved', 'Added to Outing log on the Checklists tab.');
-    } finally {
-      setOutingBusy(false);
-    }
+    requireCompanionAccess({
+      feature: 'outing_log',
+      onBlocked: () => setCompanionModalOpen(true),
+    });
   };
 
   const onAddPhotos = async () => {
@@ -262,55 +239,14 @@ export default function ChecklistDetailScreen() {
   const checklistComplete = total > 0 && done === total;
 
   const onSaveQuickLog = async (energy: 'low' | 'normal' | 'high') => {
-    if (quickLogBusy) return;
-    setQuickLogBusy(true);
-    try {
-      const [weather, profile] = await Promise.all([fetchWeatherForDeviceLocation(), getDogProfile()]);
-      let npiScore = 0;
-      let weatherSummary = 'Weather unavailable';
-      if (weather.status === 'ok') {
-        const nearest =
-          weather.hourlySamples.reduce(
-            (best, sample) => {
-              const t = new Date(sample.timeIso).getTime();
-              if (!Number.isFinite(t)) return best;
-              const d = Math.abs(t - Date.now());
-              return d < best.diff ? { diff: d, sample } : best;
-            },
-            { diff: Number.MAX_SAFE_INTEGER, sample: weather.hourlySamples[0] }
-          )?.sample ?? null;
-        const humidity = Math.max(0, Math.min(100, nearest?.humidityPct ?? weather.precipChance ?? 45));
-        const skyCover = Math.max(0, Math.min(100, nearest?.skyCover ?? 35));
-        const solarLoad = weather.isDaytime ? ((100 - skyCover) / 100) * 10 : 0;
-        const thi = weather.tempF - (0.55 - 0.0055 * humidity) * (weather.tempF - 58);
-        const snoutMultiplier = profile.dogSnoutProfile === 'flat' ? 1.15 : 1;
-        const coatMultiplier = profile.dogCoatType === 'Double' ? 1.1 : 1;
-        const activityPenalty = profile.dogActivityBaseline === 'high' ? 1 : 0;
-        const baseRisk = Math.max(0, (thi - 70) / 2.2) + solarLoad * 0.35 + activityPenalty;
-        npiScore = Math.max(0, Math.min(10, Math.round(baseRisk * snoutMultiplier * coatMultiplier * 10) / 10));
-        weatherSummary = `${weather.summary} · ${weather.tempF}F`;
-      }
-      await saveSnapshot({
-        localDate: localCalendarDateString(),
-        npiScore,
-        weatherSummary,
-        energyScale: energy,
-      });
-      trackEvent('quick_log_saved', {
-        checklistId: id,
-        energyScale: energy,
-        npiScore,
-      });
-      setQuickLogEnergy(energy);
-      setQuickLogSaved(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    } finally {
-      setQuickLogBusy(false);
-    }
+    requireCompanionAccess({
+      feature: 'quick_log',
+      onBlocked: () => setCompanionModalOpen(true),
+    });
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={styles.container}>
+    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingBottom: getDetailScrollPadding(insets.bottom) }]}>
       <Text style={styles.title}>{cl.title}</Text>
       {cl.description ? (
         <Text style={{ color: palette.textSecondary, marginTop: 8, lineHeight: 21 }}>{cl.description}</Text>
@@ -484,6 +420,8 @@ export default function ChecklistDetailScreen() {
           Clear all · checks & outing logs
         </Text>
       </Pressable>
+
+      <CompanionModeModal visible={companionModalOpen} onClose={() => setCompanionModalOpen(false)} />
     </ScrollView>
   );
 }

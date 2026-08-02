@@ -15,11 +15,15 @@ import { recordOpen } from '@/lib/database';
 import { useColorScheme } from '@/components/useColorScheme';
 import { trackEvent } from '@/lib/analytics';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getDetailScrollPadding } from '@/lib/layout';
+
 export default function PackScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
+  const insets = useSafeAreaInsets();
   const { isPro, activeEntitlements, loading: subLoading } = useSubscription();
   const pack = id ? getPack(id) : undefined;
 
@@ -62,7 +66,7 @@ export default function PackScreen() {
   const heroGrad = gradientForPack(pack.id);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={styles.container}>
+    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingBottom: getDetailScrollPadding(insets.bottom) }]}>
       <HeroImage height={200} source={IMAGES.pack} gradient={heroGrad} scrimOpacity={0.9}>
         <View style={styles.heroBadge}>
           <MaterialCommunityIcons name="book-open-variant" size={16} color="rgba(255,255,255,0.95)" />

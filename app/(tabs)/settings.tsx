@@ -6,7 +6,20 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share, Switch } fro
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
-import { trackEvent, getAnalyticsEnvironment, isAnalyticsEnabledInNonProd, setAnalyticsEnabledInNonProd, isTestflightOrDevBuild } from '@/lib/analytics';
+import {
+  trackEvent,
+  getAnalyticsEnvironment,
+  isTestflightOrDevBuild,
+  isAnalyticsEnabledInNonProd,
+  setAnalyticsEnabledInNonProd,
+} from '@/lib/analytics';
+import {
+  getReviewData,
+  saveReviewData,
+  resetReviewDataForTesting,
+  resetSessionGuard,
+  handleLeaveAReview,
+} from '@/lib/reviewPrompt';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -22,10 +35,13 @@ import { getDogProfile, saveDogProfile } from '@/lib/profile';
 import { useColorScheme } from '@/components/useColorScheme';
 import * as FileSystem from 'expo-file-system/legacy';
 import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
+import { ReviewPromptModal } from '@/components/ReviewPromptModal';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+import { getTabScrollPadding } from '@/lib/layout';
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -35,11 +51,11 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [isMockHotWeather, setIsMockHotWeather] = useState(false);
   const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
   const [sendAnalyticsInDev, setSendAnalyticsInDev] = useState(false);
-  const [showDevSettings, setShowDevSettings] = useState(false);
   const [mixpanelEnabled, setMixpanelEnabled] = useState(false);
 
   useEffect(() => {
@@ -74,12 +90,10 @@ export default function SettingsScreen() {
     );
   };
 
-  // Toggle Mixpanel analytics (used in Developer Settings)
   const toggleMixpanel = async () => {
     const next = !mixpanelEnabled;
     setMixpanelEnabled(next);
     setSendAnalyticsInDev(next);
-    // Persist the setting for non‑prod builds
     await setAnalyticsEnabledInNonProd(next);
   };
 
@@ -90,7 +104,7 @@ export default function SettingsScreen() {
   );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 96 }]}>
+    <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: getTabScrollPadding(insets.bottom) }]}>
       <Text style={styles.h1}>Preferences</Text>
       <View style={[styles.linkCard, { borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
         <View style={{ flex: 1 }}>
@@ -134,7 +148,7 @@ export default function SettingsScreen() {
             opacity: pressed ? 0.92 : 1,
             marginBottom: 8,
           },
-        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+        ]}>sed ? 0.98 : 1 }] }]}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Name &amp; photo</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
@@ -151,9 +165,7 @@ export default function SettingsScreen() {
             borderColor: palette.border,
             backgroundColor: palette.surface,
             opacity: pressed ? 0.92 : 1,
-            marginBottom: 8,
-          },
-        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+        ]}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Care reminders</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
@@ -307,18 +319,6 @@ export default function SettingsScreen() {
         <FontAwesome name="share-alt" size={16} color={palette.tint} />
       </Pressable>
 
-      <Text style={[styles.h1, { marginTop: 28 }]}>Disclaimer</Text>
-      <Text style={[styles.body, { color: palette.textSecondary }]}>
-        NorthPaw is for general outdoor education. It is not veterinary, legal, or emergency medical advice.
-        Always follow posted regulations and consult professionals for health or legal questions.
-      </Text>
-
-      <Text style={[styles.h1, { marginTop: 28 }]}>Privacy</Text>
-      <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 12 }]}>
-        Favorites, checklist boxes, your dog&apos;s name and photo on Home, Pro outing logs (notes, place, photos,
-        optional GPS), and open history stay on your device. Subscription status is verified through Apple and
-        RevenueCat when configured. Opening Privacy Policy or Support may use an in-app browser or your mail app.
-      </Text>
 
       {isTestflightOrDevBuild() ? (
         <>
@@ -375,6 +375,98 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <FontAwesome name={mixpanelEnabled ? "check-circle" : "close-circle"} size={16} color={palette.tint} />
+          </Pressable>
+
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              await toggleMixpanel();
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: mixpanelEnabled ? palette.tint : palette.border,
+                backgroundColor: mixpanelEnabled ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
+                opacity: pressed ? 0.92 : 1,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                {mixpanelEnabled ? 'Mixpanel Events: ON (Testflight)' : 'Mixpanel Events: OFF'}
+              </Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Toggle to disable analytics in Testflight builds. In production this toggle is hidden.
+              </Text>
+            </View>
+            <FontAwesome name={mixpanelEnabled ? "check-circle" : "times-circle"} size={16} color={palette.tint} />
+          </Pressable>
+
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              const dates = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'];
+              await saveReviewData({ reviewState: 'neverShown', uniqueUsageDays: dates });
+              resetSessionGuard();
+              Alert.alert(
+                '7 Usage Days Simulated! 🐾',
+                'Stored 7 unique usage days and reset session guard. Navigating Home will now automatically trigger the 7-day Review Prompt flow.',
+                [
+                  {
+                    text: 'Go to Home Screen',
+                    onPress: () => router.replace('/(tabs)'),
+                  },
+                  { text: 'Stay Here', style: 'cancel' },
+                ]
+              );
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.92 : 1,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                ⭐️ Mock 7-Day Review Trigger
+              </Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Store 7 unique usage days & reset session guard to test automatic Home screen review prompt.
+              </Text>
+            </View>
+            <FontAwesome name="star" size={16} color={palette.tint} />
+          </Pressable>
+
+          <Pressable
+            onPress={async () => {
+              hapticTap();
+              await resetReviewDataForTesting();
+              Alert.alert('Review State Cleared', 'Cleared stored review dates and reset state to fresh.');
+            }}
+            style={({ pressed }) => [
+              styles.linkCard,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                opacity: pressed ? 0.92 : 1,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                🗑️ Clear Review State (Reset Mock)
+              </Text>
+              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+                Clear stored review dates and reset prompt state so it stops triggering on Home.
+              </Text>
+            </View>
+            <FontAwesome name="trash" size={16} color={palette.danger} />
           </Pressable>
 
           <Pressable

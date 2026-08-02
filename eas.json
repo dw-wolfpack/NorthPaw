@@ -20,6 +20,10 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_IS_TESTFLIGHT": "false",
+        "EXPO_PUBLIC_ENV": "production"
+      },
       "ios": {
         "simulator": false
       }
