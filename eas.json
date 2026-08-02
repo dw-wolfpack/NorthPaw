@@ -14,8 +14,8 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_IS_TESTFLIGHT": "true",
-        "EXPO_PUBLIC_ENV": "testflight"
+        "EXPO_PUBLIC_IS_TESTFLIGHT": "false",
+        "EXPO_PUBLIC_ENV": "production"
       },
       "ios": {
         "simulator": false
