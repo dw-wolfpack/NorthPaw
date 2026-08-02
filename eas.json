@@ -13,6 +13,7 @@
     },
     "testflight": {
       "distribution": "store",
+      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "true"
       },
@@ -23,6 +24,7 @@
     },
     "production": {
       "distribution": "store",
+      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "false"
       },

@@ -7,40 +7,99 @@
 ## TL;DR Decision Tree
 
 ```
-Making a code change?
-  └─ Test locally first                   →  npm run dev
-  └─ TestFlight internal test build       →  eas build --platform ios --profile testflight
-  └─ App Store production release         →  eas build --platform ios --profile production --auto-submit
+1. Fast local iteration            →  npm run dev
+2. Test feature in TestFlight      →  eas build --platform ios --profile testflight
+3. Build production candidate      →  eas build --platform ios --profile production
+4. Verify & Submit candidate       →  Test on device via TestFlight → Submit in App Store Connect
 ```
+
+---
+
+## The Complete Build & Deploy Workflow
+
+### Step 1: Local Development
+```bash
+npm run dev
+```
+- `__DEV__` is `true`
+- Developer Settings section is **VISIBLE**
+- Analytics fire to console only
+- Use for writing code, quick iteration, and local debugging
+
+---
+
+### Step 2: TestFlight Feature Build
+```bash
+eas build --platform ios --profile testflight
+```
+- Built with `"EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "true"`
+- `autoIncrement` automatically bumps the iOS `buildNumber`
+- App uploads to TestFlight
+- Install via TestFlight on physical iPhone
+- Developer Settings, Mixpanel toggle, review simulation, and debug triggers **ARE VISIBLE**
+- Use this build to test features, mock weather, and verify analytics in a real compiled `.ipa` environment.
+
+---
+
+### Step 3: Production Candidate Build
+```bash
+eas build --platform ios --profile production
+```
+- Built with `"EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "false"`
+- `autoIncrement` automatically bumps the iOS `buildNumber`
+- App also uploads to TestFlight
+- Install this production candidate via TestFlight on your device
+
+---
+
+### Step 4: Stop-Ship Verification & Apple Submission
+
+Before submitting the production candidate build to Apple for review, perform this **Production Stop-Ship Check**:
+
+#### 🛑 Production Stop-Ship Checklist:
+- [ ] Install the exact production candidate build from TestFlight
+- [ ] **Developer Settings absent** (Settings screen contains NO Developer Settings section)
+- [ ] **Review simulation triggers absent** (No debug buttons for review prompt)
+- [ ] **Analytics override absent** (No Mixpanel toggle in UI)
+- [ ] **Build number matches** App Store Connect selection
+
+Once all items pass:
+1. Open **App Store Connect** → **NorthPaw**
+2. Select the verified production build number
+3. Submit for **App Store Review**
 
 ---
 
 ## Build Profiles (`eas.json`)
 
-Developer features are controlled by one single, strict compile-time flag: `EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS`.
+```json
+{
+  "build": {
+    "testflight": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "true"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "false"
+      }
+    }
+  }
+}
+```
 
-### 1. Local Development (`npm run dev`)
-- `__DEV__` is `true`
-- Developer Settings section is **VISIBLE**
-- Analytics fire to console
-
-### 2. TestFlight Profile (`eas build --platform ios --profile testflight`)
-- `EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS` = `"true"`
-- Developer Settings section is **VISIBLE** for internal testing
-- Upload to App Store Connect / TestFlight internal testers
-
-### 3. Production Profile (`eas build --platform ios --profile production --auto-submit`)
-- `EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS` = `"false"`
-- Developer Settings section is **IMPOSSIBLE / HIDDEN BY DEFAULT** (`<DeveloperOnly>` renders `null`)
-- Uploads and submits to App Store Review automatically
+- **`autoIncrement: true`**: EAS automatically increments iOS build numbers for both `testflight` and `production` builds, ensuring every upload has a unique build number without manual `app.json` edits.
 
 ---
 
 ## Architecture & Code Guards
 
-### `lib/developer.ts`
-Centralized single source of truth:
-
+### Centralized Source of Truth (`lib/developer.ts`)
 ```ts
 export function shouldShowDeveloperTools(): boolean {
   if (__DEV__) {
@@ -50,8 +109,8 @@ export function shouldShowDeveloperTools(): boolean {
 }
 ```
 
-### `<DeveloperOnly>` Wrapper Component (`components/DeveloperOnly.tsx`)
-Every debug toggle, menu, or test button MUST be wrapped in `<DeveloperOnly>`:
+### Component Guard (`components/DeveloperOnly.tsx`)
+Every debug toggle, test button, or menu MUST be wrapped in `<DeveloperOnly>`:
 
 ```tsx
 <DeveloperOnly>
@@ -59,54 +118,19 @@ Every debug toggle, menu, or test button MUST be wrapped in `<DeveloperOnly>`:
 </DeveloperOnly>
 ```
 
-**Strict Rule**: Never use `process.env.EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS !== 'false'` or `Boolean(...)` because `"false"` is a truthy string in JS. Only exact `=== 'true'` comparison is valid.
+**Strict Rule**: Never use `process.env.EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS !== 'false'` or `Boolean(...)` because `"false"` is a truthy string in JS. Only exact `=== 'true'` comparison is valid. Missing, blank, `"TRUE"`, `"1"`, or `"yes"` will return `false`.
 
 ---
 
-## Pre-Release Checklist
+## EAS Update Caution (OTA Updates)
 
-### Before every production build:
-- [ ] Run `npx jest lib/__tests__/` — all test suites must pass
-- [ ] Run `npx tsc --noEmit` — 0 TypeScript errors
-- [ ] Verify `app.json` version and buildNumber are bumped
-- [ ] Build testflight first: `eas build --platform ios --profile testflight`
-- [ ] Verify TestFlight build on physical device
-- [ ] Run production build: `eas build --platform ios --profile production --auto-submit`
-- [ ] **Manual Stop-Ship Verification**: Install production candidate build from TestFlight and verify Settings contains **NO** developer controls.
-
----
-
-## Hotfix Procedure
-
-When something is broken in production:
-
-1. **Remove from sale immediately** (limits new downloads):
-   - App Store Connect → Pricing and Availability → Manage Availability → deselect all → Save
-
-2. **Fix the code** in the codebase
-
-3. **Bump the version** in `app.json`:
-   - Patch fix: `5.3.0` → `5.3.1`, `buildNumber` to `"1"`
-
-4. **Run tests**: `npx jest lib/__tests__/` & `npx tsc --noEmit`
-
-5. **Build and submit**:
-   ```bash
-   eas build --platform ios --profile production --auto-submit
-   ```
-
-6. **Install via TestFlight** once it appears (~15 min), verify the fix
-
-7. **Re-enable App Store availability** once approved by Apple
-
----
-
-## Release Gate Test Suite
-
-Automated regression suite: `lib/__tests__/devSettingsGuard.test.js`
-Guarantees that:
-- `__DEV__` = true → true
-- `"true"` → true
-- `"false"` → false
-- `undefined` / missing / `null` / `""` → false
-- `"TRUE"`, `"True"`, `"1"`, `"yes"` → false
+> ⚠️ **Critical Caution for Expo Updates**:
+>
+> Public environment variables (`EXPO_PUBLIC_*`) are inlined into the JavaScript bundle at build time AND update publish time.
+>
+> If you publish an OTA update using `eas update` in the future:
+> - **ALWAYS publish production channel updates with the production environment**:
+>   ```bash
+>   eas update --channel production --environment production
+>   ```
+> - **NEVER publish an update to the production channel from a preview or testflight profile**, as that would inline `"EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "true"` into production devices.
