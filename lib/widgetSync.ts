@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import SharedGroupPreferences from 'react-native-shared-group-preferences';
 
@@ -14,6 +14,8 @@ export interface WidgetSyncData {
 
 const WIDGET_STORAGE_KEY = '@northpaw/widget_last_sync_v1';
 const APP_GROUP_KEY = 'group.com.northpaw.app';
+
+const { WidgetReloadModule } = NativeModules;
 
 export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
   try {
@@ -31,6 +33,10 @@ export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
       if (data.actionableTime) {
         await SharedGroupPreferences.setItem('actionableTime', data.actionableTime, APP_GROUP_KEY);
       }
+    }
+
+    if (WidgetReloadModule && WidgetReloadModule.reloadWidget) {
+      await WidgetReloadModule.reloadWidget();
     }
   } catch (e) {
     console.warn('[WidgetSync] Notice - widget data update:', e);
