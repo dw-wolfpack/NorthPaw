@@ -21,7 +21,25 @@
         "simulator": false
       }
     },
+    "testflight": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "true",
+        "EXPO_PUBLIC_ENV": "testflight"
+      },
+      "ios": {
+        "resourceClass": "m-medium",
+        "image": "macos-sequoia-15.6-xcode-26.2"
+      }
+    },
     "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "false",
+        "EXPO_PUBLIC_ENV": "production"
+      },
       "ios": {
         "resourceClass": "m-medium",
         "image": "macos-sequoia-15.6-xcode-26.2"
@@ -29,6 +47,11 @@
     }
   },
   "submit": {
+    "testflight": {
+      "ios": {
+        "ascAppId": "6763930232"
+      }
+    },
     "production": {
       "ios": {
         "ascAppId": "6763930232"
