@@ -1,5 +1,6 @@
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import SharedGroupPreferences from 'react-native-shared-group-preferences';
 
 export interface WidgetSyncData {
   dogName: string;
@@ -12,6 +13,7 @@ export interface WidgetSyncData {
 }
 
 const WIDGET_STORAGE_KEY = '@northpaw/widget_last_sync_v1';
+const APP_GROUP_KEY = 'group.com.northpaw.app';
 
 export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
   try {
@@ -19,18 +21,15 @@ export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
 
     if (Platform.OS !== 'ios') return;
 
-    const SharedGroupPreferences = NativeModules.SharedGroupPreferences;
-    const groupName = 'group.com.northpaw.app';
-
     if (SharedGroupPreferences && SharedGroupPreferences.setItem) {
-      await SharedGroupPreferences.setItem('dogName', data.dogName, groupName);
-      await SharedGroupPreferences.setItem('statusText', data.statusText, groupName);
-      await SharedGroupPreferences.setItem('airTempF', data.airTempF, groupName);
-      await SharedGroupPreferences.setItem('roadTempF', data.roadTempF, groupName);
-      await SharedGroupPreferences.setItem('surfaceType', data.surfaceType, groupName);
-      await SharedGroupPreferences.setItem('npiScore', data.npiScore, groupName);
+      await SharedGroupPreferences.setItem('dogName', data.dogName, APP_GROUP_KEY);
+      await SharedGroupPreferences.setItem('statusText', data.statusText, APP_GROUP_KEY);
+      await SharedGroupPreferences.setItem('airTempF', Math.round(data.airTempF), APP_GROUP_KEY);
+      await SharedGroupPreferences.setItem('roadTempF', Math.round(data.roadTempF), APP_GROUP_KEY);
+      await SharedGroupPreferences.setItem('surfaceType', data.surfaceType, APP_GROUP_KEY);
+      await SharedGroupPreferences.setItem('npiScore', Math.round(data.npiScore), APP_GROUP_KEY);
       if (data.actionableTime) {
-        await SharedGroupPreferences.setItem('actionableTime', data.actionableTime, groupName);
+        await SharedGroupPreferences.setItem('actionableTime', data.actionableTime, APP_GROUP_KEY);
       }
     }
   } catch (e) {

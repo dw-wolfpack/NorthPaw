@@ -42,20 +42,28 @@ struct Provider: TimelineProvider {
         let defaults = UserDefaults(suiteName: "group.com.northpaw.app")
         let dogName = defaults?.string(forKey: "dogName") ?? "Your pup"
         let rawStatusText = defaults?.string(forKey: "statusText") ?? "Safe to Walk"
-        let airTempF = defaults?.integer(forKey: "airTempF") ?? 74
-        let roadTempF = defaults?.integer(forKey: "roadTempF") ?? 82
+
+        let airTempRaw = defaults?.object(forKey: "airTempF")
+        let airTempF = (airTempRaw as? Int) ?? (airTempRaw as? NSNumber)?.intValue ?? Int(defaults?.string(forKey: "airTempF") ?? "") ?? 74
+
+        let roadTempRaw = defaults?.object(forKey: "roadTempF")
+        let roadTempF = (roadTempRaw as? Int) ?? (roadTempRaw as? NSNumber)?.intValue ?? Int(defaults?.string(forKey: "roadTempF") ?? "") ?? 82
+
         let surfaceType = defaults?.string(forKey: "surfaceType") ?? "Asphalt"
-        let npiScore = defaults?.integer(forKey: "npiScore") ?? 88
+
+        let npiRaw = defaults?.object(forKey: "npiScore")
+        let npiScore = (npiRaw as? Int) ?? (npiRaw as? NSNumber)?.intValue ?? Int(defaults?.string(forKey: "npiScore") ?? "") ?? 88
+
         let actionableTime = defaults?.string(forKey: "actionableTime") ?? "Next update ~15m"
 
         return SimpleEntry(
             date: Date(),
             dogName: dogName,
             statusText: rawStatusText.uppercased(),
-            airTempF: airTempF > 0 ? airTempF : 74,
-            roadTempF: roadTempF > 0 ? roadTempF : 82,
+            airTempF: airTempF,
+            roadTempF: roadTempF,
             surfaceType: surfaceType,
-            npiScore: npiScore > 0 ? npiScore : 88,
+            npiScore: npiScore,
             actionableTime: actionableTime
         )
     }
