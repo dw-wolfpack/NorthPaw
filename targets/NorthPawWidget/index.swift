@@ -17,12 +17,12 @@ struct Provider: TimelineProvider {
         SimpleEntry(
             date: Date(),
             dogName: "Aoife",
-            statusText: "SAFE TO WALK",
+            statusText: "USE CAUTION",
             airTempF: 74,
-            roadTempF: 82,
+            roadTempF: 89,
             surfaceType: "Asphalt",
-            npiScore: 88,
-            actionableTime: "Best window until 2:15 PM"
+            npiScore: 72,
+            actionableTime: "Cooler by 8:00 PM"
         )
     }
 
@@ -41,25 +41,25 @@ struct Provider: TimelineProvider {
     private func loadEntryFromAppGroup() -> SimpleEntry {
         let defaults = UserDefaults(suiteName: "group.com.northpaw.app")
         let dogName = defaults?.string(forKey: "dogName") ?? "Your pup"
-        let rawStatusText = defaults?.string(forKey: "statusText") ?? "Safe to Walk"
+        let rawStatusText = defaults?.string(forKey: "statusText") ?? "Use Caution"
 
         let airTempRaw = defaults?.object(forKey: "airTempF")
         let airTempF = (airTempRaw as? Int) ?? (airTempRaw as? NSNumber)?.intValue ?? Int(defaults?.string(forKey: "airTempF") ?? "") ?? 74
 
         let roadTempRaw = defaults?.object(forKey: "roadTempF")
-        let roadTempF = (roadTempRaw as? Int) ?? (roadTempRaw as? NSNumber)?.intValue ?? Int(defaults?.string(forKey: "roadTempF") ?? "") ?? 82
+        let roadTempF = (roadTempRaw as? Int) ?? (roadTempRaw as? NSNumber)?.intValue ?? Int(defaults?.string(forKey: "roadTempF") ?? "") ?? 89
 
         let surfaceType = defaults?.string(forKey: "surfaceType") ?? "Asphalt"
 
         let npiRaw = defaults?.object(forKey: "npiScore")
-        let npiScore = (npiRaw as? Int) ?? (npiRaw as? NSNumber)?.intValue ?? Int(defaults?.string(forKey: "npiScore") ?? "") ?? 88
+        let npiScore = (npiRaw as? Int) ?? (npiRaw as? NSNumber)?.intValue ?? Int(defaults?.string(forKey: "npiScore") ?? "") ?? 72
 
         let actionableTime = defaults?.string(forKey: "actionableTime") ?? "Next update ~15m"
 
         return SimpleEntry(
             date: Date(),
             dogName: dogName,
-            statusText: rawStatusText.uppercased(),
+            statusText: rawStatusText,
             airTempF: airTempF,
             roadTempF: roadTempF,
             surfaceType: surfaceType,
@@ -72,7 +72,7 @@ struct Provider: TimelineProvider {
 extension SimpleEntry {
     var statusColor: Color {
         if roadTempF >= 105 || npiScore < 50 {
-            return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger)
+            return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger / Wait)
         } else if roadTempF >= 85 || npiScore < 75 {
             return Color(red: 0.95, green: 0.55, blue: 0.08) // Amber (Caution)
         } else {
@@ -82,11 +82,22 @@ extension SimpleEntry {
 
     var statusDotIcon: String {
         if roadTempF >= 105 || npiScore < 50 {
-            return "exclamationmark.circle.fill"
+            return "xmark.circle.fill"
         } else if roadTempF >= 85 || npiScore < 75 {
             return "exclamationmark.triangle.fill"
         } else {
             return "checkmark.circle.fill"
+        }
+    }
+
+    var conciseDecisionHeader: String {
+        let upper = statusText.uppercased()
+        if upper.contains("DANGER") || upper.contains("WAIT") || roadTempF >= 105 || npiScore < 50 {
+            return "WAIT · HOT ROAD"
+        } else if upper.contains("CAUTION") || upper.contains("HEAT") || roadTempF >= 85 || npiScore < 75 {
+            return "USE CAUTION"
+        } else {
+            return "SAFE TO WALK"
         }
     }
 }
@@ -98,23 +109,26 @@ struct NorthPawWidgetEntryView : View {
     var body: some View {
         switch family {
         case .accessoryCircular:
-            // Lock Screen Circular Complication (82° Hero Number + Ring)
+            // Circular Complication: Instant Personalized Status (Symbol + NPI Hero + Risk Ring)
             ZStack {
                 AccessoryWidgetBackground()
                 Circle()
-                    .stroke(entry.statusColor.opacity(0.35), lineWidth: 3.5)
+                    .stroke(entry.statusColor.opacity(0.25), lineWidth: 3.5)
                 Circle()
                     .trim(from: 0, to: CGFloat(min(max(entry.npiScore, 0), 100)) / 100.0)
                     .stroke(entry.statusColor, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
 
-                VStack(spacing: -2) {
-                    Image(systemName: "pawprint.fill")
-                        .font(.system(size: 10, weight: .bold))
+                VStack(spacing: -1) {
+                    Image(systemName: entry.statusDotIcon)
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundColor(entry.statusColor)
-                    Text("\(entry.roadTempF)°")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    Text("\(entry.npiScore)")
+                        .font(.system(size: 15, weight: .black, design: .rounded))
                         .minimumScaleFactor(0.7)
+                    Text("NPI")
+                        .font(.system(size: 7, weight: .bold))
+                        .opacity(0.65)
                 }
             }
             .containerBackground(for: .widget) {
@@ -125,8 +139,8 @@ struct NorthPawWidgetEntryView : View {
         case .accessoryInline:
             // Lock Screen Text Line
             ViewThatFits {
-                Label("🐾 \(entry.statusText) • Road \(entry.roadTempF)° (\(entry.dogName))", systemImage: "pawprint.fill")
-                Label("🐾 \(entry.statusText) • \(entry.roadTempF)°", systemImage: "pawprint.fill")
+                Label("\(entry.conciseDecisionHeader) • Road \(entry.roadTempF)° (\(entry.dogName))", systemImage: entry.statusDotIcon)
+                Label("\(entry.conciseDecisionHeader) • Road \(entry.roadTempF)°", systemImage: entry.statusDotIcon)
             }
             .containerBackground(for: .widget) {
                 Color.clear
@@ -134,31 +148,32 @@ struct NorthPawWidgetEntryView : View {
             .widgetURL(URL(string: "northpaw://")!)
 
         case .accessoryRectangular:
-            // Lock Screen Rectangular Box
+            // Lock Screen Rectangular Box (Unmistakable Decision + Road/Air Temp + Actionable Next Step)
             ZStack(alignment: .leading) {
                 AccessoryWidgetBackground()
                 VStack(alignment: .leading, spacing: 2) {
-                    // 1. Dominant Decision Header
+                    // 1. Dominant Unmistakable Decision Header
                     HStack(spacing: 4) {
                         Image(systemName: entry.statusDotIcon)
                             .font(.system(size: 10, weight: .bold))
                             .widgetAccentable()
-                        Text(entry.statusText)
-                            .font(.system(size: 11, weight: .bold))
+                        Text(entry.conciseDecisionHeader)
+                            .font(.system(size: 11, weight: .black))
                             .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                     
-                    // 2. Hero Road Temperature
+                    // 2. Differentiated Road and Air Temperatures
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text("Road \(entry.roadTempF)°F")
-                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .font(.system(size: 15, weight: .black, design: .rounded))
                             .widgetAccentable()
                         Text("Air \(entry.airTempF)°")
                             .font(.system(size: 11, weight: .semibold))
                             .opacity(0.8)
                     }
                     
-                    // 3. Actionable Time / Dog Name
+                    // 3. Next Action / Personalization
                     Text("\(entry.actionableTime) • \(entry.dogName)")
                         .font(.system(size: 9, weight: .medium))
                         .opacity(0.75)
@@ -180,8 +195,8 @@ struct NorthPawWidgetEntryView : View {
                     Circle()
                         .fill(entry.statusColor)
                         .frame(width: 8, height: 8)
-                    Text(entry.statusText)
-                        .font(.system(size: 12, weight: .heavy))
+                    Text(entry.conciseDecisionHeader)
+                        .font(.system(size: 12, weight: .black))
                         .foregroundColor(entry.statusColor)
                         .lineLimit(1)
                 }
@@ -236,8 +251,8 @@ struct NorthPawWidgetEntryView : View {
                         Circle()
                             .fill(entry.statusColor)
                             .frame(width: 10, height: 10)
-                        Text(entry.statusText)
-                            .font(.system(size: 15, weight: .heavy))
+                        Text(entry.conciseDecisionHeader)
+                            .font(.system(size: 15, weight: .black))
                             .foregroundColor(entry.statusColor)
                             .lineLimit(1)
                     }
