@@ -109,6 +109,9 @@ struct NorthPawWidgetEntryView : View {
                         .minimumScaleFactor(0.7)
                 }
             }
+            .containerBackground(for: .widget) {
+                Color.clear
+            }
             .widgetURL(URL(string: "northpaw://")!)
 
         case .accessoryInline:
@@ -116,6 +119,9 @@ struct NorthPawWidgetEntryView : View {
             ViewThatFits {
                 Label("🐾 \(entry.statusText) • Road \(entry.roadTempF)° (\(entry.dogName))", systemImage: "pawprint.fill")
                 Label("🐾 \(entry.statusText) • \(entry.roadTempF)°", systemImage: "pawprint.fill")
+            }
+            .containerBackground(for: .widget) {
+                Color.clear
             }
             .widgetURL(URL(string: "northpaw://")!)
 
@@ -152,6 +158,9 @@ struct NorthPawWidgetEntryView : View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
+            }
+            .containerBackground(for: .widget) {
+                Color.clear
             }
             .widgetURL(URL(string: "northpaw://")!)
 
