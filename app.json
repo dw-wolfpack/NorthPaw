@@ -17,6 +17,11 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.northpaw.app",
       "buildNumber": "1",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.northpaw.app"
+        ]
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
