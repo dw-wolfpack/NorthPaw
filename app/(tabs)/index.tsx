@@ -754,6 +754,8 @@ export default function HomeScreen() {
           AsyncStorage.getItem('@northpaw/disclaimer_accepted_version'),
         ]);
         if (!gone) {
+          setDogProfile(profile);
+          setWeather(result);
           if (profile && profile.onboardingDone && acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
             setShowUpgradeTermsModal(true);
           }

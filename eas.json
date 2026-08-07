@@ -15,7 +15,8 @@
       "distribution": "store",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "true"
+        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "true",
+        "EXPO_PUBLIC_ENV": "testflight"
       },
       "ios": {
         "resourceClass": "m-medium",
@@ -26,7 +27,8 @@
       "distribution": "store",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "false"
+        "EXPO_PUBLIC_SHOW_DEVELOPER_TOOLS": "false",
+        "EXPO_PUBLIC_ENV": "production"
       },
       "ios": {
         "resourceClass": "m-medium",
