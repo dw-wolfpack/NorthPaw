@@ -17,18 +17,12 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.northpaw.app",
       "buildNumber": "1",
-      "entitlements": {
-        "com.apple.security.application-groups": [
-          "group.com.northpaw.app"
-        ]
-      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "fetch"
         ]
-      },
-      "appleTeamId": "5V6Q478U5L"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -79,8 +73,7 @@
           "enableBackgroundRemoteNotifications": false
         }
       ],
-      "@react-native-community/datetimepicker",
-      "@bacons/apple-targets"
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true
@@ -88,24 +81,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "26946416-fc70-4522-9d65-02746eae4ca7",
-        "build": {
-          "experimental": {
-            "ios": {
-              "appExtensions": [
-                {
-                  "bundleIdentifier": "com.northpaw.app.widget",
-                  "targetName": "NorthPawWidget",
-                  "entitlements": {
-                    "com.apple.security.application-groups": [
-                      "group.com.northpaw.app"
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        }
+        "projectId": "26946416-fc70-4522-9d65-02746eae4ca7"
       }
     }
   }

@@ -1,7 +1,0 @@
-{
-  "type": "widget",
-  "icon": "../../assets/images/icon.png",
-  "entitlements": {
-    "com.apple.security.application-groups": ["group.com.northpaw.app"]
-  }
-}

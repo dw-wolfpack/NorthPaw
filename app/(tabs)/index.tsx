@@ -42,7 +42,6 @@ import { getDogProfile, toggleGearVaultItem, type DogProfile } from '@/lib/profi
 import { getPreparednessCadenceSnapshot } from '@/lib/readiness/cadence';
 import { getReadinessState } from '@/lib/readiness/deriveReadiness';
 import { trackEvent, setUserProperties, incrementUserProperties } from '@/lib/analytics';
-import { syncWidgetData } from '@/lib/widgetSync';
 import { ReviewPromptModal } from '@/components/ReviewPromptModal';
 import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
 import { recordUsageDay, checkReviewEligibility, getReviewData, markShownThisSession } from '@/lib/reviewPrompt';
@@ -1173,50 +1172,6 @@ export default function HomeScreen() {
     () => (confidence ? confidenceColors(confidence.label) : null),
     [confidence]
   );
-
-  useEffect(() => {
-    if (weather.status !== 'ok' || !readinessPresentation) return;
-    const calcRoadTemp = currentRoadPoint?.roadTempF ?? weather.tempF;
-    let actionableTime = 'Next update ~15m';
-
-    if (Array.isArray(weather.hourlySamples) && weather.hourlySamples.length > 0) {
-      const now = new Date();
-      const hotUpcoming = weather.hourlySamples.find((s) => {
-        const d = new Date(s.timeIso);
-        return d > now && s.airTempF >= 82;
-      });
-
-      if (hotUpcoming && calcRoadTemp < 85) {
-        const hotDate = new Date(hotUpcoming.timeIso);
-        const formattedHour = hotDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-        actionableTime = `Heating up after ${formattedHour}`;
-      } else if (calcRoadTemp >= 85) {
-        const coolerUpcoming = weather.hourlySamples.find((s) => {
-          const d = new Date(s.timeIso);
-          return d > now && s.airTempF < 78;
-        });
-        if (coolerUpcoming) {
-          const coolDate = new Date(coolerUpcoming.timeIso);
-          const formattedHour = coolDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-          actionableTime = `Cooler by ${formattedHour}`;
-        } else {
-          actionableTime = 'Hot conditions rest of day';
-        }
-      } else {
-        actionableTime = 'Great window for next 3+ hours';
-      }
-    }
-
-    syncWidgetData({
-      dogName: dogName,
-      statusText: readinessPresentation.title,
-      airTempF: weather.tempF,
-      roadTempF: calcRoadTemp,
-      surfaceType: selectedSurface,
-      npiScore: npiScore ?? 0,
-      actionableTime,
-    }).catch(() => {});
-  }, [weather, readinessPresentation, currentRoadPoint, selectedSurface, npiScore, dogName]);
   const shouldShowVerifySurface = (currentRoadPoint?.roadTempF ?? 0) > 100;
   const verifyProgress = useMemo(() => clampUnit((7 - verifyCountdown) / 7, 0, 1), [verifyCountdown]);
   const verifyArcPath = useMemo(() => {
