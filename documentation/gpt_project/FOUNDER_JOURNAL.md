@@ -293,6 +293,22 @@ Keep the ones that make hard days easier.
 
 ---
 
+## August 7, 2026
+
+### What happened
+
+Google Search's "AI Overview" started intercepting searches for "north paw app". Instead of just linking to the site, the AI perfectly synthesized the app's entire value proposition, identifying the founder (me), the core features (Custom Dog Profiles, Surface Temperature Estimation, Safe Walking Windows), and the specific commitment to Privacy (offline-capable deterministic risk engine).
+
+### Why it mattered
+
+It proved that the tight, focused positioning and structured schema we put into the web site and press kit worked exactly as intended. The AI didn't hallucinate; it fed the exact pitch right back to the user. This is a massive brand and SEO win.
+
+### Lesson
+
+Clear copy and structured data aren't just for human readers anymore. If you structure the truth clearly, the machines will sell it for you.
+
+---
+
 # Journal Template
 
 ## [Date]

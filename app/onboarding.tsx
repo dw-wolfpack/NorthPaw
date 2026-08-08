@@ -403,6 +403,7 @@ export default function OnboardingScreen() {
 
   const handlePhotoContinue = async () => {
     if (pickedUri) {
+      trackEvent('onboarding_photo_uploaded');
       advance();
       return;
     }
@@ -418,11 +419,17 @@ export default function OnboardingScreen() {
         });
         if (!res.canceled && res.assets[0]?.uri) {
           setPickedUri(res.assets[0].uri);
+          trackEvent('onboarding_photo_uploaded');
+        } else {
+          trackEvent('onboarding_photo_skipped');
         }
+      } else {
+        trackEvent('onboarding_photo_skipped');
       }
       advance();
     } catch (e) {
       console.warn('[NorthPaw] Photo permission/picker error', e);
+      trackEvent('onboarding_photo_skipped');
       advance();
     } finally {
       setBusy(false);
@@ -712,7 +719,11 @@ export default function OnboardingScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => { hapticTap(); advance(); }}
+              onPress={() => {
+                hapticTap();
+                trackEvent('onboarding_photo_skipped');
+                advance();
+              }}
               style={({ pressed }) => [styles.ghostBtn, { borderColor: palette.border, opacity: pressed ? 0.8 : 1 }]}>
               <Text style={[styles.ghostText, { color: palette.textSecondary, textAlign: 'center' }]}>Skip for now</Text>
             </Pressable>

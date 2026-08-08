@@ -716,7 +716,7 @@ export default function HomeScreen() {
         try {
           const lastFetchStr = await AsyncStorage.getItem('@northpaw/last_weather_fetch_time');
           const lastFetch = lastFetchStr ? parseInt(lastFetchStr, 10) : 0;
-          const staleThreshold = 30 * 60 * 1000; // 30 minutes
+          const staleThreshold = 5 * 60 * 1000; // 5 minutes
           if (Date.now() - lastFetch > staleThreshold) {
             console.log('[Home] Weather cache is stale. Refreshing...');
             const freshWeather = await fetchWeatherForDeviceLocation();
