@@ -13,6 +13,9 @@ interface ShareCardDetails {
   surfaceTempF: number;
   currentTempF: number;
   roadBand: string;
+  share_type?: string;
+  share_context?: string;
+  source_screen?: string;
 }
 
 export const useShareCard = () => {
@@ -33,6 +36,9 @@ export const useShareCard = () => {
       surface_temp: details.surfaceTempF,
       air_temp: details.currentTempF,
       road_band: details.roadBand,
+      share_type: details.share_type || 'image',
+      share_context: details.share_context || 'npi_card',
+      source_screen: details.source_screen || 'home',
     });
 
     // Trigger medium haptic feedback to confirm press
@@ -66,6 +72,9 @@ export const useShareCard = () => {
         surface_temp: details.surfaceTempF,
         air_temp: details.currentTempF,
         road_band: details.roadBand,
+        share_type: details.share_type || 'image',
+        share_context: details.share_context || 'npi_card',
+        source_screen: details.source_screen || 'home',
       });
 
       // 5. Share the captured card image
@@ -84,6 +93,9 @@ export const useShareCard = () => {
         surface_temp: details.surfaceTempF,
         air_temp: details.currentTempF,
         road_band: details.roadBand,
+        share_type: details.share_type || 'image',
+        share_context: details.share_context || 'npi_card',
+        source_screen: details.source_screen || 'home',
       });
 
     } catch (error) {

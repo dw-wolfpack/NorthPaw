@@ -159,6 +159,12 @@ export default function ChecklistDetailScreen() {
   const toggle = async (itemId: string) => {
     if (!id) return;
     const next = !checked.has(itemId);
+    if (next && checked.size === 0) {
+      trackEvent('checklist_started', { checklistId: id, title: cl?.title });
+    }
+    if (next && checked.size + 1 === cl?.items.length) {
+      trackEvent('checklist_completed', { checklistId: id, title: cl?.title });
+    }
     setChecked((prev) => {
       const updated = new Set(prev);
       if (next) updated.add(itemId);
@@ -202,6 +208,7 @@ export default function ChecklistDetailScreen() {
           style: 'destructive',
           onPress: () => {
             clearChecklistAllLocal(id).then(() => {
+              trackEvent('checklist_reset', { checklistId: id, title: cl?.title });
               setOutingNotes('');
               setPlaceLabel('');
               setIncludeGps(false);
