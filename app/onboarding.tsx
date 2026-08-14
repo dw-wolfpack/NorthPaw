@@ -54,7 +54,8 @@ import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
 type SceneId =
   | 'welcome'
   | 'name'
-  | 'breed-snout'
+  | 'breed'
+  | 'snout'
   | 'age'
   | 'biology-activity'
   | 'location'
@@ -66,7 +67,8 @@ type SceneId =
 const SCENES: SceneId[] = [
   'welcome',
   'name',
-  'breed-snout',
+  'breed',
+  'snout',
   'age',
   'biology-activity',
   'location',
@@ -99,7 +101,9 @@ export const BREEDS = [
   'Bull Terrier',
   'Bulldog',
   'Cane Corso',
+  'Catahoula',
   'Cavalier King Charles Spaniel',
+  'Cavapoo',
   'Chihuahua',
   'Cocker Spaniel',
   'Cockapoo',
@@ -171,9 +175,9 @@ const OUTING_OPTIONS = [
 ];
 
 const SNOUT_OPTIONS: Array<{ id: 'flat' | 'standard' | 'long'; title: string; subtitle: string }> = [
-  { id: 'flat', title: 'Flat / Smushed', subtitle: 'Pug, Bulldog, Boxer-style airway' },
-  { id: 'standard', title: 'Standard', subtitle: 'Balanced cooling profile' },
-  { id: 'long', title: 'Long', subtitle: 'Greyhound-style airflow advantage' },
+  { id: 'flat', title: 'Flat / Smushed', subtitle: 'Short airway (Pug, Frenchie, Bulldog, Boxer)' },
+  { id: 'standard', title: 'Standard', subtitle: 'Typical dog snout (Lab, Golden, German Shepherd)' },
+  { id: 'long', title: 'Long', subtitle: 'Elongated snout (Greyhound, Whippet, Dachshund)' },
 ];
 
 const ACTIVITY_OPTIONS: Array<{ id: 'low' | 'moderate' | 'high'; title: string; subtitle: string }> = [
@@ -406,7 +410,7 @@ export default function OnboardingScreen() {
   }, [breedQuery]);
 
   const legacyStep = useMemo((): string => {
-    if (scene === 'breed-snout') return 'breed';
+    if (scene === 'breed' || scene === 'snout') return 'breed';
     if (scene === 'biology-activity') return 'biology';
     if (scene === 'npi-activation') return 'aha';
     if (scene === 'morning-brief' || scene === 'commitment') return 'notifications';
@@ -415,10 +419,11 @@ export default function OnboardingScreen() {
 
   const canAdvance = useMemo(() => {
     if (scene === 'name') return name.trim().length > 0;
-    if (legacyStep === 'breed') {
+    if (scene === 'breed') {
       if (isMixedBreed) return mixedPrimary.trim().length > 0;
       return breed.trim().length > 0;
     }
+    if (scene === 'snout') return true;
     if (legacyStep === 'age') return ageGroup.length > 0;
     if (legacyStep === 'outings') return outingTypes.length > 0;
     return true;
@@ -518,6 +523,8 @@ export default function OnboardingScreen() {
     isTransitioning.current = true;
     if (scene === 'name') {
       trackOnboardingEvent('onboarding_name_completed');
+    } else if (scene === 'breed') {
+      trackOnboardingEvent('onboarding_breed_completed', { breed: isMixedBreed ? mixedPrimary : breed });
     }
     trackOnboardingEvent('onboarding_step_completed');
     selectionTick();
@@ -806,12 +813,12 @@ export default function OnboardingScreen() {
       );
     }
 
-    if (scene === 'breed-snout') {
+    if (scene === 'breed') {
       return (
-        <AnimatedReanimated.View key="breed-snout" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
+        <AnimatedReanimated.View key="breed" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Pick your dog’s breed for their profile. You’ll customize snout, coat, and activity next.
+            Pick your dog’s breed for their profile.
           </Text>
           <TextInput
             value={breedQuery}
@@ -842,7 +849,8 @@ export default function OnboardingScreen() {
             style={({ pressed }) => [
               styles.mixedRow,
               { borderColor: palette.border, backgroundColor: isMixedBreed ? palette.surface : 'transparent', opacity: pressed ? 0.9 : 1 },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
             <MaterialCommunityIcons name={isMixedBreed ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={20} color={palette.tint} />
             <Text style={[styles.mixedLabel, { color: palette.text }]}>Mixed Breed / Rescue</Text>
           </Pressable>
@@ -878,22 +886,22 @@ export default function OnboardingScreen() {
               const selected = !isMixedBreed && breed === item;
               return (
                 <Pressable
-                  key={item}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    selectionTick();
-                    setIsMixedBreed(false);
-                    setBreed(item);
-                  }}
-                  style={({ pressed }) => [
-                    styles.breedCard,
-                    {
-                      borderColor: selected ? palette.tint : palette.border,
-                      backgroundColor: selected ? palette.selectedBg : palette.surface,
-                      opacity: pressed ? 0.8 : 1,
-                      transform: [{ scale: pressed ? 0.98 : 1 }],
-                    },
-                  ]}>
+                   key={item}
+                   onPress={() => {
+                     Keyboard.dismiss();
+                     selectionTick();
+                     setIsMixedBreed(false);
+                     setBreed(item);
+                   }}
+                   style={({ pressed }) => [
+                     styles.breedCard,
+                     {
+                       borderColor: selected ? palette.tint : palette.border,
+                       backgroundColor: selected ? palette.selectedBg : palette.surface,
+                       opacity: pressed ? 0.8 : 1,
+                       transform: [{ scale: pressed ? 0.98 : 1 }],
+                     },
+                   ]}>
                   <Text style={styles.breedIcon}>🐾</Text>
                   <Text style={[styles.breedText, { color: palette.text }]}>{item}</Text>
                 </Pressable>
@@ -909,7 +917,30 @@ export default function OnboardingScreen() {
               Can&apos;t find your breed? Request a breed →
             </Text>
           </Pressable>
-          <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>How is {dogName}&apos;s snout?</Text>
+          <Pressable
+            disabled={!canAdvance}
+            onPress={() => { hapticTap(); advance(); }}
+            style={({ pressed }) => [
+              styles.cta,
+              {
+                backgroundColor: canAdvance ? palette.tint : palette.border,
+                opacity: pressed && canAdvance ? 0.9 : 1,
+              },
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
+            <Text style={styles.ctaText}>Continue</Text>
+          </Pressable>
+        </AnimatedReanimated.View>
+      );
+    }
+
+    if (scene === 'snout') {
+      return (
+        <AnimatedReanimated.View key="snout" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>How is {dogName}&apos;s snout?</Text>
+          <Text style={[styles.body, { color: palette.textSecondary }]}>
+            Snout shape directly affects how efficiently a dog cools down through panting.
+          </Text>
           <View style={styles.cardList}>
             {SNOUT_OPTIONS.map((opt) => {
               const selected = dogSnoutProfile === opt.id;
@@ -927,7 +958,8 @@ export default function OnboardingScreen() {
                       backgroundColor: selected ? palette.selectedBg : palette.surface,
                       opacity: pressed ? 0.92 : 1,
                     },
-                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                    { transform: [{ scale: pressed ? 0.98 : 1 }] }
+                  ]}>
                   <Text style={[styles.cardTitle, { color: palette.text }]}>{opt.title}</Text>
                   <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>{opt.subtitle}</Text>
                 </Pressable>
@@ -938,10 +970,10 @@ export default function OnboardingScreen() {
             entering={FadeInDown.duration(300)}
             style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
             {dogSnoutProfile === 'flat'
-              ? `Did you know? Flat-faced dogs like ${dogName} can cool less efficiently through panting.`
+              ? `Did you know? Flat-faced dogs like ${dogName} cool less efficiently through panting and get hot faster.`
               : dogSnoutProfile === 'long'
-              ? `Did you know? Long-snouted dogs like ${dogName} are generally more efficient at panting to cool down.`
-              : `Did you know? Snout length directly affects how efficiently a dog cools down through panting.`}
+              ? `Did you know? Long-snouted dogs like ${dogName} have more snout surface area, making them efficient at panting to cool down.`
+              : `Did you know? Typical dog snouts offer a balanced, healthy cooling profile.`}
           </AnimatedReanimated.Text>
           <Pressable
             disabled={!canAdvance}
@@ -952,7 +984,8 @@ export default function OnboardingScreen() {
                 backgroundColor: canAdvance ? palette.tint : palette.border,
                 opacity: pressed && canAdvance ? 0.9 : 1,
               },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
         </AnimatedReanimated.View>

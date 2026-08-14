@@ -1,6 +1,6 @@
 # Mixpanel Live Metrics & Verified Traction Summary
 
-* **Export Date:** August 13, 2026
+* **Export Date:** August 14, 2026
 * **Total Tracked Events:** **27,145**
 * **Total Unique Users (Distinct IDs):** **303**
 * **Current 7-Day WAU (Past Week):** **76 unique active users**
@@ -120,7 +120,7 @@ Total surface switches: **1,523**
 
 ---
 
-## 📅 Full Lifetime Sunday–Saturday Weekly Cohort Rollup (Updated Wednesday Aug 12)
+## 📅 Full Lifetime Sunday–Saturday Weekly Cohort Rollup (Updated Friday Aug 14)
 
 | Calendar Week | Total WAU | Brand New | Returning from Prior Wk | Standard W-o-W Retention *(vs Total Prior WAU)* | Core Base Retention *(vs Prior Returning Base)* | Milestone / Phase |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |

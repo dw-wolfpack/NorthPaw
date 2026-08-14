@@ -48,10 +48,10 @@ def main():
     # Regenerate base summary first
     os.system('python3 /Users/fiegellansknowledge/experiment/NorthPaw/scratch/build_summary.py')
 
-    table_weekly_md = '''
+    table_weekly_md = f'''
 ---
 
-## 📅 Full Lifetime Sunday–Saturday Weekly Cohort Rollup (Updated Wednesday Aug 12)
+## 📅 Full Lifetime Sunday–Saturday Weekly Cohort Rollup (Updated {datetime.now().strftime('%A %b %d')})
 
 | Calendar Week | Total WAU | Brand New | Returning from Prior Wk | Standard W-o-W Retention *(vs Total Prior WAU)* | Core Base Retention *(vs Prior Returning Base)* | Milestone / Phase |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
@@ -71,7 +71,7 @@ def main():
         'Jul 19 – Jul 25': 'Version 5.2.0 submission',
         'Jul 26 – Aug 01': '🔥 Peak growth week (108 WAU)',
         'Aug 02 – Aug 08': 'Version 5.3.3 / 5.4.0 widget build',
-        'Aug 09 – Aug 15': 'Current Week (Partial: Sun–Thu)'
+        'Aug 09 – Aug 15': 'Current Week (Partial)'
     }
 
     for start_str, end_str, label in weeks:
@@ -100,6 +100,9 @@ def main():
         core_ret_rate = (len(returning_users) / prev_returning_count * 100) if prev_returning_count else 0.0
         
         phase = milestones.get(label, 'Current Week')
+        if label == 'Aug 09 – Aug 15':
+            phase = f"Current Week (Partial: Sun–{max_dt.strftime('%a')})"
+
         table_weekly_md += f"| **{label}** | **{len(current_week_users)}** | {len(new_users)} | **{len(returning_users)}** | **{std_ret_rate:.1f}%** | {core_ret_rate:.1f}% | {phase} |\n"
         
         prev_week_users = current_week_users
@@ -108,9 +111,9 @@ def main():
     with open(md_summary_path, 'a') as f:
         f.write(table_weekly_md)
 
-    # 2. 30-Day Metrics (July 14 to August 12)
-    start_30d = datetime(2026, 7, 14, 0, 0, 0)
-    end_30d = datetime(2026, 8, 12, 23, 59, 59)
+    # 2. 30-Day Metrics (ends on max_dt)
+    end_30d = datetime(max_dt.year, max_dt.month, max_dt.day, 23, 59, 59)
+    start_30d = end_30d - timedelta(days=29)
 
     events_30d = []
     user_active_days_30d = defaultdict(set)
@@ -130,7 +133,7 @@ def main():
     first_readiness_30d = sum(1 for e in events_30d if e.get('event') == 'readiness_viewed' and e.get('properties', {}).get('is_first_readiness_view') == True)
     total_readiness_30d = sum(1 for e in events_30d if e.get('event') == 'readiness_viewed')
 
-    new_users_30d_cohort = [u for u, f_dt in user_first_seen.items() if datetime(2026, 7, 14) <= f_dt <= datetime(2026, 8, 5)]
+    new_users_30d_cohort = [u for u, f_dt in user_first_seen.items() if start_30d <= f_dt <= end_30d - timedelta(days=7)]
     w1_ret_count = 0
     for u in new_users_30d_cohort:
         f_dt = user_first_seen[u]
@@ -149,7 +152,7 @@ def main():
 
     md_30d_content = f'''# NorthPaw 30-Day Performance & Metric Audit
 
-* **Audit Period:** July 14, 2026 – August 12, 2026 (Last 30 Days)
+* **Audit Period:** {start_30d.strftime('%B %d, %Y')} – {end_30d.strftime('%B %d, %Y')} (Last 30 Days)
 * **Total Tracked Events in 30 Days:** **{len(events_30d):,} events**
 * **Unique Active Users in 30 Days:** **{len(user_active_days_30d)} distinct users**
 
@@ -170,9 +173,9 @@ def main():
     with open(md_30d_path, 'w') as f:
         f.write(md_30d_content)
 
-    # 3. Strict Sequential Onboarding Funnel (July 17 – August 12)
+    # 3. Strict Sequential Onboarding Funnel (ends on max_dt)
     start_date = datetime(2026, 7, 17, 0, 0, 0)
-    end_date = datetime(2026, 8, 12, 23, 59, 59)
+    end_date = datetime(max_dt.year, max_dt.month, max_dt.day, 23, 59, 59)
 
     dev_users = set()
     for e in events:
@@ -186,7 +189,7 @@ def main():
     for e in events:
         props = e.get('properties', {})
         dist_id = props.get('distinct_id')
-        ts = e.get('properties', {}).get('time')
+        ts = props.get('time')
         
         if dist_id and ts and dist_id not in dev_users:
             dt = datetime.fromtimestamp(ts)
@@ -207,13 +210,14 @@ def main():
     funnel_steps = [
         ('onboarding_started', lambda e: e['event'] == 'onboarding_started'),
         ('step: name', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'name' or e.get('stepIndex') == 1)),
-        ('step: breed-snout', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'breed-snout' or e.get('stepIndex') == 2)),
-        ('step: age', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'age' or e.get('stepIndex') == 3)),
-        ('step: biology-activity', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'biology-activity' or e.get('stepIndex') == 4)),
-        ('step: location', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'location' or e.get('stepIndex') == 5)),
-        ('step: npi-activation', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'npi-activation' or e.get('stepIndex') == 6)),
-        ('step: photo', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'photo' or e.get('stepIndex') == 7)),
-        ('step: morning-brief', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'morning-brief' or e.get('stepIndex') == 8)),
+        ('step: breed', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') in ('breed', 'breed-snout') or e.get('stepIndex') == 2)),
+        ('step: snout', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') in ('snout', 'breed-snout') or e.get('stepIndex') in (2, 3))),
+        ('step: age', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'age' or e.get('stepIndex') in (3, 4))),
+        ('step: biology-activity', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'biology-activity' or e.get('stepIndex') in (4, 5))),
+        ('step: location', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'location' or e.get('stepIndex') in (5, 6))),
+        ('step: npi-activation', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'npi-activation' or e.get('stepIndex') in (6, 7))),
+        ('step: photo', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'photo' or e.get('stepIndex') in (7, 8))),
+        ('step: morning-brief', lambda e: e['event'] == 'onboarding_step_viewed' and (e.get('scene') == 'morning-brief' or e.get('stepIndex') in (8, 9))),
         ('onboarding_completed', lambda e: e['event'] == 'onboarding_completed' or (e['event'] == 'onboarding_step_viewed' and e.get('scene') == 'commitment')),
         ('First readiness_viewed', lambda e: e['event'] == 'readiness_viewed')
     ]
@@ -242,9 +246,9 @@ def main():
     start_cnt = len(step_unique_users[0])
     prev_cnt = start_cnt
 
-    table_funnel_md = '''# Strict Sequential Onboarding & Activation Funnel Audit
+    table_funnel_md = f'''# Strict Sequential Onboarding & Activation Funnel Audit
 
-* **Funnel Date Range:** July 17, 2026 – August 12, 2026 *(Public availability window of the new onboarding sequence)*
+* **Funnel Date Range:** July 17, 2026 – {end_date.strftime('%B %d, %Y')} *(Public availability window of the new onboarding sequence)*
 * **Constraints Applied:**
   * Strict in-order event sequence required.
   * 1-Hour maximum completion window from `onboarding_started`.
@@ -253,7 +257,7 @@ def main():
 
 ---
 
-## 📊 Strict 11-Step Sequential Funnel Results
+## 📊 Strict 12-Step Sequential Funnel Results
 
 | Step # | Event / Screen Name | Unique Users | Step Conversion | Step Drop-off | Overall Funnel Conv |
 | :---: | :--- | :---: | :---: | :---: | :---: |

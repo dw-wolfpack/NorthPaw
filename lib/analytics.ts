@@ -191,6 +191,7 @@ export async function setUserProperties(properties: Record<string, any>) {
 
   try {
     const distinctId = await getDistinctId();
+    const appVersion = Constants.expoConfig?.version || '1.0.0';
     await fetch('https://api.mixpanel.com/engage', {
       method: 'POST',
       headers: {
@@ -201,7 +202,11 @@ export async function setUserProperties(properties: Record<string, any>) {
         {
           $token: MIXPANEL_TOKEN,
           $distinct_id: distinctId,
-          $set: properties,
+          $set: {
+            app_version: appVersion,
+            $app_version_string: appVersion,
+            ...properties,
+          },
         },
       ]),
     });
