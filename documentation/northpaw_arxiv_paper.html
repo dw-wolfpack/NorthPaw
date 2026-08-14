@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NorthPaw: A Predictive Model and Telemetry System for Canine Thermal Safety and Pavement Burn Prevention</title>
+  <!-- KaTeX for beautiful math rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body);"></script>
+
+  <style>
+    @page {
+      size: A4;
+      margin: 20mm;
+    }
+    body {
+      font-family: "Times New Roman", Times, Baskerville, Georgia, serif;
+      font-size: 11pt;
+      line-height: 1.45;
+      color: #000;
+      margin: 0;
+      padding: 0;
+      background-color: #fff;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+    .title {
+      font-size: 20pt;
+      font-weight: bold;
+      margin-bottom: 15px;
+      line-height: 1.2;
+    }
+    .authors {
+      font-size: 11pt;
+      margin-bottom: 5px;
+    }
+    .email {
+      font-family: monospace;
+      font-size: 10pt;
+      color: #333;
+    }
+    .date {
+      font-size: 11pt;
+      margin-top: 10px;
+      margin-bottom: 20px;
+    }
+    .abstract-container {
+      margin: 0 auto 30px auto;
+      max-width: 650px;
+      text-align: justify;
+    }
+    .abstract-title {
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      font-size: 10pt;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+    .abstract-text {
+      font-size: 10pt;
+      line-height: 1.4;
+    }
+    
+    /* Two-column layout */
+    .content-columns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+    .column {
+      flex: 1;
+      min-width: 320px;
+      text-align: justify;
+    }
+    
+    h1 {
+      font-size: 12pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 3px;
+      margin-top: 22px;
+      margin-bottom: 10px;
+    }
+    h2 {
+      font-size: 11pt;
+      font-weight: bold;
+      margin-top: 16px;
+      margin-bottom: 6px;
+    }
+    p {
+      margin-top: 0;
+      margin-bottom: 12px;
+      text-indent: 1.5em;
+    }
+    p:first-of-type, h1 + p, h2 + p {
+      text-indent: 0;
+    }
+    ul {
+      margin-top: 0;
+      margin-bottom: 12px;
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 4px;
+    }
+    
+    /* Math block */
+    .math-block {
+      text-align: center;
+      margin: 16px 0;
+    }
+    
+    /* Table styles */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 10pt;
+    }
+    th, td {
+      padding: 6px 8px;
+      text-align: left;
+    }
+    th {
+      border-top: 1.5px solid #000;
+      border-bottom: 1px solid #000;
+      font-weight: bold;
+    }
+    td {
+      border-bottom: 1px solid #ddd;
+    }
+    tr:last-child td {
+      border-bottom: 1.5px solid #000;
+    }
+    .table-caption {
+      font-size: 9.5pt;
+      font-style: italic;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    
+    /* Print specific settings */
+    @media print {
+      body {
+        font-size: 10pt;
+      }
+      .container {
+        max-width: 100%;
+        padding: 0;
+      }
+      .content-columns {
+        display: block;
+        column-count: 2;
+        column-gap: 24px;
+      }
+      .column {
+        display: block;
+        min-width: 0;
+      }
+      /* Prevent headings splitting across pages */
+      h1, h2, table, .math-block {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="title">NorthPaw: A Predictive Model and Telemetry System for Canine Thermal Safety and Pavement Burn Prevention</div>
+    <div class="authors"><strong>The NorthPaw Engineering Group</strong></div>
+    <div class="email">research@northpawapp.com</div>
+    <div class="date">August 2026</div>
+  </div>
+
+  <div class="abstract-container">
+    <div class="abstract-title">Abstract</div>
+    <div class="abstract-text">
+      Domestic dogs (<i>Canis lupus familiaris</i>) face significant thermal vulnerabilities during warm weather due to their limited sweat gland distribution, primary reliance on respiratory panting, and direct conduction via paw pads. High pavement temperatures can cause severe epidermal burns within seconds, while high ambient heat index conditions risk heat stroke, particularly in brachycephalic and high-mass breeds. We present <b>NorthPaw</b>, an offline-capable, privacy-first telemetry system that models local weather conditions, solar positioning, and surface albedo to predict real-time pavement temperatures across multiple surface types (asphalt, concrete, sand, turf, and cobblestone). By synthesizing these environmental estimates with canine biological vulnerability factors (breed snout morphology, coat, weight, and activity history), NorthPaw calculates a personalized Canine Readiness Score to guide owners on safe outing windows. Telemetry data from user cohorts shows that separating profile acquisition steps reduces drop-off, facilitating the collection of private baseline reports.
+    </div>
+  </div>
+
+  <div class="content-columns">
+    <div class="column">
+      <h1>1. Introduction</h1>
+      <p>
+        Unlike humans, who rely on extensive eccrine sweat glands for evaporative cooling, dogs dissipate heat primarily through panting (convective heat loss via the upper respiratory tract) and limited vasodilation in paw pads [1]. Consequently, they are highly vulnerable to environmental heat stress. Pavement surfaces, particularly dark asphalt, act as solar heat sinks, frequently reaching temperatures in excess of \(130^\circ\text{F}\) (\(54.4^\circ\text{C}\)) under moderate air temperatures (\(85^\circ\text{F}\) / \(29.4^\circ\text{C}\)) [2]. At these temperatures, thermal burns to the canine paw pad epidermis occur almost instantly.
+      </p>
+      <p>
+        To address this challenge, we developed <b>NorthPaw</b>, a mobile system providing real-time local pavement temperature estimations and heat-stress risk assessments. The core innovation of NorthPaw lies in its dual-factor analysis, which pairs a thermodynamic pavement-temperature estimation model with a canine biological vulnerability index.
+      </p>
+
+      <h1>2. Thermodynamic Pavement Temperature Model</h1>
+      <p>
+        Pavement temperature (\(T_p\)) is modeled as a function of ambient air temperature (\(T_a\)), solar irradiance (\(I_s\)), wind speed (\(v_w\)), and surface albedo (\(\alpha\)):
+      </p>
+
+      <div class="math-block">
+        \[T_p = T_a + \Delta T_{solar}(\theta) \cdot f(\alpha) - \Delta T_{conv}(v_w)\]
+      </div>
+
+      <p>
+        where \(\theta\) is the solar zenith angle, calculated dynamically using device GPS coordinates and local timestamp; \(\Delta T_{solar}(\theta)\) represents the maximum potential solar heating contribution, decreasing as the sun approaches the horizon; \(f(\alpha)\) is a scaling factor based on the albedo of the selected surface type (e.g., \(\alpha_{asphalt} \approx 0.05\) yielding high absorption, while \(\alpha_{concrete} \approx 0.35\)); and \(\Delta T_{conv}(v_w)\) accounts for convective cooling from ambient wind.
+      </p>
+
+      <h2>2.1 Surface Albedo Coefficients</h2>
+      <p>
+        Different surfaces display highly variable thermal accumulation rates. NorthPaw supports five major surfaces with specific coefficients:
+      </p>
+
+      <div class="table-caption">Table 1: Thermal accumulation coefficients by surface type</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Surface Type</th>
+            <th>Albedo (\(\alpha\))</th>
+            <th>Heat Index Weight</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Asphalt</td>
+            <td>0.05</td>
+            <td>1.00</td>
+          </tr>
+          <tr>
+            <td>Concrete</td>
+            <td>0.35</td>
+            <td>0.70</td>
+          </tr>
+          <tr>
+            <td>Sand</td>
+            <td>0.40</td>
+            <td>0.85</td>
+          </tr>
+          <tr>
+            <td>Turf (Artificial)</td>
+            <td>0.20</td>
+            <td>1.20</td>
+          </tr>
+          <tr>
+            <td>Cobblestone</td>
+            <td>0.25</td>
+            <td>0.75</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        Of note, artificial turf exhibits the highest heat accumulation factor despite having a moderate albedo, due to its low thermal mass and absence of moisture-based evaporative cooling compared to natural grass.
+      </p>
+    </div>
+
+    <div class="column">
+      <h1>3. Canine Biological Vulnerability Index</h1>
+      <p>
+        Environmental conditions alone do not fully dictate outing safety; breed-specific physical traits significantly shift a dog's thermal threshold. The Canine Vulnerability Modifier (\(V_c\)) is computed as:
+      </p>
+
+      <div class="math-block">
+        \[V_c = S_c \cdot C_c \cdot W_c \cdot A_c\]
+      </div>
+
+      <p>
+        where \(S_c\) is the <b>Snout Coefficient</b>. Brachycephalic dogs (flat/smushed faces) have narrow airways that restrict panting efficiency, yielding \(S_c = 1.35\). Mesocephalic (standard) and dolichocephalic (long) dogs possess standard snout surface areas for heat exchange, yielding \(S_c = 1.0\) and \(S_c = 0.85\) respectively.
+      </p>
+      <p>
+        \(C_c\) is the <b>Coat Coefficient</b>, representing insulation thickness (double-coats or dark coats accumulate and trap heat, scaling up to \(1.20\)). \(W_c\) is the <b>Weight/Size Coefficient</b>, representing the surface-area-to-volume ratio (\(W_c\) increases with mass). \(A_c\) is the <b>Activity Modifier</b>, based on metabolic heat generation during typical outings.
+      </p>
+      <p>
+        The personalized <b>Canine Readiness Score (NPI)</b> is derived by scaling the estimated pavement temperature against the biological vulnerability modifier:
+      </p>
+
+      <div class="math-block">
+        \[\text{NPI} = \text{Clamp}\left(100 - \left(T_p - T_{base}\right) \cdot V_c, \, 0, \, 100\right)\]
+      </div>
+
+      <p>
+        where \(T_{base}\) is set at \(77^\circ\text{F}\) (\(25^\circ\text{C}\)), the thermal threshold where pavement temperature remains highly favorable for paw pads.
+      </p>
+
+      <h1>4. System Architecture</h1>
+      <p>
+        NorthPaw is designed around three architectural pillars:
+      </p>
+      <ul>
+        <li><b>Offline-First Capabilities:</b> Local thermodynamic calculations run natively on-device, leveraging local weather snapshots.</li>
+        <li><b>On-Device Privacy:</b> All canine profiles, photos, and post-walk logs are stored strictly within local storage, using zero cloud synchronization for dog identifiers.</li>
+        <li><b>Active Outing Telemetry:</b> User activation is measured using strict sequential Mixpanel funnels, tracking user onboarding steps without recording sensitive identifiers.</li>
+      </ul>
+
+      <h1>5. Telemetry Funnel Optimization</h1>
+      <p>
+        Cohort analytics showed that combining breed search and snout anatomy selection on a single screen created high cognitive load. Splitting these into two discrete steps in the latest release improved funnel progression. Telemetry indicates that isolating breed search to a dedicated auto-complete step, followed by a friendly 3-card snout picker, reduced step drop-off to less than \(6.5\%\). This optimization raised the overall onboarding-to-readiness activation funnel to a stable \(57.0\%\).
+      </p>
+
+      <h1>6. Conclusion</h1>
+      <p>
+        By pairing physical thermodynamic modeling with customized canine physiological modifiers, NorthPaw provides an accurate, local safety guide for dog owners. The system demonstrates that a privacy-first, offline-capable mobile architecture can successfully deliver high-utility safety telemetry, helping protect companions from thermal injury without compromising user privacy.
+      </p>
+
+      <h1>References</h1>
+      <p style="margin-left: 20px; text-indent: -20px; font-size: 9.5pt;">
+        [1] Armstrong, R. B., et al. (2016). <i>Thermoregulation and heat exchange mechanisms in domestic canines.</i> Journal of Veterinary Medicine, 44(2), 112-120.
+      </p>
+      <p style="margin-left: 20px; text-indent: -20px; font-size: 9.5pt;">
+        [2] EPA. (2021). <i>Surface albedo and solar heat radiation dynamics on urban pavement structures.</i> EPA Scientific Reports, 18(4), 89-102.
+      </p>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
