@@ -2030,7 +2030,7 @@ export default function HomeScreen() {
             ) : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Going now, start an outdoor walk session"
+                accessibilityLabel="Exploring now, start an outdoor walk session"
                 style={({ pressed }) => [
                   {
                     marginTop: 16,
@@ -2049,7 +2049,7 @@ export default function HomeScreen() {
                   setDurationModalOpen(true);
                 }}>
                 <MaterialCommunityIcons name="walk" size={20} color="#0A1A12" style={{ marginRight: 6 }} />
-                <Text style={{ color: '#0A1A12', fontWeight: '800', fontSize: 14 }}>Going now</Text>
+                <Text style={{ color: '#0A1A12', fontWeight: '800', fontSize: 14 }}>Exploring now</Text>
               </Pressable>
             )}
             <View ref={shareRef} collapsable={false} style={{ marginTop: 16, marginBottom: 8 }}>
