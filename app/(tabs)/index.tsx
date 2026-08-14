@@ -2725,7 +2725,7 @@ export default function HomeScreen() {
                   <>
                     <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Exploring Now</Text>
                     <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
-                      Start walks here. NorthPaw will track the safety conditions and check in when you return.
+                      Start walks here. Northpaw will track safety conditions and check in when you return. Completely optional
                     </Text>
                   </>
                 )}
