@@ -71,6 +71,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { ShareCard } from '@/components/ShareCard';
 import { ShareButton } from '@/components/ShareButton';
 import { useShareCard } from '@/hooks/useShareCard';
+import { getActiveOuting, startOuting, cancelActiveOuting, extendActiveOuting, type ActiveOuting } from '@/lib/outings';
+import * as Notifications from 'expo-notifications';
 
 const FOREST = '#1B4332';
 const SAFETY_GREEN = '#2ECC71';
@@ -553,6 +555,8 @@ export default function HomeScreen() {
   const [showUpgradeTermsModal, setShowUpgradeTermsModal] = useState(false);
   const [upgradeDisclaimerAgreed, setUpgradeDisclaimerAgreed] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [activeOuting, setActiveOuting] = useState<ActiveOuting | null>(null);
+  const [durationModalOpen, setDurationModalOpen] = useState(false);
 
   const { viewRef, isSharing, shareCard } = useShareCard();
   const shareRef = useRef<View>(null);
@@ -576,6 +580,7 @@ export default function HomeScreen() {
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Ready (Home)' });
       getDogProfile().then(setDogProfile).catch(() => {});
+      getActiveOuting().then(setActiveOuting).catch(() => {});
 
       // Automatic 7-day review prompt eligibility check (delayed so it never pops up instantly on launch)
       const reviewTimer = setTimeout(async () => {
@@ -1974,6 +1979,79 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
+            {activeOuting ? (
+              <View style={{
+                marginTop: 16,
+                backgroundColor: '#0D1F17',
+                borderRadius: 14,
+                padding: 14,
+                borderWidth: 1,
+                borderColor: '#D4AF37',
+              }}>
+                <View style={{ marginBottom: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                    <MaterialCommunityIcons name="paw" size={18} color="#D4AF37" />
+                    <Text style={{ color: '#D4AF37', fontWeight: '700', fontSize: 15 }}>Active Outing in Progress</Text>
+                  </View>
+                  <Text style={{ color: '#B0C2B6', fontSize: 12 }}>
+                    Started {new Date(activeOuting.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (Expected ~{new Date(activeOuting.startedAt + activeOuting.expectedDurationMinutes * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <Pressable
+                    style={{ backgroundColor: palette.tint, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flex: 1, alignItems: 'center' }}
+                    onPress={() => {
+                      hapticTap();
+                      router.push({ pathname: '/post-walk', params: { outingId: activeOuting.id } } as any);
+                    }}>
+                    <Text style={{ color: '#0A1A12', fontWeight: '800', fontSize: 12 }}>Finish outing</Text>
+                  </Pressable>
+                  <Pressable
+                    style={{ backgroundColor: palette.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                    onPress={async () => {
+                      hapticTap();
+                      await extendActiveOuting(10);
+                      const updated = await getActiveOuting();
+                      setActiveOuting(updated);
+                    }}>
+                    <Text style={{ color: palette.text, fontWeight: '700', fontSize: 12 }}>+10m</Text>
+                  </Pressable>
+                  <Pressable
+                    style={{ backgroundColor: 'rgba(192, 57, 43, 0.15)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                    onPress={async () => {
+                      hapticTap();
+                      await cancelActiveOuting();
+                      setActiveOuting(null);
+                    }}>
+                    <Text style={{ color: '#C0392B', fontWeight: '700', fontSize: 12 }}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Going now, start an outdoor walk session"
+                style={({ pressed }) => [
+                  {
+                    marginTop: 16,
+                    backgroundColor: palette.tint,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+                onPress={() => {
+                  hapticTap();
+                  setDurationModalOpen(true);
+                }}>
+                <MaterialCommunityIcons name="walk" size={20} color="#0A1A12" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#0A1A12', fontWeight: '800', fontSize: 14 }}>Going now</Text>
+              </Pressable>
+            )}
             <View ref={shareRef} collapsable={false} style={{ marginTop: 16, marginBottom: 8 }}>
               <ShareButton
                 onPress={() => shareCard({
@@ -2665,6 +2743,170 @@ export default function HomeScreen() {
           </View>
         </Modal>
       )}
+      <Modal
+        visible={durationModalOpen}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDurationModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ width: '100%', maxWidth: 360, borderRadius: 20, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border, padding: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: palette.text, marginBottom: 4 }}>
+              How long is {dogName}&apos;s outing?
+            </Text>
+            <Text style={{ fontSize: 13, color: palette.textSecondary, marginBottom: 16 }}>
+              We&apos;ll check in when you&apos;re back.
+            </Text>
+
+            <Pressable
+              style={{ padding: 14, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginBottom: 8, flexDirection: 'row', alignItems: 'center' }}
+              onPress={async () => {
+                hapticTap();
+                setDurationModalOpen(false);
+                let notificationId: string | null = null;
+                try {
+                  notificationId = await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: `How did ${dogName} handle the walk?`,
+                      body: `Tap to record a 1-tap private check-in for ${dogName}.`,
+                      sound: true,
+                      data: { 
+                        type: 'post_walk_checkin',
+                        url: '/post-walk'
+                      },
+                    },
+                    trigger: {
+                      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                      seconds: (10 + 5) * 60,
+                    },
+                  });
+                } catch (_) {}
+                const out = await startOuting({
+                  dogId: dogProfile?.dogName || 'default_dog',
+                  expectedDurationMinutes: 10,
+                  source: 'home',
+                  snapshot: {
+                    id: `snap_${Date.now()}`,
+                    weatherTimestamp: new Date().toISOString(),
+                    algorithmVersion: '5.4.1',
+                    surfaceType: selectedSurface,
+                    estimatedSurfaceF: currentRoadPoint?.roadTempF ?? 77,
+                    confidence: 'high',
+                    riskCategory: currentRoadPoint?.roadBand ?? 'safe',
+                  },
+                  notificationId,
+                });
+                setActiveOuting(out);
+              }}>
+              <MaterialCommunityIcons name="timer-sand" size={22} color={palette.tint} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: palette.text }}>Quick (10 min)</Text>
+                <Text style={{ fontSize: 12, color: palette.textSecondary }}>Quick potty break around the block</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={{ padding: 14, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginBottom: 8, flexDirection: 'row', alignItems: 'center' }}
+              onPress={async () => {
+                hapticTap();
+                setDurationModalOpen(false);
+                let notificationId: string | null = null;
+                try {
+                  notificationId = await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: `How did ${dogName} handle the walk?`,
+                      body: `Tap to record a 1-tap private check-in for ${dogName}.`,
+                      sound: true,
+                      data: { 
+                        type: 'post_walk_checkin',
+                        url: '/post-walk'
+                      },
+                    },
+                    trigger: {
+                      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                      seconds: (25 + 5) * 60,
+                    },
+                  });
+                } catch (_) {}
+                const out = await startOuting({
+                  dogId: dogProfile?.dogName || 'default_dog',
+                  expectedDurationMinutes: 25,
+                  source: 'home',
+                  snapshot: {
+                    id: `snap_${Date.now()}`,
+                    weatherTimestamp: new Date().toISOString(),
+                    algorithmVersion: '5.4.1',
+                    surfaceType: selectedSurface,
+                    estimatedSurfaceF: currentRoadPoint?.roadTempF ?? 77,
+                    confidence: 'high',
+                    riskCategory: currentRoadPoint?.roadBand ?? 'safe',
+                  },
+                  notificationId,
+                });
+                setActiveOuting(out);
+              }}>
+              <MaterialCommunityIcons name="walk" size={22} color={palette.tint} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: palette.text }}>Normal (25 min)</Text>
+                <Text style={{ fontSize: 12, color: palette.textSecondary }}>Standard neighbourhood walk</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={{ padding: 14, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginBottom: 16, flexDirection: 'row', alignItems: 'center' }}
+              onPress={async () => {
+                hapticTap();
+                setDurationModalOpen(false);
+                let notificationId: string | null = null;
+                try {
+                  notificationId = await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: `How did ${dogName} handle the walk?`,
+                      body: `Tap to record a 1-tap private check-in for ${dogName}.`,
+                      sound: true,
+                      data: { 
+                        type: 'post_walk_checkin',
+                        url: '/post-walk'
+                      },
+                    },
+                    trigger: {
+                      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                      seconds: (45 + 5) * 60,
+                    },
+                  });
+                } catch (_) {}
+                const out = await startOuting({
+                  dogId: dogProfile?.dogName || 'default_dog',
+                  expectedDurationMinutes: 45,
+                  source: 'home',
+                  snapshot: {
+                    id: `snap_${Date.now()}`,
+                    weatherTimestamp: new Date().toISOString(),
+                    algorithmVersion: '5.4.1',
+                    surfaceType: selectedSurface,
+                    estimatedSurfaceF: currentRoadPoint?.roadTempF ?? 77,
+                    confidence: 'high',
+                    riskCategory: currentRoadPoint?.roadBand ?? 'safe',
+                  },
+                  notificationId,
+                });
+                setActiveOuting(out);
+              }}>
+              <MaterialCommunityIcons name="hiking" size={22} color={palette.tint} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: palette.text }}>Long (45 min)</Text>
+                <Text style={{ fontSize: 12, color: palette.textSecondary }}>Extended trail or park outing</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={{ padding: 12, alignItems: 'center' }}
+              onPress={() => setDurationModalOpen(false)}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: palette.textSecondary }}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <FeedbackModal
         visible={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
