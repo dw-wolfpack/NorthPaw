@@ -560,6 +560,7 @@ export default function HomeScreen() {
 
   const { viewRef, isSharing, shareCard } = useShareCard();
   const shareRef = useRef<View>(null);
+  const outingSectionRef = useRef<View>(null);
 
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -646,8 +647,19 @@ export default function HomeScreen() {
           spotlightR.value = withTiming((w + 8) / 2, { duration: 500 });
         });
       }, 600);
-    } else if (step === 3) { // Tabs
-      mainScrollRef.current?.scrollTo({ y: 400, animated: true }); // Scroll down a bit to show tabs area if needed
+    } else if (step === 3) { // Exploring Now Button
+      mainScrollRef.current?.scrollTo({ y: 550, animated: true });
+      setTimeout(() => {
+        outingSectionRef.current?.measureInWindow((x, y, w, h) => {
+          spotlightX.value = withTiming(x - 4, { duration: 500 });
+          spotlightY.value = withTiming(y - 4, { duration: 500 });
+          spotlightW.value = withTiming(w + 8, { duration: 500 });
+          spotlightH.value = withTiming(h + 8, { duration: 500 });
+          spotlightR.value = withTiming(14, { duration: 500 });
+        });
+      }, 600);
+    } else if (step === 4) { // Tabs
+      mainScrollRef.current?.scrollTo({ y: 600, animated: true }); // Scroll down a bit to show tabs area if needed
       setTimeout(() => {
         const bottomPadding = insets.bottom > 0 ? insets.bottom : 12;
         const tabHighlightHeight = 64 + bottomPadding + 28;
@@ -1979,6 +1991,7 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
+            <View ref={outingSectionRef} collapsable={false}>
             {activeOuting ? (
               <View style={{
                 marginTop: 16,
@@ -2052,6 +2065,7 @@ export default function HomeScreen() {
                 <Text style={{ color: '#0A1A12', fontWeight: '800', fontSize: 14 }}>Exploring now</Text>
               </Pressable>
             )}
+            </View>
             <View ref={shareRef} collapsable={false} style={{ marginTop: 16, marginBottom: 8 }}>
               <ShareButton
                 onPress={() => shareCard({
@@ -2678,6 +2692,7 @@ export default function HomeScreen() {
                 walkthroughStep === 0 ? { top: 290 } :
                 walkthroughStep === 1 ? { top: 150 } : // Move tooltip above timeline
                 walkthroughStep === 2 ? { top: 150 } :
+                walkthroughStep === 3 ? { top: 150 } : // Move tooltip above Exploring Now button
                 { bottom: 180 } // Move tooltip above tabs
               ]}
             >
@@ -2708,6 +2723,14 @@ export default function HomeScreen() {
                 )}
                 {walkthroughStep === 3 && (
                   <>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Exploring Now</Text>
+                    <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
+                      Start walks here. NorthPaw will track the safety conditions and check in when you return.
+                    </Text>
+                  </>
+                )}
+                {walkthroughStep === 4 && (
+                  <>
                     <Text style={{ fontSize: 17, fontWeight: '800', color: palette.text, marginBottom: 4 }}>Navigation</Text>
                     <Text style={{ fontSize: 13, lineHeight: 18, color: palette.textSecondary, marginBottom: 12 }}>
                       Switch between your checklists, the field guide, and settings here.
@@ -2716,7 +2739,7 @@ export default function HomeScreen() {
                 )}
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: palette.textSecondary }}>Step {walkthroughStep + 1} of 4</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: palette.textSecondary }}>Step {walkthroughStep + 1} of 5</Text>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <Pressable
                       onPress={() => { hapticTap(); finishWalkthrough(); }}
@@ -2727,14 +2750,14 @@ export default function HomeScreen() {
                     </Pressable>
                     <Pressable 
                       onPress={() => {
-                        if (walkthroughStep < 3) triggerStep(walkthroughStep + 1);
+                        if (walkthroughStep < 4) triggerStep(walkthroughStep + 1);
                         else finishWalkthrough();
                       }} 
                       style={{ backgroundColor: palette.tint, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 }}
                       accessibilityRole="button"
-                      accessibilityLabel={walkthroughStep < 3 ? "Next tutorial step" : "Finish tutorial"}
+                      accessibilityLabel={walkthroughStep < 4 ? "Next tutorial step" : "Finish tutorial"}
                     >
-                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{walkthroughStep < 3 ? 'Next' : 'Got it'}</Text>
+                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{walkthroughStep < 4 ? 'Next' : 'Got it'}</Text>
                     </Pressable>
                   </View>
                 </View>
