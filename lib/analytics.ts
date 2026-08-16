@@ -66,6 +66,8 @@ const MEANINGFUL_EVENTS = new Set([
   'share_sheet_opened',
   'share_completed',
   'support_contact_pressed',
+  'outing_started',
+  'outing_canceled',
 ]);
 
 export function getHasTrackedActivity() {
