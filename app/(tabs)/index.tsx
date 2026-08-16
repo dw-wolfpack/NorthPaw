@@ -975,7 +975,7 @@ export default function HomeScreen() {
         airTempF: weather.tempF,
         roadTempF: calcRoadTemp,
         surfaceType: selectedSurface,
-        npiScore: npiScore ?? 0,
+        npiScore: Math.round((npiScore ?? 0) * 10),
         actionableTime,
       }).catch(() => {});
     }

@@ -23,6 +23,11 @@
           "fetch"
         ]
       },
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.northpaw.app"
+        ]
+      },
       "appleTeamId": "5V6Q478U5L"
     },
     "android": {
