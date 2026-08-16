@@ -58,7 +58,7 @@ export default function GoingNowModal({ visible, dogName = 'your dog', snapshot,
           <View style={styles.headerRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <MaterialCommunityIcons name="paw" size={22} color="#D4AF37" />
-              <Text style={styles.title}>Going Now — {dogName}</Text>
+              <Text style={styles.title}>Exploring Now — {dogName}</Text>
             </View>
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <MaterialCommunityIcons name="close" size={20} color="#9AAFA3" />

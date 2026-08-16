@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { syncAllMedReminderNotifications } from '@/lib/medReminders';
+import { trackEvent } from '@/lib/analytics';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -31,6 +32,15 @@ export function MedReminderNotifications() {
 
     const routeSub = Notifications.addNotificationResponseReceivedListener(response => {
       const url = response.notification.request.content.data?.url;
+      const title = response.notification.request.content.title;
+      const isMorningBrief = title && title.toLowerCase().includes('good morning');
+      
+      if (isMorningBrief) {
+        trackEvent('morning_brief_opened');
+      } else {
+        trackEvent('med_reminder_opened');
+      }
+
       if (url && typeof url === 'string') {
         router.push(url as any);
       }
