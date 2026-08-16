@@ -2,17 +2,16 @@ import * as Haptics from 'expo-haptics';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share, Switch } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Share } from 'react-native';
 import Constants from 'expo-constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   trackEvent,
-  getAnalyticsEnvironment,
   isTestflightOrDevBuild,
   isAnalyticsEnabledInNonProd,
   setAnalyticsEnabledInNonProd,
 } from '@/lib/analytics';
+import { DeveloperOnly } from '@/components/DeveloperOnly';
 import {
   getReviewData,
   saveReviewData,
@@ -45,7 +44,6 @@ import { getTabScrollPadding } from '@/lib/layout';
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
-  const isDark = colorScheme === 'dark';
   const palette = Colors[colorScheme];
   const { isPro, configured, expoGo, loading, error } = useSubscription();
   const router = useRouter();
@@ -53,47 +51,18 @@ export default function SettingsScreen() {
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
-  const [isMockHotWeather, setIsMockHotWeather] = useState(false);
-  const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
-  const [sendAnalyticsInDev, setSendAnalyticsInDev] = useState(false);
   const [mixpanelEnabled, setMixpanelEnabled] = useState(false);
 
-  useEffect(() => {
-    AsyncStorage.getItem('@northpaw/mock_hot_weather_enabled').then(val => {
-      setIsMockHotWeather(val === 'true');
-    });
-    AsyncStorage.getItem('@northpaw_temp_unit').then(val => {
-      if (val === 'C' || val === 'F') setTempUnit(val);
-    });
-    isAnalyticsEnabledInNonProd().then(val => {
-      setSendAnalyticsInDev(val);
-      setMixpanelEnabled(val);
-    });
-  }, []);
-
-  const toggleTempUnit = async (newUnit: 'F' | 'C') => {
-    hapticTap();
-    setTempUnit(newUnit);
-    await AsyncStorage.setItem('@northpaw_temp_unit', newUnit);
-    trackEvent('temp_unit_changed', { unit: newUnit });
-  };
-
-  const toggleMockHotWeather = async () => {
-    const nextVal = !isMockHotWeather;
-    setIsMockHotWeather(nextVal);
-    await AsyncStorage.setItem('@northpaw/mock_hot_weather_enabled', nextVal ? 'true' : 'false');
-    Alert.alert(
-      nextVal ? '☀️ Demo Mode Enabled' : '🌐 Live Weather Restored',
-      nextVal
-        ? 'Air temp set to 85°F (Asphalt ~134°F 🔴, Turf ~155°F 🔴) for App Store marketing screenshots.'
-        : 'Restored live local weather.'
-    );
-  };
+  // Load initial Mixpanel setting for non-prod
+  useFocusEffect(
+    useCallback(() => {
+      isAnalyticsEnabledInNonProd().then((val) => setMixpanelEnabled(val));
+    }, [])
+  );
 
   const toggleMixpanel = async () => {
     const next = !mixpanelEnabled;
     setMixpanelEnabled(next);
-    setSendAnalyticsInDev(next);
     await setAnalyticsEnabledInNonProd(next);
   };
 
@@ -105,39 +74,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: getTabScrollPadding(insets.bottom) }]}>
-      <Text style={styles.h1}>Preferences</Text>
-      <View style={[styles.linkCard, { borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Temperature Unit</Text>
-          <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 4, lineHeight: 16 }}>
-            Display weather & surface heat in °F or °C
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)', borderRadius: 8, padding: 3, gap: 4 }}>
-          <Pressable
-            onPress={() => toggleTempUnit('F')}
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 6,
-              borderRadius: 6,
-              backgroundColor: tempUnit === 'F' ? palette.tint : 'transparent',
-            }}>
-            <Text style={{ fontWeight: '800', fontSize: 14, color: tempUnit === 'F' ? '#0A1A12' : palette.text }}>°F</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => toggleTempUnit('C')}
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 6,
-              borderRadius: 6,
-              backgroundColor: tempUnit === 'C' ? palette.tint : 'transparent',
-            }}>
-            <Text style={{ fontWeight: '800', fontSize: 14, color: tempUnit === 'C' ? '#0A1A12' : palette.text }}>°C</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <Text style={[styles.h1, { marginTop: 16 }]}>Your dog</Text>
+      <Text style={styles.h1}>Your dog</Text>
       <Pressable
         onPress={() => { hapticTap();  router.push('/dog-profile'); }}
         style={({ pressed }) => [
@@ -148,7 +85,7 @@ export default function SettingsScreen() {
             opacity: pressed ? 0.92 : 1,
             marginBottom: 8,
           },
-        ]}>
+        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Name &amp; photo</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
@@ -167,7 +104,7 @@ export default function SettingsScreen() {
             opacity: pressed ? 0.92 : 1,
             marginBottom: 8,
           },
-        ]}>
+        , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Care reminders</Text>
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
@@ -249,20 +186,29 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
-      <Text style={[styles.h1, { marginTop: 24 }]}>NorthPaw Companion</Text>
+      {/* 
+      <Text style={[styles.h1, { marginTop: 24 }]}>Subscription</Text>
       <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}>
         <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-          Private On-Device Baseline Intelligence
+          {loading ? 'Checking Status...' : isPro ? 'NorthPaw Pro Active' : 'Free Library + Locked Pro Packs'}
         </Text>
         <Text style={{ color: palette.textSecondary, marginTop: 8, lineHeight: 20, fontSize: 14 }}>
-          Learns your dog's heat tolerance, similar-condition recall, and seasonal adaptation over time.
+          {loading
+            ? 'Verifying subscription details...'
+            : isPro
+              ? 'Thank you for testing the NorthPaw Pro beta! You have access to all premium checklists and offline reference cards.'
+              : 'NorthPaw Pro is currently in beta. Unlock custom safety checklists, offline regional guide packs, and location logging.'}
         </Text>
-        <Pressable
-          onPress={() => { hapticTap(); router.push('/paywall'); }}
-          style={[styles.cta, { backgroundColor: palette.tint, marginTop: 14 }]}>
-          <Text style={styles.ctaText}>View NorthPaw Companion</Text>
-        </Pressable>
+        {error ? <Text style={{ color: palette.danger, marginTop: 10 }}>{error}</Text> : null}
+        {!loading && !isPro ? (
+          <Pressable
+            onPress={() => { hapticTap();  router.push('/paywall'); }}
+            style={[styles.cta, { backgroundColor: palette.tint, marginTop: 14 }]}>
+            <Text style={styles.ctaText}>Unlock Pro</Text>
+          </Pressable>
+        ) : null}
       </View>
+      */}
 
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Legal &amp; listing</Text>
@@ -321,189 +267,158 @@ export default function SettingsScreen() {
         <FontAwesome name="share-alt" size={16} color={palette.tint} />
       </Pressable>
 
+      <DeveloperOnly>
+        <Text style={[styles.h1, { marginTop: 28, color: palette.tint }]}>Developer Settings</Text>
+        <Pressable
+          onPress={async () => {
+            hapticTap();
+            await toggleMixpanel();
+          }}
+          style={({ pressed }) => [
+            styles.linkCard,
+            {
+              borderColor: mixpanelEnabled ? palette.tint : palette.border,
+              backgroundColor: mixpanelEnabled ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
+              opacity: pressed ? 0.92 : 1,
+              marginBottom: 8,
+            },
+          ]}
+        >
+          <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+            <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+              {mixpanelEnabled ? 'Mixpanel Events: ON (Testflight)' : 'Mixpanel Events: OFF'}
+            </Text>
+            <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+              Toggle to disable analytics in Testflight builds. In production this toggle is hidden.
+            </Text>
+          </View>
+          <FontAwesome name={mixpanelEnabled ? "check-circle" : "times-circle"} size={16} color={palette.tint} />
+        </Pressable>
 
-      {isTestflightOrDevBuild() ? (
-        <>
-          <Text style={[styles.h1, { marginTop: 28, color: palette.tint }]}>Developer Settings</Text>
-          <Pressable
-            onPress={() => {
-              hapticTap();
-              toggleMockHotWeather();
-            }}
-            style={({ pressed }) => [
-              styles.linkCard,
-              {
-                borderColor: isMockHotWeather ? palette.tint : palette.border,
-                backgroundColor: isMockHotWeather ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
-                opacity: pressed ? 0.92 : 1,
-                marginBottom: 8,
-              },
-            ]}
-          >
-            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-                {isMockHotWeather ? '☀️ Demo Mode Active (85°F Air)' : '☀️ App Store Screenshot Mode'}
-              </Text>
-              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
-                {isMockHotWeather
-                  ? 'Air 85°F • Asphalt 134°F 🔴 • Turf 155°F 🔴. Tap to restore live weather.'
-                  : 'Mock an 85°F sunny afternoon for high-contrast App Store marketing screenshots.'}
-              </Text>
-            </View>
-            <FontAwesome name={isMockHotWeather ? "sun-o" : "camera"} size={16} color={palette.tint} />
-          </Pressable>
+        <Pressable
+          onPress={async () => {
+            hapticTap();
+            const dates = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'];
+            await saveReviewData({ reviewState: 'neverShown', uniqueUsageDays: dates });
+            resetSessionGuard();
+            Alert.alert(
+              '7 Usage Days Simulated! 🐾',
+              'Stored 7 unique usage days and reset session guard. Navigating Home will now automatically trigger the 7-day Review Prompt flow.',
+              [
+                {
+                  text: 'Go to Home Screen',
+                  onPress: () => router.replace('/(tabs)'),
+                },
+                { text: 'Stay Here', style: 'cancel' },
+              ]
+            );
+          }}
+          style={({ pressed }) => [
+            styles.linkCard,
+            {
+              borderColor: palette.border,
+              backgroundColor: palette.surface,
+              opacity: pressed ? 0.92 : 1,
+              marginBottom: 8,
+            },
+          ]}
+        >
+          <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+            <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+              ⚡ Trigger 7-Day Review Prompt
+            </Text>
+            <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+              Simulates 7 unique usage days and resets session guard. Next Home visit opens review modal.
+            </Text>
+          </View>
+          <FontAwesome name="star" size={16} color={palette.tint} />
+        </Pressable>
 
-          <Pressable
-            onPress={async () => {
-              hapticTap();
-              await toggleMixpanel();
-            }}
-            style={({ pressed }) => [
-              styles.linkCard,
-              {
-                borderColor: mixpanelEnabled ? palette.tint : palette.border,
-                backgroundColor: mixpanelEnabled ? 'rgba(212, 175, 55, 0.08)' : palette.surface,
-                opacity: pressed ? 0.92 : 1,
-                marginBottom: 8,
-              },
-            ]}
-          >
-            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-                {mixpanelEnabled ? 'Mixpanel Events: ON (Testflight)' : 'Mixpanel Events: OFF'}
-              </Text>
-              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
-                Toggle to disable analytics in Testflight builds. In production this toggle is hidden.
-              </Text>
-            </View>
-            <FontAwesome name={mixpanelEnabled ? "check-circle" : "times-circle"} size={16} color={palette.tint} />
-          </Pressable>
+        <Pressable
+          onPress={async () => {
+            hapticTap();
+            await resetReviewDataForTesting();
+            Alert.alert('Review State Cleared', 'Cleared stored review dates and reset state to fresh.');
+          }}
+          style={({ pressed }) => [
+            styles.linkCard,
+            {
+              borderColor: palette.border,
+              backgroundColor: palette.surface,
+              opacity: pressed ? 0.92 : 1,
+              marginBottom: 8,
+            },
+          ]}
+        >
+          <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+            <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+              🗑️ Clear Review State (Reset Mock)
+            </Text>
+            <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+              Clear stored review dates and reset prompt state so it stops triggering on Home.
+            </Text>
+          </View>
+          <FontAwesome name="trash" size={16} color={palette.danger} />
+        </Pressable>
 
-          <Pressable
-            onPress={async () => {
-              hapticTap();
-              const dates = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'];
-              await saveReviewData({ reviewState: 'neverShown', uniqueUsageDays: dates });
-              resetSessionGuard();
-              Alert.alert(
-                '7 Usage Days Simulated! 🐾',
-                'Stored 7 unique usage days and reset session guard. Navigating Home will now automatically trigger the 7-day Review Prompt flow.',
-                [
-                  {
-                    text: 'Go to Home Screen',
-                    onPress: () => router.replace('/(tabs)'),
+        <Pressable
+          onPress={async () => {
+            hapticTap();
+            Alert.alert(
+              'Reset Onboarding',
+              'Are you sure you want to reset all onboarding progress and profile data?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Reset',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await saveDogProfile({
+                        onboardingDone: false,
+                        dogName: '',
+                        dogPhotoUri: '',
+                        dogBreed: '',
+                        dogBreedMix: '',
+                        dogAgeGroup: '',
+                        dogOutingTypes: [],
+                        locationPermission: '',
+                        notificationsPermission: '',
+                        dogWeightLbs: null,
+                        dogCoatType: '',
+                        dogColor: '',
+                        dogSnoutProfile: 'standard',
+                        dogActivityBaseline: 'moderate',
+                        morningBriefTime: '7:00 AM',
+                        gearVault: {},
+                      });
+                      await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true });
+                      router.replace('/onboarding');
+                    } catch (e) {
+                      Alert.alert('Error', 'Failed to reset onboarding profile.');
+                    }
                   },
-                  { text: 'Stay Here', style: 'cancel' },
-                ]
-              );
-            }}
-            style={({ pressed }) => [
-              styles.linkCard,
-              {
-                borderColor: palette.border,
-                backgroundColor: palette.surface,
-                opacity: pressed ? 0.92 : 1,
-                marginBottom: 8,
-              },
-            ]}
-          >
-            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-                ⭐️ Mock 7-Day Review Trigger
-              </Text>
-              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
-                Store 7 unique usage days & reset session guard to test automatic Home screen review prompt.
-              </Text>
-            </View>
-            <FontAwesome name="star" size={16} color={palette.tint} />
-          </Pressable>
-
-          <Pressable
-            onPress={async () => {
-              hapticTap();
-              await resetReviewDataForTesting();
-              Alert.alert('Review State Cleared', 'Cleared stored review dates and reset state to fresh.');
-            }}
-            style={({ pressed }) => [
-              styles.linkCard,
-              {
-                borderColor: palette.border,
-                backgroundColor: palette.surface,
-                opacity: pressed ? 0.92 : 1,
-                marginBottom: 8,
-              },
-            ]}
-          >
-            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-                🗑️ Clear Review State (Reset Mock)
-              </Text>
-              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
-                Clear stored review dates and reset prompt state so it stops triggering on Home.
-              </Text>
-            </View>
-            <FontAwesome name="trash" size={16} color={palette.danger} />
-          </Pressable>
-
-          <Pressable
-            onPress={async () => {
-              hapticTap();
-              Alert.alert(
-                'Reset Onboarding',
-                'Are you sure you want to reset all onboarding progress and profile data?',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Reset',
-                    style: 'destructive',
-                    onPress: async () => {
-                      try {
-                        await saveDogProfile({
-                          onboardingDone: false,
-                          dogName: '',
-                          dogPhotoUri: '',
-                          dogBreed: '',
-                          dogBreedMix: '',
-                          dogAgeGroup: '',
-                          dogOutingTypes: [],
-                          locationPermission: '',
-                          notificationsPermission: '',
-                          dogWeightLbs: null,
-                          dogCoatType: '',
-                          dogColor: '',
-                          dogSnoutProfile: 'standard',
-                          dogActivityBaseline: 'moderate',
-                          morningBriefTime: '7:00 AM',
-                          gearVault: {},
-                        });
-                        await FileSystem.deleteAsync(FileSystem.documentDirectory + 'home_walkthrough.txt', { idempotent: true });
-                        router.replace('/onboarding');
-                      } catch (e) {
-                        Alert.alert('Error', 'Failed to reset onboarding profile.');
-                      }
-                    },
-                  },
-                ]
-              );
-            }}
-            style={({ pressed }) => [
-              styles.linkCard,
-              {
-                borderColor: '#B5443A',
-                backgroundColor: palette.surface,
-                opacity: pressed ? 0.92 : 1,
-              },
-            ]}>
-            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-              <Text style={{ color: '#B5443A', fontWeight: '800', fontSize: 16 }}>Reset Onboarding & Profile</Text>
-              <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
-                Clear all database profile records and return to the onboarding flow.
-              </Text>
-            </View>
-            <FontAwesome name="refresh" size={16} color="#B5443A" />
-          </Pressable>
-        </>
-      ) : null}
+                },
+              ]
+            );
+          }}
+          style={({ pressed }) => [
+            styles.linkCard,
+            {
+              borderColor: '#B5443A',
+              backgroundColor: palette.surface,
+              opacity: pressed ? 0.92 : 1,
+            },
+          ]}>
+          <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+            <Text style={{ color: '#B5443A', fontWeight: '800', fontSize: 16 }}>Reset Onboarding & Profile</Text>
+            <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+              Clear all database profile records and return to the onboarding flow.
+            </Text>
+          </View>
+          <FontAwesome name="refresh" size={16} color="#B5443A" />
+        </Pressable>
+      </DeveloperOnly>
 
       <View style={styles.footerContainer}>
         <Text style={[styles.footerText, { color: palette.textSecondary }]}>
