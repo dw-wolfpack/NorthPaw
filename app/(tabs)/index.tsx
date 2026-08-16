@@ -2033,6 +2033,12 @@ export default function HomeScreen() {
                     style={{ backgroundColor: 'rgba(192, 57, 43, 0.15)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
                     onPress={async () => {
                       hapticTap();
+                      if (activeOuting) {
+                        trackEvent('outing_canceled', {
+                          durationMinutes: activeOuting.expectedDurationMinutes,
+                          timeElapsedSeconds: Math.round((Date.now() - activeOuting.startedAt) / 1000),
+                        });
+                      }
                       await cancelActiveOuting();
                       setActiveOuting(null);
                     }}>
@@ -2820,6 +2826,13 @@ export default function HomeScreen() {
                   notificationId,
                 });
                 setActiveOuting(out);
+                trackEvent('outing_started', {
+                  durationMinutes: 10,
+                  source: 'home',
+                  surfaceType: selectedSurface,
+                  estimatedSurfaceTemp: currentRoadPoint?.roadTempF ?? 77,
+                  riskCategory: currentRoadPoint?.roadBand ?? 'safe',
+                });
               }}>
               <MaterialCommunityIcons name="timer-sand" size={22} color={palette.tint} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
@@ -2867,6 +2880,13 @@ export default function HomeScreen() {
                   notificationId,
                 });
                 setActiveOuting(out);
+                trackEvent('outing_started', {
+                  durationMinutes: 25,
+                  source: 'home',
+                  surfaceType: selectedSurface,
+                  estimatedSurfaceTemp: currentRoadPoint?.roadTempF ?? 77,
+                  riskCategory: currentRoadPoint?.roadBand ?? 'safe',
+                });
               }}>
               <MaterialCommunityIcons name="walk" size={22} color={palette.tint} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
@@ -2914,6 +2934,13 @@ export default function HomeScreen() {
                   notificationId,
                 });
                 setActiveOuting(out);
+                trackEvent('outing_started', {
+                  durationMinutes: 45,
+                  source: 'home',
+                  surfaceType: selectedSurface,
+                  estimatedSurfaceTemp: currentRoadPoint?.roadTempF ?? 77,
+                  riskCategory: currentRoadPoint?.roadBand ?? 'safe',
+                });
               }}>
               <MaterialCommunityIcons name="hiking" size={22} color={palette.tint} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
