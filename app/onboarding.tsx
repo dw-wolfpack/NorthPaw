@@ -14,6 +14,8 @@ import {
   Animated,
   ActivityIndicator,
   Alert,
+  AppState,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -45,14 +47,15 @@ import { fetchWeatherForDeviceLocation } from '@/lib/weather/weatherDispatcher';
 import { type HomeWeatherState } from '@/lib/weather/nwsWeather';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { useColorScheme } from '@/components/useColorScheme';
-import { trackEvent, setUserProperties } from '@/lib/analytics';
+import { trackEvent, setUserProperties, getAnalyticsEnvironment } from '@/lib/analytics';
 import { FeedbackModal } from '@/components/FeedbackModal';
 import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
 
 type SceneId =
   | 'welcome'
   | 'name'
-  | 'breed-snout'
+  | 'breed'
+  | 'snout'
   | 'age'
   | 'biology-activity'
   | 'location'
@@ -64,7 +67,8 @@ type SceneId =
 const SCENES: SceneId[] = [
   'welcome',
   'name',
-  'breed-snout',
+  'breed',
+  'snout',
   'age',
   'biology-activity',
   'location',
@@ -84,7 +88,6 @@ export const BREEDS = [
   'Aussiedoodle',
   'Australian Cattle Dog',
   'Australian Shepherd',
-  'Aussiedoodle',
   'Basset Hound',
   'Beagle',
   'Belgian Malinois',
@@ -98,7 +101,9 @@ export const BREEDS = [
   'Bull Terrier',
   'Bulldog',
   'Cane Corso',
+  'Catahoula',
   'Cavalier King Charles Spaniel',
+  'Cavapoo',
   'Chihuahua',
   'Cocker Spaniel',
   'Cockapoo',
@@ -170,9 +175,9 @@ const OUTING_OPTIONS = [
 ];
 
 const SNOUT_OPTIONS: Array<{ id: 'flat' | 'standard' | 'long'; title: string; subtitle: string }> = [
-  { id: 'flat', title: 'Flat / Smushed', subtitle: 'Pug, Bulldog, Boxer-style airway' },
-  { id: 'standard', title: 'Standard', subtitle: 'Balanced cooling profile' },
-  { id: 'long', title: 'Long', subtitle: 'Greyhound-style airflow advantage' },
+  { id: 'flat', title: 'Flat / Smushed', subtitle: 'Short airway (Pug, Frenchie, Bulldog, Boxer)' },
+  { id: 'standard', title: 'Standard', subtitle: 'Typical dog snout (Lab, Golden, German Shepherd)' },
+  { id: 'long', title: 'Long', subtitle: 'Elongated snout (Greyhound, Whippet, Dachshund)' },
 ];
 
 const ACTIVITY_OPTIONS: Array<{ id: 'low' | 'moderate' | 'high'; title: string; subtitle: string }> = [
@@ -248,8 +253,43 @@ export default function OnboardingScreen() {
   const [loadingAha, setLoadingAha] = useState(false);
   const [activationReady, setActivationReady] = useState(false);
   const [activationLineIdx, setActivationLineIdx] = useState(0);
-  const [previewInteracted, setPreviewInteracted] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const onboardingSessionId = useRef('obs-' + Math.random().toString(36).substring(2, 9)).current;
+  const sceneVisitCounts = useRef<Record<string, number>>({});
+  const sceneStartTime = useRef<number>(Date.now());
+  const isTransitioning = useRef(false);
+
+  const trackOnboardingEvent = (eventName: string, extraProps: Record<string, any> = {}) => {
+    const timeOnSceneMs = Date.now() - sceneStartTime.current;
+    trackEvent(eventName, {
+      onboarding_flow_version: "2",
+      onboarding_session_id: onboardingSessionId,
+      scene_name: SCENES[sceneIdx],
+      scene_position: sceneIdx,
+      scene_visit_number: sceneVisitCounts.current[SCENES[sceneIdx]] || 1,
+      time_on_scene_ms: timeOnSceneMs,
+      is_first_onboarding: true,
+      ...extraProps
+    });
+  };
+
+  useEffect(() => {
+    const s = SCENES[sceneIdx];
+    sceneVisitCounts.current[s] = (sceneVisitCounts.current[s] || 0) + 1;
+    sceneStartTime.current = Date.now();
+  }, [sceneIdx]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState.match(/inactive|background/)) {
+        trackOnboardingEvent('onboarding_interrupted', { reason: 'backgrounded' });
+      } else if (nextAppState === 'active') {
+        trackOnboardingEvent('onboarding_resumed');
+      }
+    });
+    return () => { subscription.remove(); };
+  }, [sceneIdx]);
 
   const [requestBreedModalOpen, setRequestBreedModalOpen] = useState(false);
   const [disclaimerAgreed, setDisclaimerAgreed] = useState(false);
@@ -370,7 +410,7 @@ export default function OnboardingScreen() {
   }, [breedQuery]);
 
   const legacyStep = useMemo((): string => {
-    if (scene === 'breed-snout') return 'breed';
+    if (scene === 'breed' || scene === 'snout') return 'breed';
     if (scene === 'biology-activity') return 'biology';
     if (scene === 'npi-activation') return 'aha';
     if (scene === 'morning-brief' || scene === 'commitment') return 'notifications';
@@ -379,10 +419,11 @@ export default function OnboardingScreen() {
 
   const canAdvance = useMemo(() => {
     if (scene === 'name') return name.trim().length > 0;
-    if (legacyStep === 'breed') {
+    if (scene === 'breed') {
       if (isMixedBreed) return mixedPrimary.trim().length > 0;
       return breed.trim().length > 0;
     }
+    if (scene === 'snout') return true;
     if (legacyStep === 'age') return ageGroup.length > 0;
     if (legacyStep === 'outings') return outingTypes.length > 0;
     return true;
@@ -404,6 +445,7 @@ export default function OnboardingScreen() {
 
   const handlePhotoContinue = async () => {
     if (pickedUri) {
+      trackEvent('onboarding_photo_uploaded');
       advance();
       return;
     }
@@ -419,11 +461,17 @@ export default function OnboardingScreen() {
         });
         if (!res.canceled && res.assets[0]?.uri) {
           setPickedUri(res.assets[0].uri);
+          trackEvent('onboarding_photo_uploaded');
+        } else {
+          trackEvent('onboarding_photo_skipped');
         }
+      } else {
+        trackEvent('onboarding_photo_skipped');
       }
       advance();
     } catch (e) {
       console.warn('[NorthPaw] Photo permission/picker error', e);
+      trackEvent('onboarding_photo_skipped');
       advance();
     } finally {
       setBusy(false);
@@ -431,6 +479,7 @@ export default function OnboardingScreen() {
   };
 
   const selectionTick = () => {
+    Keyboard.dismiss();
     Haptics.selectionAsync().catch(() => {});
   };
 
@@ -441,20 +490,46 @@ export default function OnboardingScreen() {
 
   const loadAha = async () => {
     setLoadingAha(true);
+    trackEvent('weather_load_started');
     try {
-      const weather = await fetchWeatherForDeviceLocation();
+      const weather = await Promise.race([
+        fetchWeatherForDeviceLocation(),
+        new Promise<HomeWeatherState>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+      ]);
       setAhaWeather(weather);
-    } catch {
+      trackEvent('weather_loaded');
+    } catch (err: any) {
       setAhaWeather({ status: 'unavailable', message: 'Could not load live conditions.' });
+      trackEvent('weather_fetch_failed', { 
+        provider: 'NWS', 
+        error_category: err.message === 'timeout' ? 'timeout' : 'network',
+        retryable: true,
+        cached_fallback_available: false
+      });
     } finally {
       setLoadingAha(false);
     }
   };
 
   const advance = () => {
-    if (!canAdvance || sceneIdx >= SCENES.length - 1) return;
+    if (isTransitioning.current) return;
+    if (!canAdvance || sceneIdx >= SCENES.length - 1) {
+      if (scene === 'name' && name.trim().length === 0) {
+        trackOnboardingEvent('onboarding_name_validation_blocked', { validation_reason: 'empty' });
+        trackOnboardingEvent('onboarding_validation_blocked', { validation_reason: 'empty' });
+      }
+      return;
+    }
+    isTransitioning.current = true;
+    if (scene === 'name') {
+      trackOnboardingEvent('onboarding_name_completed');
+    } else if (scene === 'breed') {
+      trackOnboardingEvent('onboarding_breed_completed', { breed: isMixedBreed ? mixedPrimary : breed });
+    }
+    trackOnboardingEvent('onboarding_step_completed');
     selectionTick();
     setSceneIdx((s) => s + 1);
+    setTimeout(() => { isTransitioning.current = false; }, 400);
   };
 
   const advanceFromWelcome = () => {
@@ -469,6 +544,7 @@ export default function OnboardingScreen() {
 
   const requestLocation = async () => {
     const perm = await Location.requestForegroundPermissionsAsync();
+    trackEvent('location_permission_result', { result: perm.status });
     if (perm.status === 'granted') {
       setLocationPermission('granted');
       setSceneIdx(SCENES.indexOf('npi-activation'));
@@ -495,7 +571,9 @@ export default function OnboardingScreen() {
       }
       setNotificationsPermission(finalNotif);
       if (finalNotif === 'granted') {
-        trackEvent('notification_enabled', { context: 'onboarding' });
+        trackEvent('morning_brief_enabled', { context: 'onboarding' });
+      } else {
+        trackEvent('morning_brief_disabled', { context: 'onboarding' });
       }
 
       let photoUri = '';
@@ -636,20 +714,24 @@ export default function OnboardingScreen() {
     }
 
     if (scene === 'name') {
+      const isNameEmpty = name.trim().length === 0;
       return (
         <AnimatedReanimated.View key="name" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
           <Text style={[styles.h1, { color: palette.text }]}>What&apos;s your dog&apos;s name?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>We will personalize every screen for your dog.</Text>
           <TextInput
             value={name}
-            onChangeText={setName}
+            onChangeText={(t) => {
+              if (name.length === 0 && t.length > 0) trackOnboardingEvent('onboarding_name_input_started');
+              setName(t);
+            }}
             placeholder="e.g. River"
             placeholderTextColor={palette.textSecondary}
             autoCapitalize="words"
             autoCorrect={false}
             maxLength={48}
             returnKeyType="done"
-            onSubmitEditing={advance}
+            onSubmitEditing={() => advance()}
             style={[
               styles.input,
               {
@@ -659,16 +741,21 @@ export default function OnboardingScreen() {
               },
             ]}
           />
+
           <Pressable
-            disabled={!canAdvance}
-            onPress={() => { hapticTap(); advance(); }}
+            onPress={() => {
+              trackOnboardingEvent('onboarding_name_continue_tapped');
+              hapticTap();
+              advance();
+            }}
             style={({ pressed }) => [
               styles.cta,
               {
-                backgroundColor: canAdvance ? palette.tint : palette.border,
-                opacity: pressed && canAdvance ? 0.9 : 1,
+                backgroundColor: !isNameEmpty ? palette.tint : palette.border,
+                opacity: pressed && !isNameEmpty ? 0.9 : 1,
               },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
         </AnimatedReanimated.View>
@@ -713,7 +800,11 @@ export default function OnboardingScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => { hapticTap(); advance(); }}
+              onPress={() => {
+                hapticTap();
+                trackEvent('onboarding_photo_skipped');
+                advance();
+              }}
               style={({ pressed }) => [styles.ghostBtn, { borderColor: palette.border, opacity: pressed ? 0.8 : 1 }]}>
               <Text style={[styles.ghostText, { color: palette.textSecondary, textAlign: 'center' }]}>Skip for now</Text>
             </Pressable>
@@ -722,12 +813,12 @@ export default function OnboardingScreen() {
       );
     }
 
-    if (scene === 'breed-snout') {
+    if (scene === 'breed') {
       return (
-        <AnimatedReanimated.View key="breed-snout" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}, and how is {dogName}&apos;s snout?</Text>
+        <AnimatedReanimated.View key="breed" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>What breed is {dogName}?</Text>
           <Text style={[styles.body, { color: palette.textSecondary }]}>
-            Pick your dog’s breed for their profile. You’ll customize snout, coat, and activity next.
+            Pick your dog’s breed for their profile.
           </Text>
           <TextInput
             value={breedQuery}
@@ -758,7 +849,8 @@ export default function OnboardingScreen() {
             style={({ pressed }) => [
               styles.mixedRow,
               { borderColor: palette.border, backgroundColor: isMixedBreed ? palette.surface : 'transparent', opacity: pressed ? 0.9 : 1 },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
             <MaterialCommunityIcons name={isMixedBreed ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={20} color={palette.tint} />
             <Text style={[styles.mixedLabel, { color: palette.text }]}>Mixed Breed / Rescue</Text>
           </Pressable>
@@ -789,26 +881,27 @@ export default function OnboardingScreen() {
             style={styles.breedScroll}
             contentContainerStyle={styles.breedGrid}
             nestedScrollEnabled
-            keyboardShouldPersistTaps="always">
+            keyboardShouldPersistTaps="handled">
             {filteredBreeds.map((item) => {
               const selected = !isMixedBreed && breed === item;
               return (
                 <Pressable
-                  key={item}
-                  onPress={() => {
-                    selectionTick();
-                    setIsMixedBreed(false);
-                    setBreed(item);
-                  }}
-                  style={({ pressed }) => [
-                    styles.breedCard,
-                    {
-                      borderColor: selected ? palette.tint : palette.border,
-                      backgroundColor: selected ? palette.selectedBg : palette.surface,
-                      opacity: pressed ? 0.8 : 1,
-                      transform: [{ scale: pressed ? 0.98 : 1 }],
-                    },
-                  ]}>
+                   key={item}
+                   onPress={() => {
+                     Keyboard.dismiss();
+                     selectionTick();
+                     setIsMixedBreed(false);
+                     setBreed(item);
+                   }}
+                   style={({ pressed }) => [
+                     styles.breedCard,
+                     {
+                       borderColor: selected ? palette.tint : palette.border,
+                       backgroundColor: selected ? palette.selectedBg : palette.surface,
+                       opacity: pressed ? 0.8 : 1,
+                       transform: [{ scale: pressed ? 0.98 : 1 }],
+                     },
+                   ]}>
                   <Text style={styles.breedIcon}>🐾</Text>
                   <Text style={[styles.breedText, { color: palette.text }]}>{item}</Text>
                 </Pressable>
@@ -824,7 +917,30 @@ export default function OnboardingScreen() {
               Can&apos;t find your breed? Request a breed →
             </Text>
           </Pressable>
-          <Text style={[styles.label, { color: palette.text, marginBottom: 8 }]}>How is {dogName}&apos;s snout?</Text>
+          <Pressable
+            disabled={!canAdvance}
+            onPress={() => { hapticTap(); advance(); }}
+            style={({ pressed }) => [
+              styles.cta,
+              {
+                backgroundColor: canAdvance ? palette.tint : palette.border,
+                opacity: pressed && canAdvance ? 0.9 : 1,
+              },
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
+            <Text style={styles.ctaText}>Continue</Text>
+          </Pressable>
+        </AnimatedReanimated.View>
+      );
+    }
+
+    if (scene === 'snout') {
+      return (
+        <AnimatedReanimated.View key="snout" style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>How is {dogName}&apos;s snout?</Text>
+          <Text style={[styles.body, { color: palette.textSecondary }]}>
+            Snout shape directly affects how efficiently a dog cools down through panting.
+          </Text>
           <View style={styles.cardList}>
             {SNOUT_OPTIONS.map((opt) => {
               const selected = dogSnoutProfile === opt.id;
@@ -842,7 +958,8 @@ export default function OnboardingScreen() {
                       backgroundColor: selected ? palette.selectedBg : palette.surface,
                       opacity: pressed ? 0.92 : 1,
                     },
-                  , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+                    { transform: [{ scale: pressed ? 0.98 : 1 }] }
+                  ]}>
                   <Text style={[styles.cardTitle, { color: palette.text }]}>{opt.title}</Text>
                   <Text style={[styles.cardSubtitle, { color: palette.textSecondary }]}>{opt.subtitle}</Text>
                 </Pressable>
@@ -853,10 +970,10 @@ export default function OnboardingScreen() {
             entering={FadeInDown.duration(300)}
             style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
             {dogSnoutProfile === 'flat'
-              ? `Did you know? Flat-faced dogs like ${dogName} can cool less efficiently through panting.`
+              ? `Did you know? Flat-faced dogs like ${dogName} cool less efficiently through panting and get hot faster.`
               : dogSnoutProfile === 'long'
-              ? `Did you know? Long-snouted dogs like ${dogName} are generally more efficient at panting to cool down.`
-              : `Did you know? Snout length directly affects how efficiently a dog cools down through panting.`}
+              ? `Did you know? Long-snouted dogs like ${dogName} have more snout surface area, making them efficient at panting to cool down.`
+              : `Did you know? Typical dog snouts offer a balanced, healthy cooling profile.`}
           </AnimatedReanimated.Text>
           <Pressable
             disabled={!canAdvance}
@@ -867,7 +984,8 @@ export default function OnboardingScreen() {
                 backgroundColor: canAdvance ? palette.tint : palette.border,
                 opacity: pressed && canAdvance ? 0.9 : 1,
               },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
         </AnimatedReanimated.View>
@@ -1182,25 +1300,20 @@ export default function OnboardingScreen() {
           <Text style={[styles.body, { color: palette.textSecondary }]}>
             Pick a time so NorthPaw can deliver a daily safety window before your first outing.
           </Text>
-          <Pressable
-            onPress={() => {
-              selectionTick();
-              setPreviewInteracted(true);
-            }}
-            style={({ pressed }) => [
+          <View
+            style={[
               styles.notificationPreviewCard,
               {
                 borderColor: palette.border,
                 backgroundColor: palette.surface,
-                opacity: pressed ? 0.95 : 1,
               },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+            ]}>
             <Text style={[styles.notificationPreviewKicker, { color: palette.textSecondary }]}>Preview notification</Text>
             <Text style={[styles.notificationPreviewTitle, { color: palette.text }]}>NorthPaw Morning Brief</Text>
             <Text style={[styles.notificationPreviewBody, { color: palette.textSecondary }]}>
               {buildPreviewBody(morningBriefTime)}
             </Text>
-          </Pressable>
+          </View>
           <View style={styles.cardList}>
             {times.map((t) => {
               const selected = morningBriefTime === t;
@@ -1218,7 +1331,6 @@ export default function OnboardingScreen() {
                       return;
                     }
                     setMorningBriefTime(t);
-                    setPreviewInteracted(true);
                   }}
                   style={({ pressed }) => [
                     styles.infoCard,
@@ -1241,10 +1353,10 @@ export default function OnboardingScreen() {
             })}
           </View>
           <Pressable
-            disabled={!previewInteracted || busy}
+            disabled={busy}
             onPress={async () => {
               selectionTick();
-              if (!previewInteracted || busy) return;
+              if (busy) return;
               setBusy(true);
               try {
                 const permission = await requestMedReminderPermissions();
@@ -1257,8 +1369,8 @@ export default function OnboardingScreen() {
             style={({ pressed }) => [
               styles.cta,
               {
-                backgroundColor: previewInteracted && !busy ? palette.tint : palette.border,
-                opacity: pressed && previewInteracted && !busy ? 0.9 : 1,
+                backgroundColor: !busy ? palette.tint : palette.border,
+                opacity: pressed && !busy ? 0.9 : 1,
               },
             , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>Enable Morning Brief alerts</Text>}
@@ -1393,7 +1505,7 @@ export default function OnboardingScreen() {
         <AnimatedReanimated.View style={[styles.flex, screenFadeStyle]}>
           <ScrollView
             contentContainerStyle={styles.scroll}
-            keyboardShouldPersistTaps="always">
+            keyboardShouldPersistTaps="handled">
           <AnimatedReanimated.View style={[styles.stepRow, headerFadeStyle]}>
             <Text style={[styles.stepLabel, { color: palette.textSecondary }]}>Scene {sceneIdx + 1} of {SCENES.length}</Text>
             {sceneIdx > 0 ? (
