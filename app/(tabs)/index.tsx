@@ -771,22 +771,13 @@ export default function HomeScreen() {
     useCallback(() => {
       let gone = false;
       (async () => {
-        const [profile, result, acceptedVer, widgetActiveVal] = await Promise.all([
-          getDogProfile(),
-          fetchWeatherForDeviceLocation(),
-          AsyncStorage.getItem('@northpaw/disclaimer_accepted_version'),
-          SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false'),
-        ]);
+        try {
+          // 1. Fetch widget and local outing states first to resolve race conditions
+          const widgetActiveVal = await SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false');
+          const localActive = await getActiveOuting();
+          const isWidgetActive = widgetActiveVal === 'true';
 
-        const localActive = await getActiveOuting();
-        const isWidgetActive = widgetActiveVal === 'true';
-
-        if (!gone) {
-          setDogProfile(profile);
-          setWeather(result);
-          if (profile && profile.onboardingDone && acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
-            setShowUpgradeTermsModal(true);
-          }
+          console.log('[Focus Sync] Reading first -> widgetActiveVal:', widgetActiveVal, 'localActive:', localActive ? 'active' : 'null');
 
           if (isWidgetActive && !localActive) {
             const defaultOuting = await startOuting({
@@ -798,18 +789,35 @@ export default function HomeScreen() {
                 weatherTimestamp: new Date().toISOString(),
                 algorithmVersion: '5.4.1',
                 surfaceType: selectedSurface,
-                estimatedSurfaceF: result.status === 'ok' ? (result.tempF + 5) : 77,
+                estimatedSurfaceF: 77, // temp fallback, will update once weather loads
                 confidence: 'medium',
                 riskCategory: 'safe',
               },
             });
-            setActiveOuting(defaultOuting);
+            if (!gone) setActiveOuting(defaultOuting);
           } else if (!isWidgetActive && localActive) {
             await cancelActiveOuting();
-            setActiveOuting(null);
+            if (!gone) setActiveOuting(null);
             router.push('/post-walk');
           } else {
-            setActiveOuting(localActive);
+            if (!gone) setActiveOuting(localActive);
+          }
+        } catch (err) {
+          console.warn('[Focus Sync] Error reconciling widget state', err);
+        }
+
+        // 2. Fetch profile, weather, and disclaimers
+        const [profile, result, acceptedVer] = await Promise.all([
+          getDogProfile(),
+          fetchWeatherForDeviceLocation(),
+          AsyncStorage.getItem('@northpaw/disclaimer_accepted_version'),
+        ]);
+
+        if (!gone) {
+          setDogProfile(profile);
+          setWeather(result);
+          if (profile && profile.onboardingDone && acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
+            setShowUpgradeTermsModal(true);
           }
 
           if (result.status === 'ok') {
