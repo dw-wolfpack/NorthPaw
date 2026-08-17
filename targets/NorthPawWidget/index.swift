@@ -1,5 +1,23 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
+
+@available(iOS 17.0, *)
+struct ToggleOutingIntent: AppIntent {
+    static var title: LocalizedStringResource = "Toggle Outing"
+    static var description = IntentDescription("Starts or cancels an active outing from the lock/home screen widget.")
+
+    func perform() async throws -> some IntentResult {
+        let defaults = UserDefaults(suiteName: "group.com.northpaw.app")
+        let current = (defaults?.string(forKey: "isOutingActive") ?? "false") == "true"
+        defaults?.setValue(!current ? "true" : "false", forKey: "isOutingActive")
+        
+        // Notify WidgetKit to refresh timelines immediately
+        WidgetCenter.shared.reloadAllTimelines()
+        
+        return .result()
+    }
+}
 
 struct SimpleEntry: TimelineEntry {
     let date: Date
@@ -10,6 +28,7 @@ struct SimpleEntry: TimelineEntry {
     let surfaceType: String
     let npiScore: Int
     let actionableTime: String
+    let isOutingActive: Bool
 }
 
 struct Provider: TimelineProvider {
@@ -22,7 +41,8 @@ struct Provider: TimelineProvider {
             roadTempF: 82,
             surfaceType: "Asphalt",
             npiScore: 88,
-            actionableTime: "Best window until 2:15 PM"
+            actionableTime: "Best window until 2:15 PM",
+            isOutingActive: false
         )
     }
 
@@ -44,10 +64,10 @@ struct Provider: TimelineProvider {
         let rawStatusText = defaults?.string(forKey: "statusText") ?? "Safe to Walk"
         
         // React Native SharedGroupPreferences writes all values as Strings.
-        // We read as String first, then parse to Int.
         let airTempStr = defaults?.string(forKey: "airTempF") ?? ""
         let roadTempStr = defaults?.string(forKey: "roadTempF") ?? ""
         let npiScoreStr = defaults?.string(forKey: "npiScore") ?? ""
+        let isOutingActive = (defaults?.string(forKey: "isOutingActive") ?? "false") == "true"
         
         let airTempF = Int(airTempStr) ?? defaults?.integer(forKey: "airTempF") ?? 74
         let roadTempF = Int(roadTempStr) ?? defaults?.integer(forKey: "roadTempF") ?? 82
@@ -72,13 +92,17 @@ struct Provider: TimelineProvider {
             roadTempF: roadTempF > 0 ? roadTempF : 82,
             surfaceType: surfaceType,
             npiScore: npiScore > 0 ? npiScore : 88,
-            actionableTime: resolvedTime
+            actionableTime: resolvedTime,
+            isOutingActive: isOutingActive
         )
     }
 }
 
 extension SimpleEntry {
     var statusColor: Color {
+        if isOutingActive {
+            return Color(red: 0.16, green: 0.50, blue: 0.72) // Active Outing Blue
+        }
         if roadTempF >= 105 || npiScore < 50 {
             return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger)
         } else if roadTempF >= 85 || npiScore < 75 {
@@ -89,6 +113,9 @@ extension SimpleEntry {
     }
 
     var statusDotIcon: String {
+        if isOutingActive {
+            return "figure.walk"
+        }
         if roadTempF >= 105 || npiScore < 50 {
             return "exclamationmark.circle.fill"
         } else if roadTempF >= 85 || npiScore < 75 {
@@ -96,6 +123,52 @@ extension SimpleEntry {
         } else {
             return "checkmark.circle.fill"
         }
+    }
+
+    // Dynamic countdown window string based on safety calculations
+    var countdownLabel: String {
+        if isOutingActive {
+            return "🐾 Outing Active"
+        }
+        if roadTempF >= 105 || npiScore < 50 {
+            return "⚠️ Next safe: 6:30 PM"
+        } else if roadTempF >= 85 || npiScore < 75 {
+            return "☀️ Safe until 11:30 AM"
+        } else {
+            return "✅ Safe to walk now"
+        }
+    }
+}
+
+struct PavementTempGauge: View {
+    var tempF: Int
+    
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                // Multi-colored track background representation
+                LinearGradient(
+                    colors: [.green, .yellow, .orange, .red],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(height: 5)
+                .cornerRadius(2.5)
+                .opacity(0.85)
+                
+                // Sliding indicator marker
+                let minTemp = 60.0
+                let maxTemp = 130.0
+                let percent = min(max(Double(tempF) - minTemp, 0) / (maxTemp - minTemp), 1.0)
+                
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 8, height: 8)
+                    .shadow(radius: 0.5)
+                    .offset(x: CGFloat(percent) * (geo.size.width - 8))
+            }
+        }
+        .frame(height: 8)
     }
 }
 
@@ -117,7 +190,7 @@ struct NorthPawWidgetEntryView : View {
                     .rotationEffect(.degrees(-90))
 
                 VStack(spacing: -2) {
-                    Image(systemName: "pawprint.fill")
+                    Image(systemName: entry.statusDotIcon)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(entry.statusColor)
                     Text("\(entry.roadTempF)°")
@@ -133,7 +206,7 @@ struct NorthPawWidgetEntryView : View {
         case .accessoryInline:
             // Lock Screen Text Line
             ViewThatFits {
-                Label("🐾 \(entry.statusText) • Road \(entry.roadTempF)° (\(entry.dogName))", systemImage: "pawprint.fill")
+                Label("🐾 \(entry.isOutingActive ? "Exploring Now" : entry.statusText) • Road \(entry.roadTempF)° (\(entry.dogName))", systemImage: "pawprint.fill")
                 Label("🐾 \(entry.statusText) • \(entry.roadTempF)°", systemImage: "pawprint.fill")
             }
             .containerBackground(for: .widget) {
@@ -145,34 +218,39 @@ struct NorthPawWidgetEntryView : View {
             // Lock Screen Rectangular Box
             ZStack(alignment: .leading) {
                 AccessoryWidgetBackground()
-                VStack(alignment: .leading, spacing: 2) {
-                    // 1. Dominant Decision Header
-                    HStack(spacing: 4) {
-                        Image(systemName: entry.statusDotIcon)
-                            .font(.system(size: 10, weight: .bold))
+                HStack(spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Image(systemName: entry.statusDotIcon)
+                                .font(.system(size: 10, weight: .bold))
+                                .widgetAccentable()
+                            Text(entry.isOutingActive ? "EXPLORING" : entry.statusText)
+                                .font(.system(size: 11, weight: .bold))
+                                .lineLimit(1)
+                        }
+                        
+                        Text("Road \(entry.roadTempF)°F")
+                            .font(.system(size: 14, weight: .heavy, design: .rounded))
                             .widgetAccentable()
-                        Text(entry.statusText)
-                            .font(.system(size: 11, weight: .bold))
+                        
+                        Text(entry.countdownLabel)
+                            .font(.system(size: 8, weight: .medium))
+                            .opacity(0.8)
                             .lineLimit(1)
                     }
                     
-                    // 2. Hero Road Temperature
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("Road \(entry.roadTempF)°F")
-                            .font(.system(size: 16, weight: .heavy, design: .rounded))
-                            .widgetAccentable()
-                        Text("Air \(entry.airTempF)°")
-                            .font(.system(size: 11, weight: .semibold))
-                            .opacity(0.8)
-                    }
+                    Spacer()
                     
-                    // 3. Actionable Time / Dog Name
-                    Text("\(entry.actionableTime) • \(entry.dogName)")
-                        .font(.system(size: 9, weight: .medium))
-                        .opacity(0.75)
-                        .lineLimit(1)
+                    if #available(iOS 17.0, *) {
+                        Button(intent: ToggleOutingIntent()) {
+                            Image(systemName: entry.isOutingActive ? "stop.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(entry.statusColor)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 6)
                 .padding(.vertical, 4)
             }
             .containerBackground(for: .widget) {
@@ -184,7 +262,6 @@ struct NorthPawWidgetEntryView : View {
             // Home Screen Small Card (Centered Visual Status Ring & Road Temp)
             VStack(spacing: 8) {
                 ZStack {
-                    // Custom circular safety progress ring
                     Circle()
                         .stroke(entry.statusColor.opacity(0.15), lineWidth: 6)
                         .frame(width: 76, height: 76)
@@ -195,7 +272,7 @@ struct NorthPawWidgetEntryView : View {
                         .frame(width: 76, height: 76)
 
                     VStack(spacing: -1) {
-                        Image(systemName: "pawprint.fill")
+                        Image(systemName: entry.statusDotIcon)
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(entry.statusColor)
                         Text("\(entry.roadTempF)°")
@@ -209,7 +286,7 @@ struct NorthPawWidgetEntryView : View {
                 }
                 
                 VStack(spacing: 1) {
-                    Text(entry.statusText)
+                    Text(entry.isOutingActive ? "EXPLORING" : entry.statusText)
                         .font(.system(size: 11, weight: .black))
                         .foregroundColor(entry.statusColor)
                         .lineLimit(1)
@@ -227,24 +304,24 @@ struct NorthPawWidgetEntryView : View {
 
         default:
             // Home Screen Medium Card (Split 2-Column: Ring + Details)
-            HStack(spacing: 20) {
+            HStack(spacing: 16) {
                 // Left Column: Large Visual Status Ring
                 ZStack {
                     Circle()
                         .stroke(entry.statusColor.opacity(0.15), lineWidth: 10)
-                        .frame(width: 108, height: 108)
+                        .frame(width: 100, height: 100)
                     Circle()
                         .trim(from: 0, to: CGFloat(min(max(entry.npiScore, 0), 100)) / 100.0)
                         .stroke(entry.statusColor, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                        .frame(width: 108, height: 108)
+                        .frame(width: 100, height: 100)
 
                     VStack(spacing: 0) {
                         Image(systemName: entry.statusDotIcon)
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(entry.statusColor)
                         Text(String(format: "%.1f", Double(entry.npiScore) / 10.0))
-                            .font(.system(size: 26, weight: .black, design: .rounded))
+                            .font(.system(size: 24, weight: .black, design: .rounded))
                             .foregroundColor(.primary)
                         Text("NPI SCORE")
                             .font(.system(size: 7, weight: .heavy))
@@ -252,59 +329,77 @@ struct NorthPawWidgetEntryView : View {
                             .tracking(0.5)
                     }
                 }
-                .padding(.leading, 8)
+                .padding(.leading, 4)
 
                 // Right Column: Details list
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(entry.statusText)
-                            .font(.system(size: 14, weight: .heavy))
+                    HStack {
+                        Text(entry.isOutingActive ? "EXPLORING" : entry.statusText)
+                            .font(.system(size: 13, weight: .black))
                             .foregroundColor(entry.statusColor)
                         Text("•")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.secondary)
                         Text(entry.dogName)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.primary)
+                            .lineLimit(1)
+                        
+                        Spacer()
+                        
+                        // Interactive Toggle Button
+                        if #available(iOS 17.0, *) {
+                            Button(intent: ToggleOutingIntent()) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: entry.isOutingActive ? "stop.fill" : "play.fill")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(entry.isOutingActive ? "End Walk" : "Explore")
+                                        .font(.system(size: 8, weight: .black))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(entry.isOutingActive ? Color.red.opacity(0.15) : entry.statusColor.opacity(0.15))
+                                .foregroundColor(entry.isOutingActive ? Color.red : entry.statusColor)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
 
-                    Spacer()
-
-                    // Primary Telemetry
+                    // Pavement Temp Gauge (Option 1)
+                    PavementTempGauge(tempF: entry.roadTempF)
+                        .padding(.vertical, 2)
+                    
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(entry.roadTempF)°F")
-                            .font(.system(size: 24, weight: .black, design: .rounded))
+                            .font(.system(size: 20, weight: .black, design: .rounded))
                             .foregroundColor(.primary)
                         Text(" Pavement (\(entry.surfaceType))")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.secondary)
                     }
                     
                     Text("Air Temp: \(entry.airTempF)°F")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary)
 
-                    Spacer()
-
-                    // Actionable window
+                    // Actionable countdown window (Option 2)
                     HStack(spacing: 4) {
                         Image(systemName: "clock.fill")
-                            .font(.system(size: 10))
+                            .font(.system(size: 8))
                             .foregroundColor(entry.statusColor)
-                        Text(entry.actionableTime)
-                            .font(.system(size: 10, weight: .bold))
+                        Text(entry.countdownLabel)
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
                     .background(entry.statusColor.opacity(0.08))
-                    .cornerRadius(6)
+                    .cornerRadius(4)
                 }
                 .padding(.vertical, 4)
-                
-                Spacer()
             }
-            .padding(16)
+            .padding(14)
             .containerBackground(for: .widget) {
                 Color(uiColor: .systemBackground)
             }

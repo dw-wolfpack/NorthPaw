@@ -74,6 +74,7 @@ import { useShareCard } from '@/hooks/useShareCard';
 import { getActiveOuting, startOuting, cancelActiveOuting, extendActiveOuting, type ActiveOuting } from '@/lib/outings';
 import * as Notifications from 'expo-notifications';
 import { syncWidgetData } from '@/lib/widgetSync';
+import SharedGroupPreferences from 'react-native-shared-group-preferences';
 
 const FOREST = '#1B4332';
 const SAFETY_GREEN = '#2ECC71';
@@ -770,17 +771,46 @@ export default function HomeScreen() {
     useCallback(() => {
       let gone = false;
       (async () => {
-        const [profile, result, acceptedVer] = await Promise.all([
+        const [profile, result, acceptedVer, widgetActiveVal] = await Promise.all([
           getDogProfile(),
           fetchWeatherForDeviceLocation(),
           AsyncStorage.getItem('@northpaw/disclaimer_accepted_version'),
+          SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false'),
         ]);
+
+        const localActive = await getActiveOuting();
+        const isWidgetActive = widgetActiveVal === 'true';
+
         if (!gone) {
           setDogProfile(profile);
           setWeather(result);
           if (profile && profile.onboardingDone && acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
             setShowUpgradeTermsModal(true);
           }
+
+          if (isWidgetActive && !localActive) {
+            const defaultOuting = await startOuting({
+              dogId: 'default_dog',
+              expectedDurationMinutes: 45,
+              source: 'manual',
+              snapshot: {
+                id: `snap_${Date.now()}`,
+                weatherTimestamp: new Date().toISOString(),
+                algorithmVersion: '5.4.1',
+                surfaceType: selectedSurface,
+                estimatedSurfaceF: result.status === 'ok' ? (result.tempF + 5) : 77,
+                confidence: 'medium',
+                riskCategory: 'safe',
+              },
+            });
+            setActiveOuting(defaultOuting);
+          } else if (!isWidgetActive && localActive) {
+            await cancelActiveOuting();
+            setActiveOuting(null);
+          } else {
+            setActiveOuting(localActive);
+          }
+
           if (result.status === 'ok') {
             // Cache fresh weather in AsyncStorage
             try {
@@ -1575,11 +1605,12 @@ export default function HomeScreen() {
         surfaceType: selectedSurface,
         npiScore: Math.round(npiScore * 10), // Store as integer [0..100] for WidgetKit
         actionableTime,
+        isOutingActive: activeOuting !== null,
       }).catch((err) => {
         console.warn('[Home] Widget sync failed', err);
       });
     }
-  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows]);
+  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting]);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>

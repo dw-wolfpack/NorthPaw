@@ -10,6 +10,7 @@ export interface WidgetSyncData {
   surfaceType: string;
   npiScore: number;
   actionableTime?: string;
+  isOutingActive?: boolean;
 }
 
 const WIDGET_STORAGE_KEY = '@northpaw/widget_last_sync_v1';
@@ -29,6 +30,7 @@ export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
     await SharedGroupPreferences.setItem('roadTempF', data.roadTempF, groupName);
     await SharedGroupPreferences.setItem('surfaceType', data.surfaceType, groupName);
     await SharedGroupPreferences.setItem('npiScore', data.npiScore, groupName);
+    await SharedGroupPreferences.setItem('isOutingActive', String(data.isOutingActive ?? false), groupName);
     if (data.actionableTime) {
       await SharedGroupPreferences.setItem('actionableTime', data.actionableTime, groupName);
     }
