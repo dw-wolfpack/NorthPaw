@@ -383,9 +383,7 @@ struct NorthPawWidgetEntryView : View {
                             if entry.isOutingActive {
                                 Button(intent: ToggleOutingIntent()) {
                                     HStack(spacing: 3) {
-                                        Image(systemName: "stop.fill")
-                                            .font(.system(size: 8, weight: .bold))
-                                        Text("End Walk")
+                                        Text("■ End Outing")
                                             .font(.system(size: 8, weight: .black))
                                     }
                                     .padding(.horizontal, 8)
@@ -398,9 +396,7 @@ struct NorthPawWidgetEntryView : View {
                             } else {
                                 Button(intent: ToggleOutingIntent()) {
                                     HStack(spacing: 3) {
-                                        Image(systemName: "play.fill")
-                                            .font(.system(size: 8, weight: .bold))
-                                        Text("Explore")
+                                        Text("▶ Explore")
                                             .font(.system(size: 8, weight: .black))
                                     }
                                     .padding(.horizontal, 8)

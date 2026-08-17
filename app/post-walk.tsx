@@ -133,7 +133,7 @@ export default function PostWalkCheckInScreen() {
               setSelectedResponse('as_usual');
               setSelectedSignals([]);
             }}>
-            <MaterialCommunityIcons name="emoticon-happy-outline" size={28} color="#2ECC71" />
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>🙂</Text>
             <Text style={[styles.responseCardTitle, { color: palette.text }]}>As Usual</Text>
             <Text style={[styles.responseCardSub, { color: palette.textSecondary }]}>Great energy, normal pace</Text>
           </Pressable>
@@ -148,7 +148,7 @@ export default function PostWalkCheckInScreen() {
               },
             ]}
             onPress={() => setSelectedResponse('slowed')}>
-            <MaterialCommunityIcons name="emoticon-neutral-outline" size={28} color="#D97706" />
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>😐</Text>
             <Text style={[styles.responseCardTitle, { color: palette.text }]}>Slowed Down</Text>
             <Text style={[styles.responseCardSub, { color: palette.textSecondary }]}>Slightly lower energy</Text>
           </Pressable>
@@ -163,7 +163,7 @@ export default function PostWalkCheckInScreen() {
               },
             ]}
             onPress={() => setSelectedResponse('struggled')}>
-            <MaterialCommunityIcons name="emoticon-sad-outline" size={28} color="#C0392B" />
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>☹</Text>
             <Text style={[styles.responseCardTitle, { color: palette.text }]}>Struggled</Text>
             <Text style={[styles.responseCardSub, { color: palette.textSecondary }]}>Heavily fatigued / heat signs</Text>
           </Pressable>
@@ -181,14 +181,14 @@ export default function PostWalkCheckInScreen() {
               setSelectedResponse('did_not_go');
               setSelectedSignals([]);
             }}>
-            <MaterialCommunityIcons name="home-outline" size={28} color={palette.textSecondary} />
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>🏠</Text>
             <Text style={[styles.responseCardTitle, { color: palette.text }]}>Didn't Go</Text>
             <Text style={[styles.responseCardSub, { color: palette.textSecondary }]}>Walk was skipped</Text>
           </Pressable>
         </View>
 
         {/* Optional Symptom Chips */}
-        {(selectedResponse === 'slowed' || selectedResponse === 'struggled') && (
+        {selectedResponse && selectedResponse !== 'did_not_go' && (
           <View style={[styles.symptomsSection, { borderColor: palette.border, backgroundColor: palette.surface }]}>
             <Text style={[styles.symptomsTitle, { color: palette.text }]}>What did you observe? (Optional)</Text>
             <View style={styles.chipsWrap}>
