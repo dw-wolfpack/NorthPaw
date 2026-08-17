@@ -566,20 +566,6 @@ export default function HomeScreen() {
   const [activeOuting, setActiveOuting] = useState<ActiveOuting | null>(null);
   const [durationModalOpen, setDurationModalOpen] = useState(false);
 
-  const deepLinkUrl = ExpoLinking.useURL();
-  useEffect(() => {
-    if (deepLinkUrl) {
-      try {
-        const parsed = ExpoLinking.parse(deepLinkUrl);
-        if (parsed.path === 'explore' || parsed.path === 'start-walk' || parsed.hostname === 'explore' || parsed.hostname === 'start-walk') {
-          setDurationModalOpen(true);
-        }
-      } catch (e) {
-        console.warn('[Home] Deep link parsing failed', e);
-      }
-    }
-  }, [deepLinkUrl]);
-
   const { viewRef, isSharing, shareCard } = useShareCard();
   const shareRef = useRef<View>(null);
   const outingSectionRef = useRef<View>(null);

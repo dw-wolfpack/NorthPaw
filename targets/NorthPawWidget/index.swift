@@ -41,18 +41,6 @@ struct ToggleOutingIntent: AppIntent {
     }
 }
 
-@available(iOS 17.0, *)
-struct StartOutingIntent: AppIntent {
-    static var title: LocalizedStringResource = "Start Outing"
-    static var description = IntentDescription("Opens the app to start a new walk outing.")
-
-    static var openAppWhenRun: Bool = true
-
-    func perform() async throws -> some IntentResult {
-        return .result()
-    }
-}
-
 struct SimpleEntry: TimelineEntry {
     let date: Date
     let dogName: String
@@ -284,7 +272,7 @@ struct NorthPawWidgetEntryView : View {
                             }
                             .buttonStyle(.plain)
                         } else {
-                            Button(intent: StartOutingIntent()) {
+                            Button(intent: ToggleOutingIntent()) {
                                 Image(systemName: "play.circle.fill")
                                     .font(.system(size: 20))
                                     .foregroundColor(entry.statusColor)
@@ -299,7 +287,7 @@ struct NorthPawWidgetEntryView : View {
             .containerBackground(for: .widget) {
                 Color.clear
             }
-            .widgetURL(URL(string: "northpaw://explore")!)
+            .widgetURL(URL(string: "northpaw://")!)
 
         case .systemSmall:
             // Home Screen Small Card (Centered Visual Status Ring & Road Temp)
@@ -408,7 +396,7 @@ struct NorthPawWidgetEntryView : View {
                                 }
                                 .buttonStyle(.plain)
                             } else {
-                                Button(intent: StartOutingIntent()) {
+                                Button(intent: ToggleOutingIntent()) {
                                     HStack(spacing: 3) {
                                         Image(systemName: "play.fill")
                                             .font(.system(size: 8, weight: .bold))
@@ -463,7 +451,7 @@ struct NorthPawWidgetEntryView : View {
             .containerBackground(for: .widget) {
                 Color(uiColor: .systemBackground)
             }
-            .widgetURL(URL(string: "northpaw://explore")!)
+            .widgetURL(URL(string: "northpaw://")!)
         }
     }
 }
