@@ -1,6 +1,6 @@
 {
-  "platforms": ["ios"],
-  "ios": {
-    "modules": ["WidgetBridgeModule"]
+  "platforms": ["apple"],
+  "apple": {
+    "modules": ["WidgetBridge"]
   }
 }
