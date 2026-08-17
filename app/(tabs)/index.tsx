@@ -565,6 +565,7 @@ export default function HomeScreen() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [activeOuting, setActiveOuting] = useState<ActiveOuting | null>(null);
   const [durationModalOpen, setDurationModalOpen] = useState(false);
+  const reconciliationCompletedRef = useRef(false);
 
   const { viewRef, isSharing, shareCard } = useShareCard();
   const shareRef = useRef<View>(null);
@@ -733,9 +734,11 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  // Refresh weather when returning from background if it is stale (older than 30 mins)
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (nextAppState !== 'active') {
+        reconciliationCompletedRef.current = false;
+      }
       if (nextAppState === 'active') {
         try {
           const lastFetchStr = await AsyncStorage.getItem('@northpaw/last_weather_fetch_time');
@@ -897,6 +900,7 @@ export default function HomeScreen() {
               total_safety_checks: 1,
             });
           }
+          reconciliationCompletedRef.current = true;
         }
       })();
       return () => {
@@ -1612,6 +1616,7 @@ export default function HomeScreen() {
 
   // Synchronize Widget Data when critical values change
   useEffect(() => {
+    if (!reconciliationCompletedRef.current) return;
     if (dogProfile && weatherOk && npiScore != null) {
       const calcRoadTemp = currentRoadPoint?.roadTempF ?? 77;
       const bestWindowsList = bestWindows;
