@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import SharedGroupPreferences from 'react-native-shared-group-preferences';
 
+import { reloadAllTimelines } from '../modules/widget-bridge';
+
 export interface WidgetSyncData {
   dogName: string;
   statusText: string;
@@ -35,6 +37,7 @@ export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
       await SharedGroupPreferences.setItem('actionableTime', data.actionableTime, groupName);
     }
     console.log('[WidgetSync] SharedGroupPreferences write completed successfully');
+    reloadAllTimelines();
   } catch (e) {
     console.error('[WidgetSync] Error syncing widget data:', e);
   }

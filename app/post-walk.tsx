@@ -10,6 +10,7 @@ import { recordQualifiedReadinessDay } from '@/lib/outings';
 import { trackEvent } from '@/lib/analytics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import SharedGroupPreferences from 'react-native-shared-group-preferences';
+import { reloadAllTimelines } from '../modules/widget-bridge';
 
 const SYMPTOM_OPTIONS = [
   { id: 'heavy_panting', label: 'Heavy Panting', icon: 'weather-hazy' },
@@ -55,6 +56,7 @@ export default function PostWalkCheckInScreen() {
       const targetId = outingId || `manual_${Date.now()}`;
       await finishOuting(targetId, selectedResponse, selectedSignals);
       await SharedGroupPreferences.setItem('isOutingActive', 'false', 'group.com.northpaw.app').catch(() => {});
+      reloadAllTimelines();
       
       // Phase D2: Record qualified readiness day for today
       const todayIso = new Date().toISOString().split('T')[0];
@@ -101,6 +103,7 @@ export default function PostWalkCheckInScreen() {
             onPress={async () => {
               await cancelActiveOuting();
               await SharedGroupPreferences.setItem('isOutingActive', 'false', 'group.com.northpaw.app').catch(() => {});
+              reloadAllTimelines();
               if (router.canGoBack()) router.back();
               else router.replace('/(tabs)');
             }}
