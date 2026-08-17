@@ -5,7 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { finishOuting, OutingOutcomeResponse } from '@/lib/outings';
+import { finishOuting, cancelActiveOuting, OutingOutcomeResponse } from '@/lib/outings';
 import { recordQualifiedReadinessDay } from '@/lib/outings';
 import { trackEvent } from '@/lib/analytics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -88,11 +88,28 @@ export default function PostWalkCheckInScreen() {
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerBlock}>
-          <Text style={[styles.title, { color: palette.text }]}>Post-Walk Check-In</Text>
-          <Text style={[styles.subtitle, { color: palette.textSecondary }]}>
-            How did {dogName} handle today's walk conditions?
-          </Text>
+        <View style={styles.headerRow}>
+          <View style={styles.headerBlock}>
+            <Text style={[styles.title, { color: palette.text }]}>Post-Walk Check-In</Text>
+            <Text style={[styles.subtitle, { color: palette.textSecondary }]}>
+              How did {dogName} handle today's walk conditions?
+            </Text>
+          </View>
+          <Pressable
+            onPress={async () => {
+              await cancelActiveOuting();
+              if (router.canGoBack()) router.back();
+              else router.replace('/(tabs)');
+            }}
+            style={({ pressed }) => [
+              styles.closeButton,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', opacity: pressed ? 0.7 : 1 }
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Close and skip check-in"
+          >
+            <MaterialCommunityIcons name="close" size={20} color={palette.textSecondary} />
+          </Pressable>
         </View>
 
         {/* Primary Response Grid */}
@@ -225,7 +242,19 @@ export default function PostWalkCheckInScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
-  headerBlock: { marginBottom: 20 },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  headerBlock: { flex: 1, marginRight: 12 },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { fontSize: 24, fontWeight: '800', marginBottom: 6 },
   subtitle: { fontSize: 14, lineHeight: 20 },
   responseGrid: { gap: 12, marginBottom: 20 },
