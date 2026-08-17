@@ -734,12 +734,61 @@ export default function HomeScreen() {
     })();
   }, []);
 
+  const reconcileWidgetState = useCallback(async (gone = false) => {
+    try {
+      const [widgetActiveVal, needsReviewVal] = await Promise.all([
+        SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false'),
+        SharedGroupPreferences.getItem('needsPostWalkReview', 'group.com.northpaw.app').catch(() => 'false'),
+      ]);
+      const localActive = await getActiveOuting();
+      const isWidgetActive = widgetActiveVal === 'true';
+      const needsReview = needsReviewVal === 'true';
+
+      console.log('[Focus Sync] Reconciling -> widgetActive:', widgetActiveVal, 'localActive:', localActive ? 'active' : 'null', 'needsReview:', needsReview);
+
+      if (needsReview) {
+        await SharedGroupPreferences.setItem('needsPostWalkReview', 'false', 'group.com.northpaw.app').catch(() => {});
+        await cancelActiveOuting();
+        if (!gone) {
+          setActiveOuting(null);
+          router.push('/post-walk');
+        }
+      } else if (isWidgetActive && !localActive) {
+        const defaultOuting = await startOuting({
+          dogId: 'default_dog',
+          expectedDurationMinutes: 45,
+          source: 'manual',
+          snapshot: {
+            id: `snap_${Date.now()}`,
+            weatherTimestamp: new Date().toISOString(),
+            algorithmVersion: '5.4.1',
+            surfaceType: selectedSurface,
+            estimatedSurfaceF: 77,
+            confidence: 'medium',
+            riskCategory: 'safe',
+          },
+        });
+        if (!gone) setActiveOuting(defaultOuting);
+      } else if (!isWidgetActive && localActive) {
+        await cancelActiveOuting();
+        if (!gone) setActiveOuting(null);
+        router.push('/post-walk');
+      } else {
+        if (!gone) setActiveOuting(localActive);
+      }
+      reconciliationCompletedRef.current = true;
+    } catch (err) {
+      console.warn('[Focus Sync] Error reconciling widget state', err);
+    }
+  }, [selectedSurface]);
+
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       if (nextAppState !== 'active') {
         reconciliationCompletedRef.current = false;
       }
       if (nextAppState === 'active') {
+        reconcileWidgetState();
         try {
           const lastFetchStr = await AsyncStorage.getItem('@northpaw/last_weather_fetch_time');
           const lastFetch = lastFetchStr ? parseInt(lastFetchStr, 10) : 0;
@@ -769,56 +818,13 @@ export default function HomeScreen() {
     return () => {
       appStateSub.remove();
     };
-  }, []);
+  }, [reconcileWidgetState]);
 
   useFocusEffect(
     useCallback(() => {
       let gone = false;
       (async () => {
-        try {
-          // 1. Fetch widget and local outing states first to resolve race conditions
-          const [widgetActiveVal, needsReviewVal] = await Promise.all([
-            SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false'),
-            SharedGroupPreferences.getItem('needsPostWalkReview', 'group.com.northpaw.app').catch(() => 'false'),
-          ]);
-          const localActive = await getActiveOuting();
-          const isWidgetActive = widgetActiveVal === 'true';
-          const needsReview = needsReviewVal === 'true';
-
-          console.log('[Focus Sync] Reading first -> widgetActiveVal:', widgetActiveVal, 'localActive:', localActive ? 'active' : 'null', 'needsReview:', needsReview);
-
-          if (needsReview) {
-            // Background widget stop occurred! Clear flag, cancel outing, and redirect to review
-            await SharedGroupPreferences.setItem('needsPostWalkReview', 'false', 'group.com.northpaw.app').catch(() => {});
-            await cancelActiveOuting();
-            if (!gone) setActiveOuting(null);
-            router.push('/post-walk');
-          } else if (isWidgetActive && !localActive) {
-            const defaultOuting = await startOuting({
-              dogId: 'default_dog',
-              expectedDurationMinutes: 45,
-              source: 'manual',
-              snapshot: {
-                id: `snap_${Date.now()}`,
-                weatherTimestamp: new Date().toISOString(),
-                algorithmVersion: '5.4.1',
-                surfaceType: selectedSurface,
-                estimatedSurfaceF: 77, // temp fallback, will update once weather loads
-                confidence: 'medium',
-                riskCategory: 'safe',
-              },
-            });
-            if (!gone) setActiveOuting(defaultOuting);
-          } else if (!isWidgetActive && localActive) {
-            await cancelActiveOuting();
-            if (!gone) setActiveOuting(null);
-            router.push('/post-walk');
-          } else {
-            if (!gone) setActiveOuting(localActive);
-          }
-        } catch (err) {
-          console.warn('[Focus Sync] Error reconciling widget state', err);
-        }
+        await reconcileWidgetState(gone);
 
         // 2. Fetch profile, weather, and disclaimers
         const [profile, result, acceptedVer] = await Promise.all([
@@ -900,13 +906,12 @@ export default function HomeScreen() {
               total_safety_checks: 1,
             });
           }
-          reconciliationCompletedRef.current = true;
         }
       })();
       return () => {
         gone = true;
       };
-    }, [selectedSurface])
+    }, [selectedSurface, reconcileWidgetState])
   );
 
   const openSuggestion = useCallback(
