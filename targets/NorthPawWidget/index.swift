@@ -42,10 +42,18 @@ struct Provider: TimelineProvider {
         let defaults = UserDefaults(suiteName: "group.com.northpaw.app")
         let dogName = defaults?.string(forKey: "dogName") ?? "Your pup"
         let rawStatusText = defaults?.string(forKey: "statusText") ?? "Safe to Walk"
-        let airTempF = defaults?.integer(forKey: "airTempF") ?? 74
-        let roadTempF = defaults?.integer(forKey: "roadTempF") ?? 82
+        
+        // React Native SharedGroupPreferences writes all values as Strings.
+        // We read as String first, then parse to Int.
+        let airTempStr = defaults?.string(forKey: "airTempF") ?? ""
+        let roadTempStr = defaults?.string(forKey: "roadTempF") ?? ""
+        let npiScoreStr = defaults?.string(forKey: "npiScore") ?? ""
+        
+        let airTempF = Int(airTempStr) ?? defaults?.integer(forKey: "airTempF") ?? 74
+        let roadTempF = Int(roadTempStr) ?? defaults?.integer(forKey: "roadTempF") ?? 82
+        let npiScore = Int(npiScoreStr) ?? defaults?.integer(forKey: "npiScore") ?? 88
+        
         let surfaceType = defaults?.string(forKey: "surfaceType") ?? "Asphalt"
-        let npiScore = defaults?.integer(forKey: "npiScore") ?? 88
         let actionableTime = defaults?.string(forKey: "actionableTime") ?? "Next update ~15m"
         
         var resolvedTime = actionableTime
