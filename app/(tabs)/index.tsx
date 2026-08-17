@@ -773,13 +773,23 @@ export default function HomeScreen() {
       (async () => {
         try {
           // 1. Fetch widget and local outing states first to resolve race conditions
-          const widgetActiveVal = await SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false');
+          const [widgetActiveVal, needsReviewVal] = await Promise.all([
+            SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false'),
+            SharedGroupPreferences.getItem('needsPostWalkReview', 'group.com.northpaw.app').catch(() => 'false'),
+          ]);
           const localActive = await getActiveOuting();
           const isWidgetActive = widgetActiveVal === 'true';
+          const needsReview = needsReviewVal === 'true';
 
-          console.log('[Focus Sync] Reading first -> widgetActiveVal:', widgetActiveVal, 'localActive:', localActive ? 'active' : 'null');
+          console.log('[Focus Sync] Reading first -> widgetActiveVal:', widgetActiveVal, 'localActive:', localActive ? 'active' : 'null', 'needsReview:', needsReview);
 
-          if (isWidgetActive && !localActive) {
+          if (needsReview) {
+            // Background widget stop occurred! Clear flag, cancel outing, and redirect to review
+            await SharedGroupPreferences.setItem('needsPostWalkReview', 'false', 'group.com.northpaw.app').catch(() => {});
+            await cancelActiveOuting();
+            if (!gone) setActiveOuting(null);
+            router.push('/post-walk');
+          } else if (isWidgetActive && !localActive) {
             const defaultOuting = await startOuting({
               dogId: 'default_dog',
               expectedDurationMinutes: 45,

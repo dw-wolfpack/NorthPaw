@@ -13,7 +13,9 @@ struct ToggleOutingIntent: AppIntent {
         defaults?.setValue(!current ? "true" : "false", forKey: "isOutingActive")
         
         // If we are stopping an active walk, schedule a review notification in 5 minutes (300 seconds)
+        // and set needsPostWalkReview flag so the app prompts the user when next opened.
         if current {
+            defaults?.setValue("true", forKey: "needsPostWalkReview")
             let dogName = defaults?.string(forKey: "dogName") ?? "your dog"
             let center = UNUserNotificationCenter.current()
             center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
