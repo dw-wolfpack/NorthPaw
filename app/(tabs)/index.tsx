@@ -75,6 +75,7 @@ import { getActiveOuting, startOuting, cancelActiveOuting, extendActiveOuting, t
 import * as Notifications from 'expo-notifications';
 import { syncWidgetData } from '@/lib/widgetSync';
 import SharedGroupPreferences from 'react-native-shared-group-preferences';
+import * as ExpoLinking from 'expo-linking';
 
 const FOREST = '#1B4332';
 const SAFETY_GREEN = '#2ECC71';
@@ -564,6 +565,20 @@ export default function HomeScreen() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [activeOuting, setActiveOuting] = useState<ActiveOuting | null>(null);
   const [durationModalOpen, setDurationModalOpen] = useState(false);
+
+  const deepLinkUrl = ExpoLinking.useURL();
+  useEffect(() => {
+    if (deepLinkUrl) {
+      try {
+        const parsed = ExpoLinking.parse(deepLinkUrl);
+        if (parsed.path === 'explore' || parsed.path === 'start-walk' || parsed.hostname === 'explore' || parsed.hostname === 'start-walk') {
+          setDurationModalOpen(true);
+        }
+      } catch (e) {
+        console.warn('[Home] Deep link parsing failed', e);
+      }
+    }
+  }, [deepLinkUrl]);
 
   const { viewRef, isSharing, shareCard } = useShareCard();
   const shareRef = useRef<View>(null);

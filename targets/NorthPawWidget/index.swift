@@ -41,6 +41,18 @@ struct ToggleOutingIntent: AppIntent {
     }
 }
 
+@available(iOS 17.0, *)
+struct StartOutingIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Outing"
+    static var description = IntentDescription("Opens the app to start a new walk outing.")
+
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        return .result()
+    }
+}
+
 struct SimpleEntry: TimelineEntry {
     let date: Date
     let dogName: String
@@ -264,12 +276,21 @@ struct NorthPawWidgetEntryView : View {
                     Spacer()
                     
                     if #available(iOS 17.0, *) {
-                        Button(intent: ToggleOutingIntent()) {
-                            Image(systemName: entry.isOutingActive ? "stop.circle.fill" : "play.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(entry.statusColor)
+                        if entry.isOutingActive {
+                            Button(intent: ToggleOutingIntent()) {
+                                Image(systemName: "stop.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(entry.statusColor)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Button(intent: StartOutingIntent()) {
+                                Image(systemName: "play.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(entry.statusColor)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 6)
@@ -278,7 +299,7 @@ struct NorthPawWidgetEntryView : View {
             .containerBackground(for: .widget) {
                 Color.clear
             }
-            .widgetURL(URL(string: "northpaw://")!)
+            .widgetURL(URL(string: "northpaw://explore")!)
 
         case .systemSmall:
             // Home Screen Small Card (Centered Visual Status Ring & Road Temp)
@@ -369,22 +390,39 @@ struct NorthPawWidgetEntryView : View {
                         
                         Spacer()
                         
-                        // Interactive Toggle Button
+                        // Interactive Toggle/Start Button
                         if #available(iOS 17.0, *) {
-                            Button(intent: ToggleOutingIntent()) {
-                                HStack(spacing: 3) {
-                                    Image(systemName: entry.isOutingActive ? "stop.fill" : "play.fill")
-                                        .font(.system(size: 8, weight: .bold))
-                                    Text(entry.isOutingActive ? "End Walk" : "Explore")
-                                        .font(.system(size: 8, weight: .black))
+                            if entry.isOutingActive {
+                                Button(intent: ToggleOutingIntent()) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "stop.fill")
+                                            .font(.system(size: 8, weight: .bold))
+                                        Text("End Walk")
+                                            .font(.system(size: 8, weight: .black))
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.red.opacity(0.15))
+                                    .foregroundColor(Color.red)
+                                    .cornerRadius(6)
                                 }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(entry.isOutingActive ? Color.red.opacity(0.15) : entry.statusColor.opacity(0.15))
-                                .foregroundColor(entry.isOutingActive ? Color.red : entry.statusColor)
-                                .cornerRadius(6)
+                                .buttonStyle(.plain)
+                            } else {
+                                Button(intent: StartOutingIntent()) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "play.fill")
+                                            .font(.system(size: 8, weight: .bold))
+                                        Text("Explore")
+                                            .font(.system(size: 8, weight: .black))
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(entry.statusColor.opacity(0.15))
+                                    .foregroundColor(entry.statusColor)
+                                    .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
 
@@ -425,7 +463,7 @@ struct NorthPawWidgetEntryView : View {
             .containerBackground(for: .widget) {
                 Color(uiColor: .systemBackground)
             }
-            .widgetURL(URL(string: "northpaw://")!)
+            .widgetURL(URL(string: "northpaw://explore")!)
         }
     }
 }
