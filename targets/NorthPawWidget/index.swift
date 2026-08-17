@@ -125,9 +125,9 @@ extension SimpleEntry {
         if isOutingActive {
             return Color(red: 0.16, green: 0.50, blue: 0.72) // Active Outing Blue
         }
-        if roadTempF >= 105 || npiScore < 50 {
+        if roadTempF >= 105 || npiScore > 66 {
             return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger)
-        } else if roadTempF >= 85 || npiScore < 75 {
+        } else if roadTempF >= 85 || npiScore > 33 {
             return Color(red: 0.95, green: 0.55, blue: 0.08) // Amber (Caution)
         } else {
             return Color(red: 0.16, green: 0.65, blue: 0.38) // Emerald Green (Safe)
@@ -138,9 +138,9 @@ extension SimpleEntry {
         if isOutingActive {
             return "figure.walk"
         }
-        if roadTempF >= 105 || npiScore < 50 {
+        if roadTempF >= 105 || npiScore > 66 {
             return "exclamationmark.circle.fill"
-        } else if roadTempF >= 85 || npiScore < 75 {
+        } else if roadTempF >= 85 || npiScore > 33 {
             return "exclamationmark.triangle.fill"
         } else {
             return "checkmark.circle.fill"
@@ -152,9 +152,9 @@ extension SimpleEntry {
         if isOutingActive {
             return "🐾 Outing Active"
         }
-        if roadTempF >= 105 || npiScore < 50 {
+        if roadTempF >= 105 || npiScore > 66 {
             return "⚠️ Next safe: 6:30 PM"
-        } else if roadTempF >= 85 || npiScore < 75 {
+        } else if roadTempF >= 85 || npiScore > 33 {
             return "☀️ Safe until 11:30 AM"
         } else {
             return "✅ Safe to walk now"
