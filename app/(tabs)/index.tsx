@@ -807,6 +807,7 @@ export default function HomeScreen() {
           } else if (!isWidgetActive && localActive) {
             await cancelActiveOuting();
             setActiveOuting(null);
+            router.push('/post-walk');
           } else {
             setActiveOuting(localActive);
           }

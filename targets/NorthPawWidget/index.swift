@@ -12,6 +12,26 @@ struct ToggleOutingIntent: AppIntent {
         let current = (defaults?.string(forKey: "isOutingActive") ?? "false") == "true"
         defaults?.setValue(!current ? "true" : "false", forKey: "isOutingActive")
         
+        // If we are stopping an active walk, schedule a review notification in 5 minutes (300 seconds)
+        if current {
+            let dogName = defaults?.string(forKey: "dogName") ?? "your dog"
+            let center = UNUserNotificationCenter.current()
+            center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                guard granted else { return }
+                
+                let content = UNMutableNotificationContent()
+                content.title = "How did \(dogName) handle the walk?"
+                content.body = "Tap to record a 1-tap private check-in."
+                content.sound = .default
+                content.userInfo = ["type": "post_walk_checkin"]
+                
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 300, repeats: false)
+                let request = UNNotificationRequest(identifier: "widget_post_walk_review", content: content, trigger: trigger)
+                
+                center.add(request)
+            }
+        }
+        
         // Notify WidgetKit to refresh timelines immediately
         WidgetCenter.shared.reloadAllTimelines()
         
