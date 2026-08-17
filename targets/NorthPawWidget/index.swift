@@ -287,7 +287,7 @@ struct NorthPawWidgetEntryView : View {
             .containerBackground(for: .widget) {
                 Color.clear
             }
-            .widgetURL(URL(string: "northpaw://")!)
+            .widgetURL(URL(string: "northpaw://?widget_variant=detailed")!)
 
         case .systemSmall:
             // Home Screen Small Card (Centered Visual Status Ring & Road Temp)
@@ -329,9 +329,9 @@ struct NorthPawWidgetEntryView : View {
             }
             .padding(12)
             .containerBackground(for: .widget) {
-                Color(uiColor: .systemBackground)
+                Color.white.opacity(0.01) // or Color.clear
             }
-            .widgetURL(URL(string: "northpaw://")!)
+            .widgetURL(URL(string: "northpaw://?widget_variant=detailed")!)
 
         default:
             // Home Screen Medium Card (Split 2-Column: Ring + Details)
@@ -447,12 +447,89 @@ struct NorthPawWidgetEntryView : View {
             .containerBackground(for: .widget) {
                 Color(uiColor: .systemBackground)
             }
-            .widgetURL(URL(string: "northpaw://")!)
+            .widgetURL(URL(string: "northpaw://?widget_variant=detailed")!)
         }
     }
 }
 
-@main
+struct NorthPawGlanceWidgetEntryView: View {
+    var entry: Provider.Entry
+
+    var body: some View {
+        HStack(spacing: 16) {
+            // Left Column: Decision & Timing
+            VStack(alignment: .leading, spacing: 6) {
+                // 1. Status & Dog Name
+                HStack(spacing: 6) {
+                    let displayStatus = entry.isOutingActive ? "EXPLORING" : (entry.statusText == "Danger" ? "HIGH RISK" : entry.statusText.uppercased())
+                    Text(displayStatus)
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundColor(entry.statusColor)
+                    Text("•")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.secondary)
+                    Text(entry.dogName)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                }
+
+                // 2. Actionable Window
+                Text(entry.isOutingActive ? "Outing active" : entry.countdownLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                
+                Spacer()
+
+                // 3. Compact Pavement Temp
+                Text("\(entry.roadTempF)°F Pavement")
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundColor(.primary)
+            }
+            .padding(.vertical, 4)
+
+            Spacer()
+
+            // Right Column: Explore/End Button
+            VStack {
+                Spacer()
+                if #available(iOS 17.0, *) {
+                    if entry.isOutingActive {
+                        Button(intent: ToggleOutingIntent()) {
+                            Text("■ End Outing")
+                                .font(.system(size: 10, weight: .black))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.red.opacity(0.15))
+                                .foregroundColor(Color.red)
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button(intent: ToggleOutingIntent()) {
+                            Text("▶ Explore")
+                                .font(.system(size: 10, weight: .black))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(entry.statusColor.opacity(0.15))
+                                .foregroundColor(entry.statusColor)
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Spacer()
+            }
+        }
+        .padding(16)
+        .containerBackground(for: .widget) {
+            Color(uiColor: .systemBackground)
+        }
+        .widgetURL(URL(string: "northpaw://?widget_variant=glance")!)
+    }
+}
+
 struct NorthPawWidget: Widget {
     let kind: String = "NorthPawWidget"
 
@@ -469,5 +546,26 @@ struct NorthPawWidget: Widget {
             .systemSmall,
             .systemMedium
         ])
+    }
+}
+
+struct NorthPawGlanceWidget: Widget {
+    let kind: String = "NorthPawGlanceWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            NorthPawGlanceWidgetEntryView(entry: entry)
+        }
+        .configurationDisplayName("NorthPaw Glance")
+        .description("See whether now is a good time to head outside with your dog at a glance.")
+        .supportedFamilies([.systemMedium])
+    }
+}
+
+@main
+struct NorthPawWidgetBundle: WidgetBundle {
+    var body: some Widget {
+        NorthPawWidget()
+        NorthPawGlanceWidget()
     }
 }

@@ -130,18 +130,21 @@ function RootLayoutNav() {
       }
     })();
 
-    // 1. UTM Deep Link Parsing
+    // 1. UTM / Widget Deep Link Parsing
     const handleDeepLink = (event: { url: string }) => {
       try {
         const parsed = Linking.parse(event.url);
         if (parsed.queryParams) {
-          const { utm_source, utm_medium, utm_campaign } = parsed.queryParams;
+          const { utm_source, utm_medium, utm_campaign, widget_variant } = parsed.queryParams;
           if (utm_source) {
             setUserProperties({
               acquisition_source: utm_source,
               acquisition_medium: utm_medium || 'direct',
               acquisition_campaign: utm_campaign || 'none',
             });
+          }
+          if (widget_variant === 'detailed' || widget_variant === 'glance') {
+            trackEvent('widget_opened', { widget_variant });
           }
         }
       } catch (e) {
