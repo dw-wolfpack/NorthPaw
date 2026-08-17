@@ -73,6 +73,7 @@ import { ShareButton } from '@/components/ShareButton';
 import { useShareCard } from '@/hooks/useShareCard';
 import { getActiveOuting, startOuting, cancelActiveOuting, extendActiveOuting, type ActiveOuting } from '@/lib/outings';
 import * as Notifications from 'expo-notifications';
+import { syncWidgetData } from '@/lib/widgetSync';
 
 const FOREST = '#1B4332';
 const SAFETY_GREEN = '#2ECC71';
@@ -1558,6 +1559,27 @@ export default function HomeScreen() {
       stopAndClearVerifyTimer();
     };
   }, [stopAndClearVerifyTimer]);
+
+  // Synchronize Widget Data when critical values change
+  useEffect(() => {
+    if (dogProfile && weatherOk && npiScore != null) {
+      const calcRoadTemp = currentRoadPoint?.roadTempF ?? 77;
+      const bestWindowsList = bestWindows;
+      const actionableTime = bestWindowsList[0] || '7:00 AM';
+
+      syncWidgetData({
+        dogName: dogProfile.dogName || 'Your Pup',
+        statusText: statusBadge.label,
+        airTempF: weatherOk.tempF,
+        roadTempF: calcRoadTemp,
+        surfaceType: selectedSurface,
+        npiScore: Math.round(npiScore * 10), // Store as integer [0..100] for WidgetKit
+        actionableTime,
+      }).catch((err) => {
+        console.warn('[Home] Widget sync failed', err);
+      });
+    }
+  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows]);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
