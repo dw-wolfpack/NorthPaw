@@ -1,6 +1,11 @@
 ## Backlog / Upcoming (v4.4.0)
 
 *   **BL-106 (Weather Dispatcher Fallback):** Enhance NWS weather fallback logic when live observation station readings time out or lag. Ensure weather dispatcher samples the closest current hour from `hourlyForecast` instead of defaulting to the 12-hour period low/high (`p0`), preventing overnight lows (e.g. `🌙 49°F`) from displaying during daytime hours when station observations fail.
+*   **BL-107 (Growth Psychology UX Improvements):**
+    *   **Curiosity Gap Push Alerts:** Refactor paw-safety warning push notifications to spark curiosity (e.g., *"Aoife's unsafe walk window starts in 45m. Tap to see safe zones..."*).
+    *   **Loss Aversion Widgets:** Update widget text framing to project safe window countdowns instead of static degrees (e.g., *"⚠️ Safe window: 35m left"*).
+    *   **Peak-End Post-Walk Reward:** gamify the post-walk check-in completion screen with streak counters (e.g., *"🔥 5 safe walks logged in a row!"*) to positive-reinforce safety habits.
+    *   **Priming & Hick's Law Alerts:** Send proactive low-fatigue alerts 15 minutes before the daily safe walk window begins (e.g., *"☀️ Morning cools down starting in 15m. Perfect walk conditions for Aoife."*).
 
 ---
 
