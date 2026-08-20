@@ -607,8 +607,9 @@ export async function fetchUsWeatherAtCoordinates(
               : fallbackSkyCoverFromText(p.shortForecast || '', inferredDaytime);
           const humidityPct = key && humidityByHour.has(key) ? humidityByHour.get(key) ?? null : null;
 
-          fullSamplesMap.set(p.startTime, {
-            timeIso: p.startTime,
+          const utcKey = new Date(p.startTime).toISOString();
+          fullSamplesMap.set(utcKey, {
+            timeIso: utcKey,
             airTempF,
             windSpeedMph: parseWindSpeedMph(p.windSpeed),
             isDaytime: inferredDaytime,
