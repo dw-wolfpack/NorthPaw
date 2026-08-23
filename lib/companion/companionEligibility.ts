@@ -30,10 +30,10 @@ export async function checkCompanionEligibility(): Promise<CompanionEligibility>
     validOutcomes.length >= COMPANION_REQUIREMENTS.OUTCOMES_COUNT &&
     actualDistinctDays >= COMPANION_REQUIREMENTS.OUTCOME_DAYS;
 
-  // Use actual counts if available; for App Store screenshot / demo mode, display 6/7 readiness days, 2/5 check-ins
-  const readinessDays = actualReadinessDays > 0 ? actualReadinessDays : 6;
-  const outcomesCount = validOutcomes.length > 0 ? validOutcomes.length : 2;
-  const distinctDays = actualDistinctDays > 0 ? actualDistinctDays : 2;
+  // Use actual counts
+  const readinessDays = actualReadinessDays;
+  const outcomesCount = validOutcomes.length;
+  const distinctDays = actualDistinctDays;
 
   const readinessProgress = Math.min(1, readinessDays / COMPANION_REQUIREMENTS.READINESS_DAYS);
   const outcomesProgress = Math.min(1, outcomesCount / COMPANION_REQUIREMENTS.OUTCOMES_COUNT);
