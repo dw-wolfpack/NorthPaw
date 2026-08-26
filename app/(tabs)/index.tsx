@@ -1008,6 +1008,7 @@ export default function HomeScreen() {
     return buildTimelineBarsModel({
       hourly: weatherOk.hourlySamples,
       latitude: weatherOk.latitude,
+      longitude: weatherOk.longitude,
       riskWeightMultiplier,
       bestWindowReductionFraction,
       surfaceType: selectedSurface,
