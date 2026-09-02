@@ -1158,18 +1158,18 @@ export default function HomeScreen() {
     const humidity = clampUnit(nearestHourly?.humidityPct ?? weatherOk.precipChance ?? 45, 0, 100);
     const skyCover = clampUnit(nearestHourly?.skyCover ?? 35, 0, 100);
     const solarLoadRaw = weatherOk.isDaytime ? ((100 - skyCover) / 100) * 10 : 0;
-    // Scale solar risk impact by temp: full impact at 85F+, 40% impact at 40F.
-    const solarTempScale = Math.max(0.4, Math.min(1.0, ((weatherOk.tempF - 40) / 45) * 0.6 + 0.4));
+    // Scale solar risk impact by temp: solar radiation becomes genuine thermal stress as temps warm past 62F.
+    const solarTempScale = Math.max(0.0, Math.min(1.0, (weatherOk.tempF - 62) / 23));
     const solarLoad = solarLoadRaw * solarTempScale;
     // Canine Heat Stress Index (CHSI): Weights humidity as an additive risk.
     const chsi = (weatherOk.tempF * 0.8) + (humidity * (weatherOk.tempF - 14) / 100) + 20;
     const snoutMultiplier = dogProfile?.dogSnoutProfile === 'flat' ? 1.15 : 1;
     const coatMultiplier = dogProfile?.dogCoatType === 'Double' ? 1.1 : 1;
-    const activityPenalty = dogProfile?.dogActivityBaseline === 'high' ? 1 : 0;
-    // Base risk: Mapping CHSI range [89, 148] to [0, 5.5] using 10.8 normalization.
+    const activityMultiplier = dogProfile?.dogActivityBaseline === 'high' ? 1.08 : 1;
+    // Base risk: Mapping CHSI range [89, 148] to [0, 5.5] using 11.5 normalization.
     // Anchor shifted to 89 (approx 60F) to prevent over-indexing in cool weather.
-    const baseRisk = Math.max(0, (chsi - 89) / 10.8) + solarLoad * 0.35;
-    const finalRisk = (baseRisk * snoutMultiplier * coatMultiplier) + activityPenalty;
+    const baseRisk = Math.max(0, (chsi - 89) / 11.5) + solarLoad * 0.25;
+    const finalRisk = baseRisk * snoutMultiplier * coatMultiplier * activityMultiplier;
     return Math.round(Math.min(10, finalRisk) * 10) / 10;
   }, [weatherOk, currentRoadPoint, dogProfile]);
 
@@ -1187,7 +1187,7 @@ export default function HomeScreen() {
     const humidity = clampUnit(nearestHourly?.humidityPct ?? weatherOk.precipChance ?? 45, 0, 100);
     const skyCover = clampUnit(nearestHourly?.skyCover ?? 35, 0, 100);
     const solarLoadRaw = weatherOk.isDaytime ? ((100 - skyCover) / 100) * 10 : 0;
-    const solarTempScale = Math.max(0.4, Math.min(1.0, ((weatherOk.tempF - 40) / 45) * 0.6 + 0.4));
+    const solarTempScale = Math.max(0.0, Math.min(1.0, (weatherOk.tempF - 62) / 23));
     const solarLoad = solarLoadRaw * solarTempScale;
     const chsi = (weatherOk.tempF * 0.8) + (humidity * (weatherOk.tempF - 14) / 100) + 20;
     
@@ -1218,8 +1218,8 @@ export default function HomeScreen() {
     const bestPmNpi = getPointNpi(optPm);
 
     let advisor = "Good to go right now.";
-    const airRisk = Math.max(0, (chsi - 89) / 10.8);
-    const sunRisk = solarLoad * 0.35;
+    const airRisk = Math.max(0, (chsi - 89) / 11.5);
+    const sunRisk = solarLoad * 0.25;
     const roadRisk = (currentRoadPoint?.roadTempF ?? 0) > 105 ? 2.0 : 0;
 
     if ((npiScore ?? 0) >= 3.1) {
@@ -1242,7 +1242,7 @@ export default function HomeScreen() {
       solarLoad: Math.round(solarLoad * 10) / 10,
       snoutAdj: dogProfile?.dogSnoutProfile === 'flat' ? '+15%' : '0%',
       coatAdj: dogProfile?.dogCoatType === 'Double' ? '+10%' : '0%',
-      activityAdj: dogProfile?.dogActivityBaseline === 'high' ? '+1.0' : '0',
+      activityAdj: dogProfile?.dogActivityBaseline === 'high' ? '+8%' : '0%',
       advisor,
       bestAmLabel,
       bestPmLabel,
