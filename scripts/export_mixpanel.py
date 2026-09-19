@@ -11,6 +11,7 @@ import base64
 import argparse
 import urllib.request
 import urllib.parse
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
 def get_auth_header(api_secret_or_username, password=""):
@@ -52,7 +53,7 @@ def fetch_event_counts(auth_header, event_names, from_date, to_date, unit="day")
         print(f"[Mixpanel API] Error fetching event counts: {e}")
         return {}
 
-def export_raw_events(auth_header, from_date, to_date, limit=1000):
+def export_raw_events(auth_header, from_date, to_date, limit=100000):
     """Exports raw event stream from Mixpanel Raw Data Export API."""
     url = f"https://data.mixpanel.com/api/2.0/export?from_date={from_date}&to_date={to_date}"
     
@@ -76,7 +77,7 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch and export Mixpanel metrics for NorthPaw.")
     parser.add_argument("--secret", help="Mixpanel API Secret or Service Account Username")
     parser.add_argument("--password", default="", help="Service Account Secret / Password (if using Service Account)")
-    parser.add_argument("--from-date", default=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"))
+    parser.add_argument("--from-date", default=(datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d"))
     parser.add_argument("--to-date", default=datetime.now().strftime("%Y-%m-%d"))
     parser.add_argument("--out", default="documentation/notebooklm/metrics/mixpanel_export.json")
     
@@ -98,13 +99,15 @@ def main():
     raw_events = export_raw_events(auth_header, args.from_date, args.to_date)
     print(f"Exported {len(raw_events)} raw event records.")
     
+    distinct_users = len(set(e.get('properties', {}).get('distinct_id') for e in raw_events if e.get('properties', {}).get('distinct_id')))
+    event_counts = dict(Counter(e.get('event') for e in raw_events))
+    
     output_data = {
-        "export_date": datetime.now().isoformat(),
-        "from_date": args.from_date,
-        "to_date": args.to_date,
-        "event_types": events_names,
-        "total_raw_events": len(raw_events),
-        "raw_events_sample": raw_events[:200]
+        "export_timestamp": datetime.now().isoformat(),
+        "total_events": len(raw_events),
+        "distinct_users_count": distinct_users,
+        "event_counts": event_counts,
+        "raw_events": raw_events
     }
     
     os.makedirs(os.path.dirname(args.out), exist_ok=True)

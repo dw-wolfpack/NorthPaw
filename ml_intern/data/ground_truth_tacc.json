@@ -1,0 +1,73 @@
+{
+  "description": "Tufts Animal Care and Condition (TACC) Weather Safety Scale & Veterinary Cold Thresholds",
+  "source": "Cummings School of Veterinary Medicine at Tufts University",
+  "temperature_bands": [
+    {
+      "category": 1,
+      "name": "No Risk",
+      "temp_min_f": 45.0,
+      "temp_max_f": 120.0,
+      "description": "No cold hazard for any dog size or coat type."
+    },
+    {
+      "category": 2,
+      "name": "Low / Mild Risk",
+      "temp_min_f": 32.0,
+      "temp_max_f": 45.0,
+      "description": "Generally safe. Mild discomfort possible for toy breeds or very thin single coats."
+    },
+    {
+      "category": 3,
+      "name": "Moderate Risk",
+      "temp_min_f": 20.0,
+      "temp_max_f": 32.0,
+      "description": "Caution advised. Prolonged exposure causes hypothermia in small dogs, puppies, and seniors."
+    },
+    {
+      "category": 4,
+      "name": "Severe Risk",
+      "temp_min_f": 0.0,
+      "temp_max_f": 20.0,
+      "description": "Dangerous for all dogs except arctic double-coated breeds. Outings restricted to <15-20 mins."
+    },
+    {
+      "category": 5,
+      "name": "Critical Hazard",
+      "temp_min_f": -50.0,
+      "temp_max_f": 0.0,
+      "description": "Life-threatening frostbite and rapid hypothermia hazard. Limit outdoor exposure strictly to brief potty breaks."
+    }
+  ],
+  "canine_clo_ratings": {
+    "Double": {
+      "clo": 3.2,
+      "wind_penetration_factor": 0.25,
+      "cold_risk_discount": 0.65,
+      "examples": ["Siberian Husky", "Alaskan Malamute", "German Shepherd", "Bernese Mountain Dog", "Great Pyrenees"]
+    },
+    "Wire": {
+      "clo": 2.1,
+      "wind_penetration_factor": 0.45,
+      "cold_risk_discount": 0.85,
+      "examples": ["Airedale Terrier", "Standard Schnauzer", "German Wirehaired Pointer"]
+    },
+    "Standard_Single": {
+      "clo": 1.4,
+      "wind_penetration_factor": 0.65,
+      "cold_risk_discount": 1.00,
+      "examples": ["Golden Retriever", "Labrador Retriever", "Beagle"]
+    },
+    "Short_Thin": {
+      "clo": 0.6,
+      "wind_penetration_factor": 0.90,
+      "cold_risk_discount": 1.40,
+      "examples": ["Chihuahua", "Whippet", "Italian Greyhound", "Pitbull", "Doberman", "French Bulldog"]
+    }
+  },
+  "size_mass_classes": {
+    "toy": { "weight_min_lbs": 1, "weight_max_lbs": 14, "mass_penalty": 1.35 },
+    "small": { "weight_min_lbs": 15, "weight_max_lbs": 30, "mass_penalty": 1.15 },
+    "medium_large": { "weight_min_lbs": 31, "weight_max_lbs": 70, "mass_penalty": 1.00 },
+    "giant": { "weight_min_lbs": 71, "weight_max_lbs": 160, "mass_penalty": 0.85 }
+  }
+}

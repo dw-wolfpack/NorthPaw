@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+*.ipa
+
+# ML simulation generated datasets (>100MB)
+ml_intern/data/*simulation_dataset.json
