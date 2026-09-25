@@ -53,7 +53,7 @@ def fetch_event_counts(auth_header, event_names, from_date, to_date, unit="day")
         print(f"[Mixpanel API] Error fetching event counts: {e}")
         return {}
 
-def export_raw_events(auth_header, from_date, to_date, limit=100000):
+def export_raw_events(auth_header, from_date, to_date, limit=500000):
     """Exports raw event stream from Mixpanel Raw Data Export API."""
     url = f"https://data.mixpanel.com/api/2.0/export?from_date={from_date}&to_date={to_date}"
     
