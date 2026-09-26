@@ -88,6 +88,7 @@ export const BREEDS = [
   'Akita',
   'Alaskan Malamute',
   'American Eskimo',
+  'American Foxhound',
   'American Pit Bull Terrier',
   'American Staffordshire Terrier',
   'Aussiedoodle',
@@ -127,6 +128,7 @@ export const BREEDS = [
   'Greater Swiss Mountain Dog',
   'Greyhound',
   'Havanese',
+  'Husky',
   'Italian Greyhound',
   'Jack Russell Terrier',
   'Labradoodle',
@@ -207,7 +209,7 @@ function displaySlot(isoStart: string, isoEnd: string): string {
 
 function buildBreedSafetyNote(name: string, breed: string, tempF: number, place: string): string {
   const lowerHeatBreeds = ['Bulldog', 'French Bulldog', 'Pug', 'Boxer', 'Shih Tzu'];
-  const coolSensitiveBreeds = ['Siberian Husky', 'Bernese Mountain Dog', 'Great Dane'];
+  const coolSensitiveBreeds = ['Husky', 'Siberian Husky', 'Bernese Mountain Dog', 'Great Dane'];
   const displayBreed = breed.trim() || 'your dog';
 
   const heatThreshold = lowerHeatBreeds.some((b) => displayBreed.includes(b)) ? 80 : 86;
