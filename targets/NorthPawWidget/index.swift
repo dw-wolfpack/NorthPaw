@@ -51,6 +51,7 @@ struct SimpleEntry: TimelineEntry {
     let npiScore: Int
     let actionableTime: String
     let isOutingActive: Bool
+    let tempUnit: String
 }
 
 struct Provider: TimelineProvider {
@@ -64,7 +65,8 @@ struct Provider: TimelineProvider {
             surfaceType: "Asphalt",
             npiScore: 88,
             actionableTime: "Best window until 2:15 PM",
-            isOutingActive: false
+            isOutingActive: false,
+            tempUnit: "F"
         )
     }
 
@@ -84,6 +86,7 @@ struct Provider: TimelineProvider {
         let defaults = UserDefaults(suiteName: "group.com.northpaw.app")
         let dogName = defaults?.string(forKey: "dogName") ?? "Your pup"
         let rawStatusText = defaults?.string(forKey: "statusText") ?? "Safe to Walk"
+        let tempUnit = defaults?.string(forKey: "tempUnit") ?? "F"
         
         // React Native SharedGroupPreferences writes all values as Strings.
         let airTempStr = defaults?.string(forKey: "airTempF") ?? ""
@@ -115,12 +118,47 @@ struct Provider: TimelineProvider {
             surfaceType: surfaceType,
             npiScore: max(0, min(100, npiScore)),
             actionableTime: resolvedTime,
-            isOutingActive: isOutingActive
+            isOutingActive: isOutingActive,
+            tempUnit: tempUnit
         )
     }
 }
 
 extension SimpleEntry {
+    var isCelsius: Bool {
+        return tempUnit.uppercased() == "C"
+    }
+
+    var displayRoadTempNum: Int {
+        if isCelsius {
+            return Int(round((Double(roadTempF) - 32.0) * 5.0 / 9.0))
+        }
+        return roadTempF
+    }
+
+    var displayAirTempNum: Int {
+        if isCelsius {
+            return Int(round((Double(airTempF) - 32.0) * 5.0 / 9.0))
+        }
+        return airTempF
+    }
+
+    var tempUnitSymbol: String {
+        return isCelsius ? "°C" : "°F"
+    }
+
+    var roadTempDisplayWithUnit: String {
+        return "\(displayRoadTempNum)\(tempUnitSymbol)"
+    }
+
+    var airTempDisplayWithUnit: String {
+        return "\(displayAirTempNum)\(tempUnitSymbol)"
+    }
+
+    var roadTempDegreesOnly: String {
+        return "\(displayRoadTempNum)°"
+    }
+
     // Canonical NorthPaw Semantic Color Tokens matching SEMANTIC_SAFETY_COLORS:
     // safe: RGB(45, 106, 79) -> #2D6A4F
     // warm: RGB(212, 175, 55) -> #D4AF37
@@ -235,7 +273,7 @@ struct NorthPawWidgetEntryView : View {
                     Image(systemName: entry.statusDotIcon)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(entry.statusColor)
-                    Text("\(entry.roadTempF)°")
+                    Text(entry.roadTempDegreesOnly)
                         .font(.system(size: 15, weight: .heavy, design: .rounded))
                         .minimumScaleFactor(0.7)
                 }
@@ -248,8 +286,8 @@ struct NorthPawWidgetEntryView : View {
         case .accessoryInline:
             // Lock Screen Text Line
             ViewThatFits {
-                Label("🐾 \(entry.isOutingActive ? "Exploring Now" : entry.statusText) • Road \(entry.roadTempF)° (\(entry.dogName))", systemImage: "pawprint.fill")
-                Label("🐾 \(entry.statusText) • \(entry.roadTempF)°", systemImage: "pawprint.fill")
+                Label("🐾 \(entry.isOutingActive ? "Exploring Now" : entry.statusText) • Road \(entry.roadTempDegreesOnly) (\(entry.dogName))", systemImage: "pawprint.fill")
+                Label("🐾 \(entry.statusText) • \(entry.roadTempDegreesOnly)", systemImage: "pawprint.fill")
             }
             .containerBackground(for: .widget) {
                 Color.clear
@@ -271,7 +309,7 @@ struct NorthPawWidgetEntryView : View {
                                 .lineLimit(1)
                         }
                         
-                        Text("Road \(entry.roadTempF)°F")
+                        Text("Road \(entry.roadTempDisplayWithUnit)")
                             .font(.system(size: 14, weight: .heavy, design: .rounded))
                             .widgetAccentable()
                         
@@ -326,7 +364,7 @@ struct NorthPawWidgetEntryView : View {
                         Image(systemName: entry.statusDotIcon)
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(entry.statusColor)
-                        Text("\(entry.roadTempF)°")
+                        Text(entry.roadTempDegreesOnly)
                             .font(.system(size: 18, weight: .heavy, design: .rounded))
                             .foregroundColor(.primary)
                         Text(entry.surfaceType.uppercased())
@@ -435,7 +473,7 @@ struct NorthPawWidgetEntryView : View {
                         .padding(.vertical, 2)
                     
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(entry.roadTempF)°F")
+                        Text(entry.roadTempDisplayWithUnit)
                             .font(.system(size: 20, weight: .black, design: .rounded))
                             .foregroundColor(.primary)
                         Text(" Pavement (\(entry.surfaceType))")
@@ -443,7 +481,7 @@ struct NorthPawWidgetEntryView : View {
                             .foregroundColor(.secondary)
                     }
                     
-                    Text("Air Temp: \(entry.airTempF)°F")
+                    Text("Air Temp: \(entry.airTempDisplayWithUnit)")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary)
 
@@ -503,7 +541,7 @@ struct NorthPawGlanceWidgetEntryView: View {
                 Spacer()
 
                 // 3. Compact Pavement Temp
-                Text("\(entry.roadTempF)°F Pavement")
+                Text("\(entry.roadTempDisplayWithUnit) Pavement")
                     .font(.system(size: 18, weight: .black, design: .rounded))
                     .foregroundColor(.primary)
             }

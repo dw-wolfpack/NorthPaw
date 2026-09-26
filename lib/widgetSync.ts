@@ -14,6 +14,7 @@ export interface WidgetSyncData {
   actionableTime?: string;
   isOutingActive?: boolean;
   syncedAt?: number;
+  tempUnit?: 'F' | 'C';
 }
 
 export const WIDGET_STORAGE_KEY = '@northpaw/widget_last_sync_v1';
@@ -112,6 +113,17 @@ export async function syncWidgetData(
     const trimmedName = typeof data.dogName === 'string' ? data.dogName.trim() : '';
     const trimmedStatus = typeof data.statusText === 'string' ? data.statusText.trim() : '';
 
+    let unit = data.tempUnit;
+    if (!unit) {
+      try {
+        const storedUnit = await AsyncStorage.getItem('@northpaw_temp_unit');
+        if (storedUnit === 'C' || storedUnit === 'F') {
+          unit = storedUnit;
+        }
+      } catch {}
+    }
+    const resolvedUnit: 'F' | 'C' = unit === 'C' ? 'C' : 'F';
+
     const sanitizedData: WidgetSyncData = {
       dogName: trimmedName || 'Pup',
       statusText: trimmedStatus || 'Ready',
@@ -122,6 +134,7 @@ export async function syncWidgetData(
       actionableTime: data.actionableTime || '',
       isOutingActive: Boolean(data.isOutingActive),
       syncedAt: data.syncedAt ?? now,
+      tempUnit: resolvedUnit,
     };
 
     await AsyncStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(sanitizedData));
@@ -137,6 +150,7 @@ export async function syncWidgetData(
       await SharedGroupPreferences.setItem('surfaceType', sanitizedData.surfaceType, groupName);
       await SharedGroupPreferences.setItem('npiScore', String(sanitizedData.npiScore), groupName);
       await SharedGroupPreferences.setItem('isOutingActive', String(sanitizedData.isOutingActive), groupName);
+      await SharedGroupPreferences.setItem('tempUnit', sanitizedData.tempUnit || 'F', groupName);
       if (sanitizedData.actionableTime) {
         await SharedGroupPreferences.setItem('actionableTime', sanitizedData.actionableTime, groupName);
       }

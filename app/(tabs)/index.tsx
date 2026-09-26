@@ -1669,11 +1669,12 @@ export default function HomeScreen() {
         npiScore: Math.round(npiScore * 10), // Store as integer [0..100] for WidgetKit
         actionableTime,
         isOutingActive: activeOuting !== null,
+        tempUnit,
       }).catch((err) => {
         console.warn('[Home] Widget sync failed', err);
       });
     }
-  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting]);
+  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting, tempUnit]);
 
   // Periodic widget sync at a set cadence (15 minutes) while app is active
   useEffect(() => {
@@ -1694,6 +1695,7 @@ export default function HomeScreen() {
           npiScore: Math.round(npiScore * 10),
           actionableTime,
           isOutingActive: activeOuting !== null,
+          tempUnit,
         }, { force: true }).catch((err) => {
           console.warn('[Home] Periodic widget sync failed', err);
         });
@@ -1701,7 +1703,7 @@ export default function HomeScreen() {
     }, WIDGET_PERIODIC_SYNC_INTERVAL_MS);
 
     return () => clearInterval(intervalId);
-  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting]);
+  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting, tempUnit]);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>

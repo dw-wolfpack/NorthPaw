@@ -37,6 +37,7 @@ import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
 import { ReviewPromptModal } from '@/components/ReviewPromptModal';
 import { WidgetUpgradeModal } from '@/components/WidgetUpgradeModal';
 import { type DogProfile } from '@/lib/profile';
+import { syncWidgetData, getLastSyncedWidgetData } from '@/lib/widgetSync';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -77,6 +78,24 @@ export default function SettingsScreen() {
     setTempUnit(newUnit);
     await AsyncStorage.setItem('@northpaw_temp_unit', newUnit);
     trackEvent('temp_unit_changed', { unit: newUnit });
+    try {
+      const lastData = await getLastSyncedWidgetData();
+      if (lastData) {
+        await syncWidgetData({ ...lastData, tempUnit: newUnit }, { force: true });
+      } else {
+        await syncWidgetData({
+          dogName: dogProfile?.dogName || 'Pup',
+          statusText: 'Ready',
+          airTempF: 72,
+          roadTempF: 77,
+          surfaceType: 'asphalt',
+          npiScore: 20,
+          tempUnit: newUnit,
+        }, { force: true });
+      }
+    } catch (e) {
+      console.warn('[Settings] Failed to sync widget on temp unit change', e);
+    }
   };
 
   const toggleMixpanel = async () => {

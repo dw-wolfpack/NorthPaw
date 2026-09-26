@@ -443,6 +443,27 @@ describe('24-Hour Timeline Block, Anti-Wrapping & Widget Sync Test Suite', () =>
       expect(stored?.isOutingActive).toBe(false);
     });
 
+    it('Temperature unit bridging: C preference bridges to App Group and widget storage', async () => {
+      await syncWidgetData({
+        dogName: 'Cooper',
+        statusText: 'Safe to Walk',
+        airTempF: 70,
+        roadTempF: 75,
+        surfaceType: 'grass',
+        npiScore: 15,
+        actionableTime: 'Safe now',
+        isOutingActive: false,
+        tempUnit: 'C',
+      }, { force: true });
+
+      const stored = await getLastSyncedWidgetData();
+      expect(stored?.tempUnit).toBe('C');
+
+      const groupName = 'group.com.northpaw.app';
+      expect(SharedGroupPreferences.setItem).toHaveBeenCalledWith('tempUnit', 'C', groupName);
+      expect(reloadAllTimelines).toHaveBeenCalled();
+    });
+
     it('Cadence contract: 15m periodic sync evaluated correctly', () => {
       const now = 2000000;
       const fifteenMin = DEFAULT_WIDGET_SYNC_INTERVAL_MS;
