@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, Pressable, type StyleProp, type ViewStyle } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Haptics from 'expo-haptics';
-import { SEMANTIC_SAFETY_COLORS, roadBandForTemp } from '@/lib/readiness/thresholds';
+import { SEMANTIC_SAFETY_COLORS, roadBandForTemp, toCelsius } from '@/lib/readiness/thresholds';
 import { useColorScheme } from '@/components/useColorScheme';
 
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -18,6 +19,7 @@ export interface WidgetGlancePreviewProps {
   isOutingActive?: boolean;
   style?: StyleProp<ViewStyle>;
   initialTab?: 'home' | 'lock';
+  tempUnit?: 'F' | 'C';
 }
 
 /**
@@ -35,15 +37,34 @@ export function WidgetGlancePreview({
   isOutingActive = false,
   style,
   initialTab = 'home',
+  tempUnit: propTempUnit,
 }: WidgetGlancePreviewProps) {
   const colorScheme = useColorScheme() ?? 'dark';
   const isDark = colorScheme === 'dark';
   const [activeTab, setActiveTab] = useState<'home' | 'lock'>(initialTab);
+  const [tempUnit, setTempUnit] = useState<'F' | 'C'>(propTempUnit || 'F');
+
+  useEffect(() => {
+    if (propTempUnit) {
+      setTempUnit(propTempUnit);
+      return;
+    }
+    AsyncStorage.getItem('@northpaw_temp_unit')
+      .then((val) => {
+        if (val === 'C' || val === 'F') setTempUnit(val as 'F' | 'C');
+      })
+      .catch(() => {});
+  }, [propTempUnit]);
 
   const safeDogName = (dogName && dogName.trim()) || 'Your Pup';
   const safeRoadTemp = Number.isFinite(roadTempF) ? Math.round(roadTempF!) : 74;
   const safeAirTemp = Number.isFinite(airTempF) ? Math.round(airTempF!) : 70;
   const safeSurface = surfaceType ? surfaceType.charAt(0).toUpperCase() + surfaceType.slice(1) : 'Asphalt';
+
+  const isC = tempUnit === 'C';
+  const displayRoadNum = isC ? Math.round(toCelsius(safeRoadTemp)) : safeRoadTemp;
+  const displayAirNum = isC ? Math.round(toCelsius(safeAirTemp)) : safeAirTemp;
+  const tempUnitSymbol = isC ? '°C' : '°F';
 
   // Derive semantic status band & colors
   const band = roadBandForTemp(safeRoadTemp);
@@ -181,14 +202,14 @@ export function WidgetGlancePreview({
             <View>
               <View style={styles.tempPrimaryRow}>
                 <Text style={[styles.heroTempText, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
-                  {safeRoadTemp}°F
+                  {displayRoadNum}{tempUnitSymbol}
                 </Text>
                 <Text style={[styles.surfaceSub, { color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(18, 31, 24, 0.5)' }]}>
                   {safeSurface}
                 </Text>
               </View>
               <Text style={[styles.airTempSub, { color: isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(18, 31, 24, 0.45)' }]}>
-                Air: {safeAirTemp}°F
+                Air: {displayAirNum}{tempUnitSymbol}
               </Text>
             </View>
 
@@ -228,7 +249,7 @@ export function WidgetGlancePreview({
           <View style={[styles.lockInlineCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(18,31,24,0.06)' }]}>
             <MaterialCommunityIcons name="paw" size={12} color={statusColor} />
             <Text style={[styles.lockInlineText, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
-              {safeDogName} • {displayStatus} • Road {safeRoadTemp}°
+              {safeDogName} • {displayStatus} • Road {displayRoadNum}°
             </Text>
           </View>
           <Text style={[styles.accessorySubCaption, { color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(18,31,24,0.45)' }]}>
@@ -249,7 +270,7 @@ export function WidgetGlancePreview({
               </View>
 
               <Text style={[styles.lockRectTemp, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
-                Road {safeRoadTemp}°F
+                Road {displayRoadNum}{tempUnitSymbol}
               </Text>
 
               <Text style={[styles.lockRectTiming, { color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(18,31,24,0.7)' }]} numberOfLines={1}>
@@ -262,7 +283,7 @@ export function WidgetGlancePreview({
               <View style={[styles.lockCircularRim, { borderColor: statusColor }]}>
                 <MaterialCommunityIcons name="paw" size={10} color={statusColor} />
                 <Text style={[styles.lockCircularTemp, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
-                  {safeRoadTemp}°
+                  {displayRoadNum}°
                 </Text>
               </View>
               <Text style={[styles.lockCircularLabel, { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(18,31,24,0.5)' }]}>
