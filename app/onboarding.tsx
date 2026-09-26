@@ -914,7 +914,12 @@ export default function OnboardingScreen() {
                        transform: [{ scale: pressed ? 0.98 : 1 }],
                      },
                    ]}>
-                  <Text style={styles.breedIcon}>🐾</Text>
+                  <MaterialCommunityIcons
+                    name="paw"
+                    size={18}
+                    color={selected ? palette.tint : palette.textSecondary}
+                    style={{ marginBottom: 4 }}
+                  />
                   <Text style={[styles.breedText, { color: palette.text }]}>{item}</Text>
                 </Pressable>
               );

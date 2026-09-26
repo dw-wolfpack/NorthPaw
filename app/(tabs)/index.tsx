@@ -746,6 +746,12 @@ export default function HomeScreen() {
 
   const reconcileWidgetState = useCallback(async (gone = false) => {
     try {
+      if (!SharedGroupPreferences || typeof SharedGroupPreferences.getItem !== 'function') {
+        const localActive = await getActiveOuting();
+        if (!gone) setActiveOuting(localActive);
+        reconciliationCompletedRef.current = true;
+        return;
+      }
       const [widgetActiveVal, needsReviewVal] = await Promise.all([
         SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false'),
         SharedGroupPreferences.getItem('needsPostWalkReview', 'group.com.northpaw.app').catch(() => 'false'),

@@ -1,8 +1,11 @@
-import React from 'react';
-import { StyleSheet, View, Text, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View, Text, Pressable, type StyleProp, type ViewStyle } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import * as Haptics from 'expo-haptics';
 import { SEMANTIC_SAFETY_COLORS, roadBandForTemp } from '@/lib/readiness/thresholds';
 import { useColorScheme } from '@/components/useColorScheme';
+
+const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
 export interface WidgetGlancePreviewProps {
   dogName?: string;
@@ -14,10 +17,11 @@ export interface WidgetGlancePreviewProps {
   actionableTime?: string;
   isOutingActive?: boolean;
   style?: StyleProp<ViewStyle>;
+  initialTab?: 'home' | 'lock';
 }
 
 /**
- * Representative preview of the NorthPaw Home Screen Widget.
+ * Representative preview of NorthPaw Home Screen & Lock Screen Widgets.
  * Shares semantic color tokens and data presentation with the native SwiftUI widget.
  */
 export function WidgetGlancePreview({
@@ -30,9 +34,11 @@ export function WidgetGlancePreview({
   actionableTime,
   isOutingActive = false,
   style,
+  initialTab = 'home',
 }: WidgetGlancePreviewProps) {
   const colorScheme = useColorScheme() ?? 'dark';
   const isDark = colorScheme === 'dark';
+  const [activeTab, setActiveTab] = useState<'home' | 'lock'>(initialTab);
 
   const safeDogName = (dogName && dogName.trim()) || 'Your Pup';
   const safeRoadTemp = Number.isFinite(roadTempF) ? Math.round(roadTempF!) : 74;
@@ -70,90 +76,205 @@ export function WidgetGlancePreview({
     : 'Favorable to walk now';
 
   return (
-    <View
-      style={[
-        styles.widgetContainer,
-        {
-          backgroundColor: isDark ? '#141E18' : '#FFFFFF',
-          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
-        },
-        style,
-      ]}
-      accessible={true}
-      accessibilityRole="summary"
-      accessibilityLabel={`Representative widget preview for ${safeDogName}: ${displayStatus}, ${safeRoadTemp} degrees surface temperature`}
-    >
-      {/* Top Header Strip: Status badge + Dog name */}
-      <View style={styles.headerRow}>
-        <View style={styles.statusBadgeRow}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-          <Text style={[styles.statusText, { color: statusColor }]}>{displayStatus}</Text>
-          <Text style={[styles.bullet, { color: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)' }]}>•</Text>
-          <Text
-            style={[styles.dogName, { color: isDark ? '#FFFFFF' : '#121F18' }]}
-            numberOfLines={1}
-          >
-            {safeDogName}
-          </Text>
-        </View>
-
-        <View style={[styles.appBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
-          <MaterialCommunityIcons name="paw" size={11} color={statusColor} />
-          <Text style={[styles.appBadgeText, { color: isDark ? '#A1A1A1' : '#666666' }]}>NorthPaw</Text>
-        </View>
-      </View>
-
-      {/* Actionable Window / Readiness Cue */}
-      <View style={styles.timingRow}>
-        <Text style={[styles.timingText, { color: isDark ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 31, 24, 0.72)' }]} numberOfLines={1}>
-          {timingCopy}
-        </Text>
-      </View>
-
-      {/* Conditions Strip */}
-      <View style={styles.conditionsRow}>
-        <View>
-          <View style={styles.tempPrimaryRow}>
-            <Text style={[styles.heroTempText, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
-              {safeRoadTemp}°F
-            </Text>
-            <Text style={[styles.surfaceSub, { color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(18, 31, 24, 0.5)' }]}>
-              {safeSurface}
-            </Text>
-          </View>
-          <Text style={[styles.airTempSub, { color: isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(18, 31, 24, 0.45)' }]}>
-            Air: {safeAirTemp}°F
-          </Text>
-        </View>
-
-        {/* Glance Quick Button Visual */}
-        <View
+    <View style={[styles.rootWrap, style]}>
+      {/* Interactive Switcher Tab Bar */}
+      <View
+        style={[
+          styles.tabSelectorBar,
+          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(18, 31, 24, 0.07)' },
+        ]}
+      >
+        <Pressable
           style={[
-            styles.glanceActionButton,
-            {
-              backgroundColor: isOutingActive
-                ? 'rgba(239, 68, 68, 0.14)'
-                : isDark
-                ? 'rgba(255, 255, 255, 0.08)'
-                : 'rgba(0, 0, 0, 0.06)',
-            },
+            styles.tabSelectorItem,
+            activeTab === 'home' && styles.tabSelectorItemActive,
+            activeTab === 'home' && { backgroundColor: '#2D6A4F' },
           ]}
+          onPress={() => {
+            hapticTap();
+            setActiveTab('home');
+          }}
+          accessibilityRole="tab"
+          accessibilityLabel="Home Screen widget preview"
+          accessibilityState={{ selected: activeTab === 'home' }}
         >
-          <MaterialCommunityIcons
-            name={isOutingActive ? 'stop' : 'play'}
-            size={12}
-            color={isOutingActive ? '#EF4444' : statusColor}
-          />
           <Text
             style={[
-              styles.glanceActionText,
-              { color: isOutingActive ? '#EF4444' : isDark ? '#EAEAEA' : '#121F18' },
+              styles.tabSelectorText,
+              { color: activeTab === 'home' ? '#FFFFFF' : isDark ? 'rgba(255,255,255,0.6)' : 'rgba(18,31,24,0.6)' },
+              activeTab === 'home' && { fontWeight: '700' },
             ]}
           >
-            {isOutingActive ? 'End' : 'Explore'}
+            Home Screen
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.tabSelectorItem,
+            activeTab === 'lock' && styles.tabSelectorItemActive,
+            activeTab === 'lock' && { backgroundColor: '#2D6A4F' },
+          ]}
+          onPress={() => {
+            hapticTap();
+            setActiveTab('lock');
+          }}
+          accessibilityRole="tab"
+          accessibilityLabel="Lock Screen widget preview"
+          accessibilityState={{ selected: activeTab === 'lock' }}
+        >
+          <Text
+            style={[
+              styles.tabSelectorText,
+              { color: activeTab === 'lock' ? '#FFFFFF' : isDark ? 'rgba(255,255,255,0.6)' : 'rgba(18,31,24,0.6)' },
+              activeTab === 'lock' && { fontWeight: '700' },
+            ]}
+          >
+            Lock Screen
+          </Text>
+        </Pressable>
+      </View>
+
+      {activeTab === 'home' ? (
+        /* Home Screen Medium Widget */
+        <View
+          style={[
+            styles.widgetContainer,
+            {
+              backgroundColor: isDark ? '#141E18' : '#FFFFFF',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(18, 31, 24, 0.12)',
+            },
+          ]}
+          accessible={true}
+          accessibilityRole="summary"
+          accessibilityLabel={`Representative widget preview for ${safeDogName}: ${displayStatus}, ${safeRoadTemp} degrees surface temperature`}
+        >
+          {/* Top Header Strip: Status badge + Dog name */}
+          <View style={styles.headerRow}>
+            <View style={styles.statusBadgeRow}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.statusText, { color: statusColor }]}>{displayStatus}</Text>
+              <Text style={[styles.bullet, { color: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)' }]}>•</Text>
+              <Text
+                style={[styles.dogName, { color: isDark ? '#FFFFFF' : '#121F18' }]}
+                numberOfLines={1}
+              >
+                {safeDogName}
+              </Text>
+            </View>
+
+            <View style={[styles.appBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+              <MaterialCommunityIcons name="paw" size={11} color={statusColor} />
+              <Text style={[styles.appBadgeText, { color: isDark ? '#A1A1A1' : '#666666' }]}>NorthPaw</Text>
+            </View>
+          </View>
+
+          {/* Actionable Window / Readiness Cue */}
+          <View style={styles.timingRow}>
+            <Text style={[styles.timingText, { color: isDark ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 31, 24, 0.72)' }]} numberOfLines={1}>
+              {timingCopy}
+            </Text>
+          </View>
+
+          {/* Conditions Strip */}
+          <View style={styles.conditionsRow}>
+            <View>
+              <View style={styles.tempPrimaryRow}>
+                <Text style={[styles.heroTempText, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
+                  {safeRoadTemp}°F
+                </Text>
+                <Text style={[styles.surfaceSub, { color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(18, 31, 24, 0.5)' }]}>
+                  {safeSurface}
+                </Text>
+              </View>
+              <Text style={[styles.airTempSub, { color: isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(18, 31, 24, 0.45)' }]}>
+                Air: {safeAirTemp}°F
+              </Text>
+            </View>
+
+            {/* Glance Quick Button Visual */}
+            <View
+              style={[
+                styles.glanceActionButton,
+                {
+                  backgroundColor: isOutingActive
+                    ? 'rgba(239, 68, 68, 0.14)'
+                    : isDark
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : 'rgba(0, 0, 0, 0.06)',
+                },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name={isOutingActive ? 'stop' : 'play'}
+                size={12}
+                color={isOutingActive ? '#EF4444' : statusColor}
+              />
+              <Text
+                style={[
+                  styles.glanceActionText,
+                  { color: isOutingActive ? '#EF4444' : isDark ? '#EAEAEA' : '#121F18' },
+                ]}
+              >
+                {isOutingActive ? 'End' : 'Explore'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : (
+        /* Lock Screen Accessory Widgets Preview */
+        <View style={styles.lockScreenContainer}>
+          {/* 1. Accessory Inline (Above Clock) */}
+          <View style={[styles.lockInlineCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(18,31,24,0.06)' }]}>
+            <MaterialCommunityIcons name="paw" size={12} color={statusColor} />
+            <Text style={[styles.lockInlineText, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
+              {safeDogName} • {displayStatus} • Road {safeRoadTemp}°
+            </Text>
+          </View>
+          <Text style={[styles.accessorySubCaption, { color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(18,31,24,0.45)' }]}>
+            Inline (Above Clock)
+          </Text>
+
+          {/* 2. Below Clock: Rectangular & Circular Accessories */}
+          <View style={styles.lockAccessoriesRow}>
+            {/* Accessory Rectangular Box */}
+            <View style={[styles.lockRectCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(18,31,24,0.08)' }]}>
+              <View style={styles.lockRectTopRow}>
+                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                <Text style={[styles.lockRectStatus, { color: statusColor }]}>{displayStatus}</Text>
+                <Text style={styles.lockRectBullet}>•</Text>
+                <Text style={[styles.lockRectDog, { color: isDark ? '#FFFFFF' : '#121F18' }]} numberOfLines={1}>
+                  {safeDogName}
+                </Text>
+              </View>
+
+              <Text style={[styles.lockRectTemp, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
+                Road {safeRoadTemp}°F
+              </Text>
+
+              <Text style={[styles.lockRectTiming, { color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(18,31,24,0.7)' }]} numberOfLines={1}>
+                {timingCopy}
+              </Text>
+            </View>
+
+            {/* Accessory Circular Complication */}
+            <View style={[styles.lockCircularCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(18,31,24,0.08)' }]}>
+              <View style={[styles.lockCircularRim, { borderColor: statusColor }]}>
+                <MaterialCommunityIcons name="paw" size={10} color={statusColor} />
+                <Text style={[styles.lockCircularTemp, { color: isDark ? '#FFFFFF' : '#121F18' }]}>
+                  {safeRoadTemp}°
+                </Text>
+              </View>
+              <Text style={[styles.lockCircularLabel, { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(18,31,24,0.5)' }]}>
+                Circular
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.accessorySubCaption, { color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(18,31,24,0.45)' }]}>
+            Rectangular & Circular (Below Clock)
           </Text>
         </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -262,5 +383,135 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+  rootWrap: {
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+  },
+  tabSelectorBar: {
+    flexDirection: 'row',
+    width: '100%',
+    padding: 3,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  tabSelectorItem: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+  },
+  tabSelectorItemActive: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabSelectorText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  lockScreenContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  lockInlineCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    gap: 6,
+    marginBottom: 4,
+  },
+  lockInlineText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  accessorySubCaption: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  lockAccessoriesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    marginBottom: 4,
+  },
+  lockRectCard: {
+    flex: 1,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  lockRectTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  lockRectStatus: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  lockRectBullet: {
+    color: 'rgba(255, 255, 255, 0.35)',
+    marginHorizontal: 4,
+    fontSize: 10,
+  },
+  lockRectDog: {
+    fontSize: 11,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  lockRectTemp: {
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+    fontVariant: ['tabular-nums'],
+    marginBottom: 2,
+  },
+  lockRectTiming: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  lockCircularCard: {
+    width: 82,
+    height: 82,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    padding: 6,
+  },
+  lockCircularRim: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 3,
+  },
+  lockCircularTemp: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+  },
+  lockCircularLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });

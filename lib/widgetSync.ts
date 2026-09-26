@@ -127,7 +127,7 @@ export async function syncWidgetData(
     await AsyncStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(sanitizedData));
     await AsyncStorage.setItem(WIDGET_SYNC_TIME_KEY, String(sanitizedData.syncedAt));
 
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' && SharedGroupPreferences && typeof SharedGroupPreferences.setItem === 'function') {
       const groupName = 'group.com.northpaw.app';
 
       await SharedGroupPreferences.setItem('dogName', sanitizedData.dogName, groupName);
