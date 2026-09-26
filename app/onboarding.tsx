@@ -209,16 +209,12 @@ function displaySlot(isoStart: string, isoEnd: string): string {
 
 function buildBreedSafetyNote(name: string, breed: string, tempF: number, place: string): string {
   const lowerHeatBreeds = ['Bulldog', 'French Bulldog', 'Pug', 'Boxer', 'Shih Tzu'];
-  const coolSensitiveBreeds = ['Husky', 'Siberian Husky', 'Bernese Mountain Dog', 'Great Dane'];
   const displayBreed = breed.trim() || 'your dog';
 
   const heatThreshold = lowerHeatBreeds.some((b) => displayBreed.includes(b)) ? 80 : 86;
   const location = place || 'your area';
   if (tempF >= heatThreshold) {
     return `${tempF}F in ${location}: too warm for ${displayBreed} past mid-morning. Keep the outing short and shaded.`;
-  }
-  if (tempF <= 40 && coolSensitiveBreeds.some((b) => displayBreed.includes(b))) {
-    return `${tempF}F in ${location}: ${displayBreed} may need a shorter outing window and a warm-up layer.`;
   }
   return `${tempF}F in ${location}: solid conditions for ${name || 'your dog'} with normal hydration breaks.`;
 }
