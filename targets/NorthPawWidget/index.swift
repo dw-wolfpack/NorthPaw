@@ -121,16 +121,27 @@ struct Provider: TimelineProvider {
 }
 
 extension SimpleEntry {
+    // Canonical NorthPaw Semantic Color Tokens matching SEMANTIC_SAFETY_COLORS:
+    // safe: RGB(45, 106, 79) -> #2D6A4F
+    // warm: RGB(212, 175, 55) -> #D4AF37
+    // hot: RGB(230, 126, 34) -> #E67E22
+    // danger: RGB(192, 57, 43) -> #C0392B
+    // unavailable: RGB(85, 85, 85) -> #555555
+    // active_outing: RGB(41, 128, 185) -> #2980B9
     var statusColor: Color {
         if isOutingActive {
-            return Color(red: 0.16, green: 0.50, blue: 0.72) // Active Outing Blue
+            return Color(red: 41/255.0, green: 128/255.0, blue: 185/255.0) // Active Outing Blue
         }
-        if statusText.contains("DANGER") || roadTempF >= 105 || npiScore > 66 {
-            return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger)
-        } else if statusText.contains("CAUTION") || roadTempF >= 85 || npiScore > 33 {
-            return Color(red: 0.95, green: 0.55, blue: 0.08) // Amber (Caution)
+        if statusText.contains("DANGER") || roadTempF >= 125 || npiScore > 66 {
+            return Color(red: 192/255.0, green: 57/255.0, blue: 43/255.0) // Danger Crimson
+        } else if statusText == "HOT" || (roadTempF >= 100 && roadTempF < 125) {
+            return Color(red: 230/255.0, green: 126/255.0, blue: 34/255.0) // Hot Orange
+        } else if statusText.contains("CAUTION") || statusText == "WARM" || (roadTempF >= 77 && roadTempF < 100) || npiScore > 33 {
+            return Color(red: 212/255.0, green: 175/255.0, blue: 55/255.0) // Warm Amber
+        } else if statusText.contains("UNAVAILABLE") {
+            return Color(red: 85/255.0, green: 85/255.0, blue: 85/255.0) // Unavailable Gray
         } else {
-            return Color(red: 0.16, green: 0.65, blue: 0.38) // Emerald Green (Safe)
+            return Color(red: 45/255.0, green: 106/255.0, blue: 79/255.0) // Safe Green
         }
     }
 
@@ -138,10 +149,14 @@ extension SimpleEntry {
         if isOutingActive {
             return "figure.walk"
         }
-        if statusText.contains("DANGER") || roadTempF >= 105 || npiScore > 66 {
+        if statusText.contains("DANGER") || roadTempF >= 125 || npiScore > 66 {
             return "exclamationmark.circle.fill"
-        } else if statusText.contains("CAUTION") || roadTempF >= 85 || npiScore > 33 {
+        } else if statusText == "HOT" || (roadTempF >= 100 && roadTempF < 125) {
+            return "flame.fill"
+        } else if statusText.contains("CAUTION") || statusText == "WARM" || (roadTempF >= 77 && roadTempF < 100) || npiScore > 33 {
             return "exclamationmark.triangle.fill"
+        } else if statusText.contains("UNAVAILABLE") {
+            return "questionmark.circle.fill"
         } else {
             return "checkmark.circle.fill"
         }
@@ -152,12 +167,15 @@ extension SimpleEntry {
         if isOutingActive {
             return "🐾 Outing Active"
         }
-        if statusText.contains("DANGER") || roadTempF >= 105 || npiScore > 66 {
-            let timeStr = actionableTime.isEmpty ? "Later" : actionableTime
+        let timeStr = actionableTime.isEmpty ? "Later" : actionableTime
+        if statusText.contains("DANGER") || roadTempF >= 125 || npiScore > 66 {
             return "⚠️ Next safe: \(timeStr)"
-        } else if statusText.contains("CAUTION") || roadTempF >= 85 || npiScore > 33 {
-            let timeStr = actionableTime.isEmpty ? "Later" : actionableTime
+        } else if statusText == "HOT" || (roadTempF >= 100 && roadTempF < 125) {
+            return "🔥 Hot pavement: \(timeStr)"
+        } else if statusText.contains("CAUTION") || statusText == "WARM" || (roadTempF >= 77 && roadTempF < 100) || npiScore > 33 {
             return "☀️ Safe until \(timeStr)"
+        } else if statusText.contains("UNAVAILABLE") {
+            return "⏳ Weather updating..."
         } else {
             return "✅ Safe to walk now"
         }

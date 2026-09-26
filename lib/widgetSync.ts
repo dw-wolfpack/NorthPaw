@@ -74,9 +74,12 @@ export async function syncWidgetData(
       return false;
     }
 
+    const trimmedName = typeof data.dogName === 'string' ? data.dogName.trim() : '';
+    const trimmedStatus = typeof data.statusText === 'string' ? data.statusText.trim() : '';
+
     const sanitizedData: WidgetSyncData = {
-      dogName: (data.dogName || 'Pup').trim(),
-      statusText: (data.statusText || 'Ready').trim(),
+      dogName: trimmedName || 'Pup',
+      statusText: trimmedStatus || 'Ready',
       airTempF: Number.isFinite(data.airTempF) ? Math.round(data.airTempF) : 72,
       roadTempF: Number.isFinite(data.roadTempF) ? Math.round(data.roadTempF) : 77,
       surfaceType: data.surfaceType || 'asphalt',

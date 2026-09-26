@@ -67,6 +67,7 @@ import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundI
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
 import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand } from '@/lib/weather/roadTemp';
+import { SEMANTIC_SAFETY_COLORS, getSemanticSafetyColor, type SafetySemanticBand } from '@/lib/readiness/thresholds';
 import { useColorScheme } from '@/components/useColorScheme';
 import { ShareCard } from '@/components/ShareCard';
 import { ShareButton } from '@/components/ShareButton';
@@ -181,12 +182,8 @@ function roadBandLabel(band?: 'safe' | 'warm' | 'hot' | 'danger' | 'unavailable'
   return 'No Data Recorded';
 }
 
-function roadBandColor(band?: 'safe' | 'warm' | 'hot' | 'danger' | 'unavailable' | null): string {
-  if (band === 'safe') return '#2D6A4F';
-  if (band === 'warm') return '#D4A017';
-  if (band === 'hot') return '#C46A2D';
-  if (band === 'danger') return '#B5443A';
-  return '#666666';
+function roadBandColor(band?: SafetySemanticBand | null): string {
+  return getSemanticSafetyColor(band);
 }
 
 function clampNum(val: number, min: number, max: number): number {
@@ -1017,15 +1014,9 @@ export default function HomeScreen() {
   const timelineAxis = timelineBounds();
   const timelineColors = useMemo(() => {
     if (!timelineBars || !timelineBars.points.length) {
-      return ['#2D6A4F', '#2D6A4F'] as [string, string, ...string[]];
+      return [SEMANTIC_SAFETY_COLORS.safe.hex, SEMANTIC_SAFETY_COLORS.safe.hex] as [string, string, ...string[]];
     }
-    const colors = timelineBars.points.map(p => {
-      if (p.roadBand === 'warm') return '#D4A017';
-      if (p.roadBand === 'hot') return '#C46A2D';
-      if (p.roadBand === 'danger') return '#B5443A';
-      if (p.roadBand === 'unavailable') return '#555555';
-      return '#2D6A4F';
-    });
+    const colors = timelineBars.points.map(p => roadBandColor(p.roadBand));
     if (colors.length === 1) return [colors[0], colors[0]] as [string, string, ...string[]];
     return colors as [string, string, ...string[]];
   }, [timelineBars]);
@@ -1977,7 +1968,7 @@ export default function HomeScreen() {
                   style={[StyleSheet.absoluteFillObject, { borderRadius: 24, overflow: 'hidden' }]}
                 />
                 <View style={styles.timelineBarsHeader}>
-                  <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline</Text>
+                  <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline (12:00 AM – 11:00 PM)</Text>
                 </View>
                 <View
                   style={styles.timelineBarsWrap}
@@ -2740,7 +2731,7 @@ export default function HomeScreen() {
                   })}
                 </ScrollView>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 8 }]}>
-                  Spinner includes all day hours (00 to 23). Timeline estimates cover the full 24-hour block (00:00 to 23:00).
+                  Today&apos;s calendar-day forecast (12:00 AM to 11:00 PM). All 24 hours (00 to 23) are selectable.
                 </Text>
 
                 <View style={[styles.detailDivider, { backgroundColor: palette.border }]} />
