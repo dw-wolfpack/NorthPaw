@@ -308,5 +308,53 @@ describe('Widget Discovery & 6.0 Upgrade Sheet Test Suite', () => {
 
       expect(trackEvent).toHaveBeenCalledWith('widget_howto_opened', { source: 'settings' });
     });
+
+    it('supports switching between Home Screen and Lock Screen instructions', async () => {
+      let component: renderer.ReactTestRenderer;
+      await act(async () => {
+        component = renderer.create(
+          <WidgetUpgradeModal
+            visible={true}
+            onDismiss={jest.fn()}
+            source="upgrade"
+          />
+        );
+      });
+
+      // Verify Stage 1 copy mentions Lock Screen
+      const stage1Str = JSON.stringify(component!.toJSON());
+      expect(stage1Str).toContain('Home Screen or Lock Screen');
+
+      // Open instructions
+      const showMeHowBtn = component!.root.findByProps({
+        accessibilityLabel: 'Show me how to add the widget',
+      });
+      await act(async () => {
+        showMeHowBtn.props.onPress();
+      });
+
+      // Initially shows Home Screen tab instructions
+      const homeScreenTab = component!.root.findByProps({
+        accessibilityLabel: 'Home Screen instructions',
+      });
+      const lockScreenTab = component!.root.findByProps({
+        accessibilityLabel: 'Lock Screen instructions',
+      });
+      expect(homeScreenTab).toBeDefined();
+      expect(lockScreenTab).toBeDefined();
+
+      let instructionsStr = JSON.stringify(component!.toJSON());
+      expect(instructionsStr).toContain('until your apps jiggle');
+
+      // Switch to Lock Screen tab
+      await act(async () => {
+        lockScreenTab.props.onPress();
+      });
+
+      instructionsStr = JSON.stringify(component!.toJSON());
+      expect(instructionsStr).toContain('Customize');
+      expect(instructionsStr).toContain('Add Widgets');
+      expect(instructionsStr).toContain('choose your preferred lock screen widget');
+    });
   });
 });

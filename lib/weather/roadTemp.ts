@@ -325,6 +325,7 @@ export function buildTimelineBarsModel(input: {
   riskWeightMultiplier?: number;
   bestWindowReductionFraction?: number;
   surfaceType?: SurfaceType;
+  fill24HourBlock?: boolean;
 }): TimelineBarsModel | null {
   if (!input.hourly.length) return null;
   const now = input.now ?? new Date();
@@ -347,7 +348,7 @@ export function buildTimelineBarsModel(input: {
     }
   }
 
-  // Bounded linear interpolation & backward extrapolation (max 2 hours)
+  // Bounded linear interpolation & backward/forward extrapolation
   const newAdditionsMap = new Map<number, HourlyInput>();
   for (let h = AXIS_START_HOUR; h <= AXIS_END_HOUR; h++) {
     if (!todayHourMap.has(h)) {
@@ -384,14 +385,35 @@ export function buildTimelineBarsModel(input: {
           confidence: 'medium',
         });
       } else if (prevH === null && nextH !== null) {
-        if (nextH - h <= 2) {
+        // Extrapolate earlier today back to midnight (h=0) if fill24HourBlock is requested, or up to 2h
+        if (input.fill24HourBlock || nextH - h <= 2) {
           const nextSample = todayHourMap.get(nextH)!;
           const sampleDate = new Date(nextSample.timeIso);
           sampleDate.setHours(h, 0, 0, 0);
 
+          const isDaytime = h >= 6 && h <= 20;
           newAdditionsMap.set(h, {
             ...nextSample,
             timeIso: sampleDate.toISOString(),
+            airTempF: nextSample.airTempF,
+            isDaytime,
+            sourceType: 'extrapolated',
+            confidence: 'low',
+          });
+        }
+      } else if (prevH !== null && nextH === null) {
+        // Forward extrapolate evening to end of day (h=23)
+        if (input.fill24HourBlock || h - prevH <= 2) {
+          const prevSample = todayHourMap.get(prevH)!;
+          const sampleDate = new Date(prevSample.timeIso);
+          sampleDate.setHours(h, 0, 0, 0);
+
+          const isDaytime = h >= 6 && h <= 20;
+          newAdditionsMap.set(h, {
+            ...prevSample,
+            timeIso: sampleDate.toISOString(),
+            airTempF: prevSample.airTempF,
+            isDaytime,
             sourceType: 'extrapolated',
             confidence: 'low',
           });

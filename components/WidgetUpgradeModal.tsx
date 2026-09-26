@@ -45,6 +45,7 @@ export function WidgetUpgradeModal({
   const palette = Colors[colorScheme];
 
   const [showHowTo, setShowHowTo] = useState(false);
+  const [activeTab, setActiveTab] = useState<'home' | 'lock'>('home');
   const trackedViewRef = useRef(false);
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export function WidgetUpgradeModal({
     if (!visible) {
       trackedViewRef.current = false;
       setShowHowTo(false);
+      setActiveTab('home');
     }
   }, [visible, source]);
 
@@ -125,7 +127,7 @@ export function WidgetUpgradeModal({
                 </View>
 
                 <Text style={[styles.benefitCopy, { color: palette.textSecondary }]}>
-                  See current conditions, favorable outing times, and outing status right from your Home Screen.
+                  See current conditions, favorable outing times, and outing status right from your Home Screen or Lock Screen.
                 </Text>
 
                 {/* CTAs */}
@@ -168,38 +170,136 @@ export function WidgetUpgradeModal({
                   How to add the widget
                 </Text>
 
-                <Text style={[styles.subtitle, { color: palette.textSecondary }]}>
+                <Text style={[styles.subtitle, { color: palette.textSecondary, marginBottom: 12 }]}>
                   Follow these quick steps on your iPhone:
                 </Text>
 
-                <View style={styles.stepsList}>
-                  <View style={styles.stepItem}>
-                    <View style={styles.stepNumberBadge}>
-                      <Text style={styles.stepNumberText}>1</Text>
-                    </View>
-                    <Text style={[styles.stepText, { color: palette.text }]}>
-                      Touch and hold any empty area on your <Text style={{ fontWeight: '700' }}>Home Screen</Text> until your apps jiggle.
+                {/* Segmented Switcher: Home Screen vs Lock Screen */}
+                <View
+                  style={[
+                    styles.tabBar,
+                    { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(18, 31, 24, 0.06)' },
+                  ]}
+                >
+                  <Pressable
+                    style={[
+                      styles.tabItem,
+                      activeTab === 'home' && styles.tabItemActive,
+                      activeTab === 'home' && { backgroundColor: '#2D6A4F' },
+                    ]}
+                    onPress={() => {
+                      hapticTap();
+                      setActiveTab('home');
+                    }}
+                    accessibilityRole="tab"
+                    accessibilityLabel="Home Screen instructions"
+                    accessibilityState={{ selected: activeTab === 'home' }}
+                  >
+                    <Text
+                      style={[
+                        styles.tabItemText,
+                        { color: activeTab === 'home' ? '#FFFFFF' : palette.textSecondary },
+                        activeTab === 'home' && { fontWeight: '700' },
+                      ]}
+                    >
+                      Home Screen
                     </Text>
-                  </View>
+                  </Pressable>
 
-                  <View style={styles.stepItem}>
-                    <View style={styles.stepNumberBadge}>
-                      <Text style={styles.stepNumberText}>2</Text>
-                    </View>
-                    <Text style={[styles.stepText, { color: palette.text }]}>
-                      Tap the <Text style={{ fontWeight: '700' }}>+ (Add)</Text> button in the upper-left corner.
+                  <Pressable
+                    style={[
+                      styles.tabItem,
+                      activeTab === 'lock' && styles.tabItemActive,
+                      activeTab === 'lock' && { backgroundColor: '#2D6A4F' },
+                    ]}
+                    onPress={() => {
+                      hapticTap();
+                      setActiveTab('lock');
+                    }}
+                    accessibilityRole="tab"
+                    accessibilityLabel="Lock Screen instructions"
+                    accessibilityState={{ selected: activeTab === 'lock' }}
+                  >
+                    <Text
+                      style={[
+                        styles.tabItemText,
+                        { color: activeTab === 'lock' ? '#FFFFFF' : palette.textSecondary },
+                        activeTab === 'lock' && { fontWeight: '700' },
+                      ]}
+                    >
+                      Lock Screen
                     </Text>
-                  </View>
-
-                  <View style={styles.stepItem}>
-                    <View style={styles.stepNumberBadge}>
-                      <Text style={styles.stepNumberText}>3</Text>
-                    </View>
-                    <Text style={[styles.stepText, { color: palette.text }]}>
-                      Search for <Text style={{ fontWeight: '700' }}>NorthPaw</Text>, choose your widget size, and tap <Text style={{ fontWeight: '700' }}>Add Widget</Text>.
-                    </Text>
-                  </View>
+                  </Pressable>
                 </View>
+
+                {activeTab === 'home' ? (
+                  <View style={styles.stepsList}>
+                    <View style={styles.stepItem}>
+                      <View style={styles.stepNumberBadge}>
+                        <Text style={styles.stepNumberText}>1</Text>
+                      </View>
+                      <Text style={[styles.stepText, { color: palette.text }]}>
+                        Touch and hold any empty area on your <Text style={{ fontWeight: '700' }}>Home Screen</Text> until your apps jiggle.
+                      </Text>
+                    </View>
+
+                    <View style={styles.stepItem}>
+                      <View style={styles.stepNumberBadge}>
+                        <Text style={styles.stepNumberText}>2</Text>
+                      </View>
+                      <Text style={[styles.stepText, { color: palette.text }]}>
+                        Tap the <Text style={{ fontWeight: '700' }}>+ (Add)</Text> button in the upper-left corner.
+                      </Text>
+                    </View>
+
+                    <View style={styles.stepItem}>
+                      <View style={styles.stepNumberBadge}>
+                        <Text style={styles.stepNumberText}>3</Text>
+                      </View>
+                      <Text style={[styles.stepText, { color: palette.text }]}>
+                        Search for <Text style={{ fontWeight: '700' }}>NorthPaw</Text>, choose your widget size, and tap <Text style={{ fontWeight: '700' }}>Add Widget</Text>.
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.stepsList}>
+                    <View style={styles.stepItem}>
+                      <View style={styles.stepNumberBadge}>
+                        <Text style={styles.stepNumberText}>1</Text>
+                      </View>
+                      <Text style={[styles.stepText, { color: palette.text }]}>
+                        Touch and hold your <Text style={{ fontWeight: '700' }}>Lock Screen</Text> until <Text style={{ fontWeight: '700' }}>Customize</Text> appears, then tap Customize.
+                      </Text>
+                    </View>
+
+                    <View style={styles.stepItem}>
+                      <View style={styles.stepNumberBadge}>
+                        <Text style={styles.stepNumberText}>2</Text>
+                      </View>
+                      <Text style={[styles.stepText, { color: palette.text }]}>
+                        Tap your <Text style={{ fontWeight: '700' }}>Lock Screen</Text> preview on the left to edit it.
+                      </Text>
+                    </View>
+
+                    <View style={styles.stepItem}>
+                      <View style={styles.stepNumberBadge}>
+                        <Text style={styles.stepNumberText}>3</Text>
+                      </View>
+                      <Text style={[styles.stepText, { color: palette.text }]}>
+                        Tap the <Text style={{ fontWeight: '700' }}>Add Widgets</Text> box directly below (or above) the clock.
+                      </Text>
+                    </View>
+
+                    <View style={styles.stepItem}>
+                      <View style={styles.stepNumberBadge}>
+                        <Text style={styles.stepNumberText}>4</Text>
+                      </View>
+                      <Text style={[styles.stepText, { color: palette.text }]}>
+                        Select <Text style={{ fontWeight: '700' }}>NorthPaw</Text>, choose your preferred lock screen widget, and tap <Text style={{ fontWeight: '700' }}>Done</Text>.
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
                 <Pressable
                   style={({ pressed }) => [
@@ -334,5 +434,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     flex: 1,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    width: '100%',
+    padding: 3,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+  },
+  tabItemActive: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabItemText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

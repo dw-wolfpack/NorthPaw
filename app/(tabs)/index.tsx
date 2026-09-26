@@ -66,7 +66,7 @@ import {
 import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundImages';
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
-import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand } from '@/lib/weather/roadTemp';
+import { buildTimelineBarsModel, mergeAndSaveDailyHourlySamples, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand } from '@/lib/weather/roadTemp';
 import { SEMANTIC_SAFETY_COLORS, getSemanticSafetyColor, type SafetySemanticBand } from '@/lib/readiness/thresholds';
 import { useColorScheme } from '@/components/useColorScheme';
 import { ShareCard } from '@/components/ShareCard';
@@ -858,6 +858,13 @@ export default function HomeScreen() {
           }
 
           if (result.status === 'ok') {
+            try {
+              if (result.hourlySamples && result.hourlySamples.length > 0) {
+                const mergedHourly = await mergeAndSaveDailyHourlySamples(result.hourlySamples, 'home');
+                result.hourlySamples = mergedHourly;
+                setWeather({ ...result });
+              }
+            } catch {}
             // Cache fresh weather in AsyncStorage
             try {
               await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(result));
@@ -1029,6 +1036,7 @@ export default function HomeScreen() {
       riskWeightMultiplier,
       bestWindowReductionFraction,
       surfaceType: selectedSurface,
+      fill24HourBlock: true,
     });
   }, [weatherOk, dogProfile, selectedSurface]);
   const timelineAxis = timelineBounds();

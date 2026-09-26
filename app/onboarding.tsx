@@ -1416,7 +1416,7 @@ export default function OnboardingScreen() {
           </View>
 
           <Text style={[styles.didYouKnowCaption, { color: palette.textSecondary, marginTop: 14, marginBottom: 20, textAlign: 'center' }]}>
-            See readiness, favorable outing times, and current conditions right from your Home Screen.
+            See readiness, favorable outing times, and current conditions right from your Home Screen or Lock Screen.
           </Text>
 
           <Pressable
