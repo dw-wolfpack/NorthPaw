@@ -1996,7 +1996,7 @@ export default function HomeScreen() {
                   style={[StyleSheet.absoluteFillObject, { borderRadius: 24, overflow: 'hidden' }]}
                 />
                 <View style={styles.timelineBarsHeader}>
-                  <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline (12:00 AM – 11:00 PM)</Text>
+                  <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline (12:00 AM – 12:00 AM)</Text>
                 </View>
                 <View
                   style={styles.timelineBarsWrap}
@@ -2051,21 +2051,22 @@ export default function HomeScreen() {
                 </View>
   
                 <View style={styles.timelineRulerTicks}>
-                  {[0, 3, 6, 9, 12, 15, 18, 21, 23].map((hour) => {
-                    const left = `${timelineHourRatio(hour) * 100}%`;
-                    const isMajor = hour % 3 === 0 || hour === 0 || hour === 12;
+                  {[0, 3, 6, 9, 12, 15, 18, 21, 24].map((hour) => {
+                    const ratio = hour === 24 ? 1 : timelineHourRatio(hour);
+                    const left = `${ratio * 100}%`;
+                    const isMajor = hour % 3 === 0;
                     const alignStyle =
                       hour === 0
                         ? { marginLeft: 0, alignItems: 'flex-start' as const }
-                        : hour === 23
-                        ? { marginLeft: -30, alignItems: 'flex-end' as const }
+                        : hour === 24
+                        ? { marginLeft: -24, alignItems: 'flex-end' as const }
                         : { marginLeft: -15, alignItems: 'center' as const };
                     return (
                       <View key={`tick-${hour}`} style={[styles.rulerTickContainer, { left: left as any }, alignStyle]}>
                         <View style={[styles.rulerTickLine, { height: isMajor ? 8 : 4, backgroundColor: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }]} />
                         {isMajor && (
                           <Text style={[styles.rulerTickLabel, { color: textColors.tertiary }]}>
-                            {hour === 12 ? '12p' : hour === 0 ? '12a' : hour > 12 ? `${hour-12}p` : `${hour}a`}
+                            {hour === 12 ? '12p' : (hour === 0 || hour === 24) ? '12a' : hour > 12 ? `${hour-12}p` : `${hour}a`}
                           </Text>
                         )}
                       </View>

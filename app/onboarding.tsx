@@ -1401,9 +1401,9 @@ export default function OnboardingScreen() {
 
       return (
         <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
-          <Text style={[styles.h1, { color: palette.text }]}>NorthPaw at a glance</Text>
+          <Text style={[styles.h1, { color: palette.text }]}>NorthPaw Widgets</Text>
           <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 16 }]}>
-            Check {dogName || 'your pup'}&apos;s outdoor readiness without opening the app.
+            Check {dogName || 'your pup'}&apos;s outdoor readiness from your Home Screen or Lock Screen without opening the app.
           </Text>
 
           <View style={{ alignItems: 'center', width: '100%', marginVertical: 8 }}>
