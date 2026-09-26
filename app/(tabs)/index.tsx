@@ -1023,6 +1023,7 @@ export default function HomeScreen() {
       if (p.roadBand === 'warm') return '#D4A017';
       if (p.roadBand === 'hot') return '#C46A2D';
       if (p.roadBand === 'danger') return '#B5443A';
+      if (p.roadBand === 'unavailable') return '#555555';
       return '#2D6A4F';
     });
     if (colors.length === 1) return [colors[0], colors[0]] as [string, string, ...string[]];
@@ -1643,6 +1644,34 @@ export default function HomeScreen() {
     }
   }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting]);
 
+  // Periodic widget sync at a set cadence (15 minutes) while app is active
+  useEffect(() => {
+    const WIDGET_PERIODIC_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+    const intervalId = setInterval(() => {
+      if (!reconciliationCompletedRef.current) return;
+      if (dogProfile && weatherOk && npiScore != null) {
+        const calcRoadTemp = currentRoadPoint?.roadTempF ?? 77;
+        const bestWindowsList = bestWindows;
+        const actionableTime = bestWindowsList[0] || '7:00 AM';
+
+        syncWidgetData({
+          dogName: dogProfile.dogName || 'Your Pup',
+          statusText: statusBadge.label,
+          airTempF: weatherOk.tempF,
+          roadTempF: calcRoadTemp,
+          surfaceType: selectedSurface,
+          npiScore: Math.round(npiScore * 10),
+          actionableTime,
+          isOutingActive: activeOuting !== null,
+        }, { force: true }).catch((err) => {
+          console.warn('[Home] Periodic widget sync failed', err);
+        });
+      }
+    }, WIDGET_PERIODIC_SYNC_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting]);
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
 
@@ -2003,15 +2032,21 @@ export default function HomeScreen() {
                 </View>
   
                 <View style={styles.timelineRulerTicks}>
-                  {[5, 7, 9, 11, 13, 15, 17, 19, 21, 22].map((hour) => {
+                  {[0, 3, 6, 9, 12, 15, 18, 21, 23].map((hour) => {
                     const left = `${timelineHourRatio(hour) * 100}%`;
-                    const isMajor = hour % 3 === 0 || hour === 12 || hour === 22 || hour === 5;
+                    const isMajor = hour % 3 === 0 || hour === 0 || hour === 12;
+                    const alignStyle =
+                      hour === 0
+                        ? { marginLeft: 0, alignItems: 'flex-start' as const }
+                        : hour === 23
+                        ? { marginLeft: -30, alignItems: 'flex-end' as const }
+                        : { marginLeft: -15, alignItems: 'center' as const };
                     return (
-                      <View key={`tick-${hour}`} style={[styles.rulerTickContainer, { left: left as any }]}>
+                      <View key={`tick-${hour}`} style={[styles.rulerTickContainer, { left: left as any }, alignStyle]}>
                         <View style={[styles.rulerTickLine, { height: isMajor ? 8 : 4, backgroundColor: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }]} />
                         {isMajor && (
                           <Text style={[styles.rulerTickLabel, { color: textColors.tertiary }]}>
-                            {hour === 12 ? '12p' : hour > 12 ? `${hour-12}p` : `${hour}a`}
+                            {hour === 12 ? '12p' : hour === 0 ? '12a' : hour > 12 ? `${hour-12}p` : `${hour}a`}
                           </Text>
                         )}
                       </View>
@@ -2705,7 +2740,7 @@ export default function HomeScreen() {
                   })}
                 </ScrollView>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 8 }]}>
-                  Spinner includes all day hours (00 to 23). Timeline estimates are anchored to 5AM to 10PM forecast samples.
+                  Spinner includes all day hours (00 to 23). Timeline estimates cover the full 24-hour block (00:00 to 23:00).
                 </Text>
 
                 <View style={[styles.detailDivider, { backgroundColor: palette.border }]} />

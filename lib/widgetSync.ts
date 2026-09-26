@@ -13,33 +13,103 @@ export interface WidgetSyncData {
   npiScore: number;
   actionableTime?: string;
   isOutingActive?: boolean;
+  syncedAt?: number;
 }
 
-const WIDGET_STORAGE_KEY = '@northpaw/widget_last_sync_v1';
+export const WIDGET_STORAGE_KEY = '@northpaw/widget_last_sync_v1';
+export const WIDGET_SYNC_TIME_KEY = '@northpaw/widget_last_sync_time';
+export const DEFAULT_WIDGET_SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+export const MIN_SYNC_THROTTLE_MS = 2000; // 2 seconds
 
-export async function syncWidgetData(data: WidgetSyncData): Promise<void> {
+/**
+ * Determines if widget synchronization is due based on elapsed time.
+ */
+export function isWidgetSyncDue(
+  lastSyncTimestamp: number | null | undefined,
+  now: number = Date.now(),
+  intervalMs: number = DEFAULT_WIDGET_SYNC_INTERVAL_MS
+): boolean {
+  if (!lastSyncTimestamp || Number.isNaN(lastSyncTimestamp) || lastSyncTimestamp <= 0) {
+    return true;
+  }
+  return (now - lastSyncTimestamp) >= intervalMs;
+}
+
+/**
+ * Throttles rapid duplicate sync calls within MIN_SYNC_THROTTLE_MS.
+ */
+export function shouldThrottleSync(
+  lastSyncTimestamp: number | null | undefined,
+  now: number = Date.now(),
+  throttleMs: number = MIN_SYNC_THROTTLE_MS
+): boolean {
+  if (!lastSyncTimestamp || Number.isNaN(lastSyncTimestamp)) {
+    return false;
+  }
+  const diff = now - lastSyncTimestamp;
+  return diff >= 0 && diff < throttleMs;
+}
+
+export async function getLastWidgetSyncTimestamp(): Promise<number | null> {
+  try {
+    const str = await AsyncStorage.getItem(WIDGET_SYNC_TIME_KEY);
+    if (str) {
+      const val = parseInt(str, 10);
+      if (Number.isFinite(val)) return val;
+    }
+  } catch {}
+  return null;
+}
+
+export async function syncWidgetData(
+  data: WidgetSyncData,
+  options: { force?: boolean } = {}
+): Promise<boolean> {
   console.log('[WidgetSync] syncWidgetData called with:', JSON.stringify(data));
   try {
-    await AsyncStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(data));
-
-    if (Platform.OS !== 'ios') return;
-
-    const groupName = 'group.com.northpaw.app';
-
-    await SharedGroupPreferences.setItem('dogName', data.dogName, groupName);
-    await SharedGroupPreferences.setItem('statusText', data.statusText, groupName);
-    await SharedGroupPreferences.setItem('airTempF', data.airTempF, groupName);
-    await SharedGroupPreferences.setItem('roadTempF', data.roadTempF, groupName);
-    await SharedGroupPreferences.setItem('surfaceType', data.surfaceType, groupName);
-    await SharedGroupPreferences.setItem('npiScore', data.npiScore, groupName);
-    await SharedGroupPreferences.setItem('isOutingActive', String(data.isOutingActive ?? false), groupName);
-    if (data.actionableTime) {
-      await SharedGroupPreferences.setItem('actionableTime', data.actionableTime, groupName);
+    const now = Date.now();
+    const lastSync = await getLastWidgetSyncTimestamp();
+    if (!options.force && shouldThrottleSync(lastSync, now)) {
+      console.log('[WidgetSync] Throttled rapid duplicate sync call');
+      return false;
     }
-    console.log('[WidgetSync] SharedGroupPreferences write completed successfully');
-    reloadAllTimelines();
+
+    const sanitizedData: WidgetSyncData = {
+      dogName: (data.dogName || 'Pup').trim(),
+      statusText: (data.statusText || 'Ready').trim(),
+      airTempF: Number.isFinite(data.airTempF) ? Math.round(data.airTempF) : 72,
+      roadTempF: Number.isFinite(data.roadTempF) ? Math.round(data.roadTempF) : 77,
+      surfaceType: data.surfaceType || 'asphalt',
+      npiScore: Number.isFinite(data.npiScore) ? Math.max(0, Math.min(100, Math.round(data.npiScore))) : 0,
+      actionableTime: data.actionableTime || '',
+      isOutingActive: Boolean(data.isOutingActive),
+      syncedAt: data.syncedAt ?? now,
+    };
+
+    await AsyncStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(sanitizedData));
+    await AsyncStorage.setItem(WIDGET_SYNC_TIME_KEY, String(sanitizedData.syncedAt));
+
+    if (Platform.OS === 'ios') {
+      const groupName = 'group.com.northpaw.app';
+
+      await SharedGroupPreferences.setItem('dogName', sanitizedData.dogName, groupName);
+      await SharedGroupPreferences.setItem('statusText', sanitizedData.statusText, groupName);
+      await SharedGroupPreferences.setItem('airTempF', String(sanitizedData.airTempF), groupName);
+      await SharedGroupPreferences.setItem('roadTempF', String(sanitizedData.roadTempF), groupName);
+      await SharedGroupPreferences.setItem('surfaceType', sanitizedData.surfaceType, groupName);
+      await SharedGroupPreferences.setItem('npiScore', String(sanitizedData.npiScore), groupName);
+      await SharedGroupPreferences.setItem('isOutingActive', String(sanitizedData.isOutingActive), groupName);
+      if (sanitizedData.actionableTime) {
+        await SharedGroupPreferences.setItem('actionableTime', sanitizedData.actionableTime, groupName);
+      }
+      await SharedGroupPreferences.setItem('lastSyncTime', String(sanitizedData.syncedAt), groupName);
+      console.log('[WidgetSync] SharedGroupPreferences write completed successfully');
+      reloadAllTimelines();
+    }
+    return true;
   } catch (e) {
     console.error('[WidgetSync] Error syncing widget data:', e);
+    return false;
   }
 }
 
@@ -50,3 +120,4 @@ export async function getLastSyncedWidgetData(): Promise<WidgetSyncData | null> 
   } catch {}
   return null;
 }
+

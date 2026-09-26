@@ -58,8 +58,8 @@ export type TimelineBarsModel = {
   currentHourPosition: number;
 };
 
-const AXIS_START_HOUR = 5;
-const AXIS_END_HOUR = 22;
+const AXIS_START_HOUR = 0;
+const AXIS_END_HOUR = 23;
 export const ALGORITHM_VERSION = '6.0.0-phaseB';
 
 /**
@@ -490,7 +490,8 @@ export function buildTimelineBarsModel(input: {
 
 export function timelineHourRatio(hour: number): number {
   const span = AXIS_END_HOUR - AXIS_START_HOUR;
-  return span > 0 ? (hour - AXIS_START_HOUR) / span : 0;
+  if (span <= 0) return 0;
+  return Math.max(0, Math.min(1, (hour - AXIS_START_HOUR) / span));
 }
 
 export function timelineBounds() {

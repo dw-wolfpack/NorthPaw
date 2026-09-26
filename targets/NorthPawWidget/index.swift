@@ -92,8 +92,8 @@ struct Provider: TimelineProvider {
         let isOutingActive = (defaults?.string(forKey: "isOutingActive") ?? "false") == "true"
         
         let airTempF = Int(airTempStr) ?? defaults?.integer(forKey: "airTempF") ?? 74
-        let roadTempF = Int(roadTempStr) ?? defaults?.integer(forKey: "roadTempF") ?? 82
-        let npiScore = Int(npiScoreStr) ?? defaults?.integer(forKey: "npiScore") ?? 88
+        let roadTempF = Int(roadTempStr) ?? defaults?.integer(forKey: "roadTempF") ?? 77
+        let npiScore = Int(npiScoreStr) ?? defaults?.integer(forKey: "npiScore") ?? 20
         
         let surfaceType = defaults?.string(forKey: "surfaceType") ?? "Asphalt"
         let actionableTime = defaults?.string(forKey: "actionableTime") ?? "Next update ~15m"
@@ -111,9 +111,9 @@ struct Provider: TimelineProvider {
             dogName: dogName,
             statusText: rawStatusText.uppercased(),
             airTempF: airTempF > 0 ? airTempF : 74,
-            roadTempF: roadTempF > 0 ? roadTempF : 82,
+            roadTempF: roadTempF > 0 ? roadTempF : 77,
             surfaceType: surfaceType,
-            npiScore: npiScore > 0 ? npiScore : 88,
+            npiScore: max(0, min(100, npiScore)),
             actionableTime: resolvedTime,
             isOutingActive: isOutingActive
         )
@@ -125,9 +125,9 @@ extension SimpleEntry {
         if isOutingActive {
             return Color(red: 0.16, green: 0.50, blue: 0.72) // Active Outing Blue
         }
-        if roadTempF >= 105 || npiScore > 66 {
+        if statusText.contains("DANGER") || roadTempF >= 105 || npiScore > 66 {
             return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger)
-        } else if roadTempF >= 85 || npiScore > 33 {
+        } else if statusText.contains("CAUTION") || roadTempF >= 85 || npiScore > 33 {
             return Color(red: 0.95, green: 0.55, blue: 0.08) // Amber (Caution)
         } else {
             return Color(red: 0.16, green: 0.65, blue: 0.38) // Emerald Green (Safe)
@@ -138,9 +138,9 @@ extension SimpleEntry {
         if isOutingActive {
             return "figure.walk"
         }
-        if roadTempF >= 105 || npiScore > 66 {
+        if statusText.contains("DANGER") || roadTempF >= 105 || npiScore > 66 {
             return "exclamationmark.circle.fill"
-        } else if roadTempF >= 85 || npiScore > 33 {
+        } else if statusText.contains("CAUTION") || roadTempF >= 85 || npiScore > 33 {
             return "exclamationmark.triangle.fill"
         } else {
             return "checkmark.circle.fill"
@@ -152,10 +152,12 @@ extension SimpleEntry {
         if isOutingActive {
             return "🐾 Outing Active"
         }
-        if roadTempF >= 105 || npiScore > 66 {
-            return "⚠️ Next safe: 6:30 PM"
-        } else if roadTempF >= 85 || npiScore > 33 {
-            return "☀️ Safe until 11:30 AM"
+        if statusText.contains("DANGER") || roadTempF >= 105 || npiScore > 66 {
+            let timeStr = actionableTime.isEmpty ? "Later" : actionableTime
+            return "⚠️ Next safe: \(timeStr)"
+        } else if statusText.contains("CAUTION") || roadTempF >= 85 || npiScore > 33 {
+            let timeStr = actionableTime.isEmpty ? "Later" : actionableTime
+            return "☀️ Safe until \(timeStr)"
         } else {
             return "✅ Safe to walk now"
         }
