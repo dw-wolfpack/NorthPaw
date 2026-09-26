@@ -50,6 +50,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { trackEvent, setUserProperties, getAnalyticsEnvironment } from '@/lib/analytics';
 import { FeedbackModal } from '@/components/FeedbackModal';
 import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
+import { WidgetGlancePreview } from '@/components/WidgetGlancePreview';
+import { setWidgetIntroVersion, CURRENT_WIDGET_INTRO_VERSION } from '@/lib/widgetSync';
 
 type SceneId =
   | 'welcome'
@@ -62,6 +64,7 @@ type SceneId =
   | 'npi-activation'
   | 'photo'
   | 'morning-brief'
+  | 'widget-glance'
   | 'commitment';
 
 const SCENES: SceneId[] = [
@@ -75,6 +78,7 @@ const SCENES: SceneId[] = [
   'npi-activation',
   'photo',
   'morning-brief',
+  'widget-glance',
   'commitment',
 ];
 
@@ -361,6 +365,9 @@ export default function OnboardingScreen() {
       stepIndex: sceneIdx,
       totalSteps: SCENES.length,
     });
+    if (scene === 'widget-glance') {
+      trackEvent('widget_intro_viewed', { source: 'onboarding' });
+    }
   }, [scene, sceneIdx]);
 
   useEffect(() => {
@@ -414,6 +421,7 @@ export default function OnboardingScreen() {
     if (scene === 'biology-activity') return 'biology';
     if (scene === 'npi-activation') return 'aha';
     if (scene === 'morning-brief' || scene === 'commitment') return 'notifications';
+    if (scene === 'widget-glance') return 'widget-glance';
     return scene;
   }, [scene]);
 
@@ -598,6 +606,8 @@ export default function OnboardingScreen() {
         dogActivityBaseline,
         morningBriefTime,
       });
+
+      await setWidgetIntroVersion(CURRENT_WIDGET_INTRO_VERSION);
 
       trackEvent('onboarding_completed', {
         dogBreed: resolvedBreed,
@@ -1361,7 +1371,7 @@ export default function OnboardingScreen() {
               try {
                 const permission = await requestMedReminderPermissions();
                 setNotificationsPermission(permission.ok ? 'granted' : 'denied');
-                setSceneIdx(SCENES.indexOf('commitment'));
+                setSceneIdx(SCENES.indexOf('widget-glance'));
               } finally {
                 setBusy(false);
               }
@@ -1378,6 +1388,54 @@ export default function OnboardingScreen() {
           <Text style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
             Tap the preview or choose a time to continue.
           </Text>
+        </AnimatedReanimated.View>
+      );
+    }
+
+    if (scene === 'widget-glance') {
+      const liveAir = ahaWeather.status === 'ok' && Number.isFinite(ahaWeather.tempF) ? Math.round(ahaWeather.tempF) : 70;
+      const liveRoad = ahaWeather.status === 'ok' && Number.isFinite(ahaWeather.tempF) ? Math.round(ahaWeather.tempF + 4) : 74;
+      const timingSlot = ahaWeather.status === 'ok' && ahaWeather.timelineSlots.length > 0
+        ? displaySlot(ahaWeather.timelineSlots[0].startTime, ahaWeather.timelineSlots[0].endTime)
+        : undefined;
+
+      return (
+        <AnimatedReanimated.View entering={FadeIn.duration(280)} style={[styles.glassCard, styles.squircle24, animatedCardStyle, themedCardStyle]}>
+          <Text style={[styles.h1, { color: palette.text }]}>NorthPaw at a glance</Text>
+          <Text style={[styles.body, { color: palette.textSecondary, marginBottom: 16 }]}>
+            Check {dogName || 'your pup'}&apos;s outdoor readiness without opening the app.
+          </Text>
+
+          <View style={{ alignItems: 'center', width: '100%', marginVertical: 8 }}>
+            <WidgetGlancePreview
+              dogName={dogName}
+              airTempF={liveAir}
+              roadTempF={liveRoad}
+              actionableTime={timingSlot}
+            />
+          </View>
+
+          <Text style={[styles.didYouKnowCaption, { color: palette.textSecondary, marginTop: 14, marginBottom: 20, textAlign: 'center' }]}>
+            See readiness, favorable outing times, and current conditions right from your Home Screen.
+          </Text>
+
+          <Pressable
+            disabled={busy}
+            onPress={async () => {
+              selectionTick();
+              await setWidgetIntroVersion(CURRENT_WIDGET_INTRO_VERSION);
+              setSceneIdx(SCENES.indexOf('commitment'));
+            }}
+            style={({ pressed }) => [
+              styles.cta,
+              {
+                backgroundColor: palette.tint,
+                opacity: pressed ? 0.9 : 1,
+              },
+              { transform: [{ scale: pressed ? 0.98 : 1 }] }
+            ]}>
+            <Text style={styles.ctaText}>Continue</Text>
+          </Pressable>
         </AnimatedReanimated.View>
       );
     }

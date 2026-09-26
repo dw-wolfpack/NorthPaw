@@ -144,7 +144,7 @@ function RootLayoutNav() {
             });
           }
           if (widget_variant === 'detailed' || widget_variant === 'glance') {
-            trackEvent('widget_opened', { widget_variant });
+            trackEvent('widget_opened', { variant: widget_variant, widget_variant });
           }
         }
       } catch (e) {

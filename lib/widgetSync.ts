@@ -18,8 +18,43 @@ export interface WidgetSyncData {
 
 export const WIDGET_STORAGE_KEY = '@northpaw/widget_last_sync_v1';
 export const WIDGET_SYNC_TIME_KEY = '@northpaw/widget_last_sync_time';
+export const WIDGET_INTRO_VERSION_KEY = '@northpaw/widget_intro_version';
+export const CURRENT_WIDGET_INTRO_VERSION = 1;
 export const DEFAULT_WIDGET_SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 export const MIN_SYNC_THROTTLE_MS = 2000; // 2 seconds
+
+/**
+ * Gets the current recorded widget introduction version for the user.
+ * Defaults to 0 if never recorded.
+ */
+export async function getWidgetIntroVersion(): Promise<number> {
+  try {
+    const val = await AsyncStorage.getItem(WIDGET_INTRO_VERSION_KEY);
+    if (val != null) {
+      const parsed = parseInt(val, 10);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  } catch {}
+  return 0;
+}
+
+/**
+ * Persists the widget introduction version once the user completes or dismisses the intro.
+ */
+export async function setWidgetIntroVersion(version: number = CURRENT_WIDGET_INTRO_VERSION): Promise<void> {
+  try {
+    await AsyncStorage.setItem(WIDGET_INTRO_VERSION_KEY, String(version));
+  } catch (e) {
+    console.warn('[WidgetSync] Failed to persist widget intro version', e);
+  }
+}
+
+/**
+ * Evaluates whether the 6.0 widget upgrade sheet should be presented to an existing user.
+ */
+export function shouldShowWidgetUpgrade(version: number): boolean {
+  return version < CURRENT_WIDGET_INTRO_VERSION;
+}
 
 /**
  * Determines if widget synchronization is due based on elapsed time.

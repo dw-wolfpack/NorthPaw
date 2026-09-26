@@ -74,7 +74,14 @@ import { ShareButton } from '@/components/ShareButton';
 import { useShareCard } from '@/hooks/useShareCard';
 import { getActiveOuting, startOuting, cancelActiveOuting, extendActiveOuting, type ActiveOuting } from '@/lib/outings';
 import * as Notifications from 'expo-notifications';
-import { syncWidgetData } from '@/lib/widgetSync';
+import {
+  syncWidgetData,
+  getWidgetIntroVersion,
+  setWidgetIntroVersion,
+  shouldShowWidgetUpgrade,
+  CURRENT_WIDGET_INTRO_VERSION,
+} from '@/lib/widgetSync';
+import { WidgetUpgradeModal } from '@/components/WidgetUpgradeModal';
 import SharedGroupPreferences from 'react-native-shared-group-preferences';
 import * as ExpoLinking from 'expo-linking';
 
@@ -562,7 +569,13 @@ export default function HomeScreen() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [activeOuting, setActiveOuting] = useState<ActiveOuting | null>(null);
   const [durationModalOpen, setDurationModalOpen] = useState(false);
+  const [widgetUpgradeVisible, setWidgetUpgradeVisible] = useState(false);
   const reconciliationCompletedRef = useRef(false);
+
+  const handleDismissWidgetUpgrade = useCallback(async () => {
+    setWidgetUpgradeVisible(false);
+    await setWidgetIntroVersion(CURRENT_WIDGET_INTRO_VERSION);
+  }, []);
 
   const { viewRef, isSharing, shareCard } = useShareCard();
   const shareRef = useRef<View>(null);
@@ -833,8 +846,15 @@ export default function HomeScreen() {
         if (!gone) {
           setDogProfile(profile);
           setWeather(result);
-          if (profile && profile.onboardingDone && acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
-            setShowUpgradeTermsModal(true);
+          if (profile && profile.onboardingDone) {
+            if (acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
+              setShowUpgradeTermsModal(true);
+            } else {
+              const introVer = await getWidgetIntroVersion();
+              if (shouldShowWidgetUpgrade(introVer)) {
+                setWidgetUpgradeVisible(true);
+              }
+            }
           }
 
           if (result.status === 'ok') {
@@ -3145,6 +3165,10 @@ export default function HomeScreen() {
                   try {
                     await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', REQUIRED_DISCLAIMER_VERSION);
                     setShowUpgradeTermsModal(false);
+                    const introVer = await getWidgetIntroVersion();
+                    if (shouldShowWidgetUpgrade(introVer)) {
+                      setWidgetUpgradeVisible(true);
+                    }
                   } catch (err) {
                     console.warn('[Home] Failed to save disclaimer version to AsyncStorage', err);
                   }
@@ -3169,6 +3193,17 @@ export default function HomeScreen() {
           </BlurView>
         </View>
       </Modal>
+      <WidgetUpgradeModal
+        visible={widgetUpgradeVisible}
+        onDismiss={handleDismissWidgetUpgrade}
+        dogName={dogProfile?.dogName}
+        statusText={statusBadge?.label}
+        airTempF={weatherOk?.tempF ?? null}
+        roadTempF={currentRoadPoint?.roadTempF ?? null}
+        surfaceType={selectedSurface}
+        actionableTime={bestWindows?.[0]}
+        source="upgrade"
+      />
       {/* Off-screen capture container for image generation */}
       <View style={styles.shareCardHiddenWrapper}>
         <ShareCard

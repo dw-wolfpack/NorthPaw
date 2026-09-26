@@ -35,6 +35,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import * as FileSystem from 'expo-file-system/legacy';
 import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
 import { ReviewPromptModal } from '@/components/ReviewPromptModal';
+import { WidgetUpgradeModal } from '@/components/WidgetUpgradeModal';
+import { type DogProfile } from '@/lib/profile';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,6 +52,8 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [widgetModalOpen, setWidgetModalOpen] = useState(false);
+  const [dogProfile, setDogProfile] = useState<DogProfile | null>(null);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [mixpanelEnabled, setMixpanelEnabled] = useState(false);
 
@@ -69,6 +73,7 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Settings' });
+      getDogProfile().then(setDogProfile).catch(() => {});
     }, [])
   );
 
@@ -110,6 +115,33 @@ export default function SettingsScreen() {
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
             Heartworm and flea & tick alerts on your device. Custom schedules with Pro. Alerts are scheduled
             locally with no server required.
+          </Text>
+        </View>
+        <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
+      </Pressable>
+
+      <Pressable
+        onPress={() => {
+          hapticTap();
+          setWidgetModalOpen(true);
+        }}
+        style={({ pressed }) => [
+          styles.linkCard,
+          {
+            borderColor: palette.border,
+            backgroundColor: palette.surface,
+            opacity: pressed ? 0.92 : 1,
+            marginBottom: 8,
+          },
+          { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Home Screen Widgets"
+      >
+        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Home Screen Widgets</Text>
+          <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+            Check your dog&apos;s outdoor readiness at a glance.
           </Text>
         </View>
         <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
@@ -433,6 +465,13 @@ export default function SettingsScreen() {
         visible={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
         initialType={feedbackInitialType}
+      />
+
+      <WidgetUpgradeModal
+        visible={widgetModalOpen}
+        onDismiss={() => setWidgetModalOpen(false)}
+        dogName={dogProfile?.dogName}
+        source="settings"
       />
     </ScrollView>
   );
