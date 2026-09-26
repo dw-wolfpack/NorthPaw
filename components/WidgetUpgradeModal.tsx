@@ -141,7 +141,7 @@ export function WidgetUpgradeModal({
                     accessibilityRole="button"
                     accessibilityLabel="Show me how to add the widget"
                   >
-                    <Text style={styles.primaryButtonText}>Show Me How</Text>
+                    <Text style={styles.primaryButtonText}>Show Me How (Home &amp; Lock Screen)</Text>
                   </Pressable>
 
                   <Pressable

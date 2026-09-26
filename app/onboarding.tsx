@@ -51,6 +51,7 @@ import { trackEvent, setUserProperties, getAnalyticsEnvironment } from '@/lib/an
 import { FeedbackModal } from '@/components/FeedbackModal';
 import { REQUIRED_DISCLAIMER_VERSION } from '@/constants/Legal';
 import { WidgetGlancePreview } from '@/components/WidgetGlancePreview';
+import { WidgetUpgradeModal } from '@/components/WidgetUpgradeModal';
 import { setWidgetIntroVersion, CURRENT_WIDGET_INTRO_VERSION } from '@/lib/widgetSync';
 
 type SceneId =
@@ -258,6 +259,7 @@ export default function OnboardingScreen() {
   const [activationReady, setActivationReady] = useState(false);
   const [activationLineIdx, setActivationLineIdx] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [showWidgetGuide, setShowWidgetGuide] = useState(false);
 
   const onboardingSessionId = useRef('obs-' + Math.random().toString(36).substring(2, 9)).current;
   const sceneVisitCounts = useRef<Record<string, number>>({});
@@ -1436,6 +1438,27 @@ export default function OnboardingScreen() {
             ]}>
             <Text style={styles.ctaText}>Continue</Text>
           </Pressable>
+
+          <Pressable
+            onPress={() => {
+              selectionTick();
+              setShowWidgetGuide(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Show me how to add the widget"
+            style={({ pressed }) => [
+              {
+                marginTop: 12,
+                paddingVertical: 8,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}>
+            <Text style={{ color: palette.tint, fontSize: 13, fontWeight: '700' }}>
+              How to add to Home or Lock Screen
+            </Text>
+          </Pressable>
         </AnimatedReanimated.View>
       );
     }
@@ -1580,6 +1603,12 @@ export default function OnboardingScreen() {
         visible={requestBreedModalOpen}
         onClose={() => setRequestBreedModalOpen(false)}
         initialType="breed_request"
+      />
+      <WidgetUpgradeModal
+        visible={showWidgetGuide}
+        onDismiss={() => setShowWidgetGuide(false)}
+        dogName={name.trim() || 'your pup'}
+        source="settings"
       />
     </SafeAreaView>
   );
