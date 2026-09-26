@@ -1388,13 +1388,27 @@ export default function OnboardingScreen() {
               {
                 backgroundColor: !busy ? palette.tint : palette.border,
                 opacity: pressed && !busy ? 0.9 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
               },
-            , { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+            ]}>
             {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>Enable Morning Brief alerts</Text>}
           </Pressable>
-          <Text style={[styles.didYouKnowCaption, { color: palette.textSecondary }]}>
-            Tap the preview or choose a time to continue.
-          </Text>
+
+          <Pressable
+            disabled={busy}
+            onPress={() => {
+              hapticTap();
+              trackEvent('morning_brief_skipped', { context: 'onboarding' });
+              setSceneIdx(SCENES.indexOf('widget-glance'));
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Skip morning brief"
+            style={({ pressed }) => [
+              styles.skipLink,
+              { opacity: pressed ? 0.6 : 1 },
+            ]}>
+            <Text style={[styles.skipText, { color: palette.textSecondary }]}>Skip for now</Text>
+          </Pressable>
         </AnimatedReanimated.View>
       );
     }
