@@ -48,8 +48,9 @@ Supporting metric logic:
 
 | Event | Trigger | Properties | Why it exists | Dashboard |
 |---|---|---|---|---|
-| `readiness_viewed` | Weather + NPI loaded on Home | `is_first_readiness_view`, `time_to_first_readiness_ms`, `surface`, `dog_breed`, `weather_cache_hit`, `weather_load_time_ms`, `weather_provider_used` (nws/tomorrow/cache) | **THE North Star (WSC).** TTV, provider mix, cache health | North Star |
-| `weather_loaded` | Weather fetch completes | `cache_hit`, `load_time_ms`, `weather_provider_used` | Cache hit ratio, latency, provider reliability | System Health |
+| `readiness_viewed` | Outdoor readiness assessment presented on Home (cold launch, tab switch, or foreground resume) | `presentation_context` (cold_launch/tab_switch/foreground_resume), `weather_freshness` (fresh/cached/stale/unavailable), `is_first_readiness_view`, `time_to_first_readiness_ms`, `surface`, `dog_breed`, `weather_cache_hit`, `weather_load_time_ms`, `weather_provider_used` (nws/tomorrow/cache) | **THE North Star (WSC).** Genuine safety assessment presentation across all lifecycle entry points. Debounced at 5s. | North Star |
+| `weather_loaded` | Weather fetch completes successfully | `cache_hit`, `load_time_ms`, `weather_provider_used` | Cache hit ratio, latency, provider reliability | System Health |
+| `weather_load_failed` | Location or weather fetch fails | `failure_reason` (permission_denied/service_unavailable/network_error/timeout), `provider`, `load_time_ms` (zero coordinates logged) | Identifies degraded or failing weather providers without leaking user location | System Health |
 | `npi_explanation_viewed` | "Why this score?" opened | `score` | Trust-building behavior; explainer open rate | Trust |
 | `weather_details_viewed` | Thermal breakdown modal opened | — | Depth of engagement beyond glance | Engagement |
 | `surface_changed` | User switches pavement type | `surface` | Which surfaces users care about | Engagement |

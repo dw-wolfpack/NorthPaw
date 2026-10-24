@@ -804,6 +804,126 @@ export default function HomeScreen() {
     }
   }, [selectedSurface]);
 
+  const lastPresentationTrackedRef = useRef<{ timestamp: number; context: string } | null>(null);
+  const hasMountedRef = useRef(false);
+
+  const trackReadinessPresentation = useCallback(
+    async (
+      currentWeather: HomeWeatherState,
+      context: 'cold_launch' | 'foreground_resume' | 'tab_switch',
+      currentProfile?: DogProfile | null
+    ) => {
+      const now = Date.now();
+
+      // Rule 4: Deduplication guard: ignore presentations within 5 seconds unless context changed
+      if (
+        lastPresentationTrackedRef.current &&
+        now - lastPresentationTrackedRef.current.timestamp < 5000 &&
+        lastPresentationTrackedRef.current.context === context
+      ) {
+        return;
+      }
+
+      // Rule 5: Determine presentation weather quality / degraded status
+      let weatherFreshness: 'fresh' | 'cached' | 'stale' | 'unavailable' = 'unavailable';
+      let tempF: number | undefined = undefined;
+      let forecastShort: string | undefined = undefined;
+      let providerUsed = 'none';
+      let isCacheHit = false;
+      let loadTimeMs = 0;
+
+      if (currentWeather.status === 'ok') {
+        tempF = currentWeather.tempF;
+        forecastShort = currentWeather.forecastShort;
+        providerUsed = currentWeather.providerUsed || (currentWeather.isCacheHit ? 'cache' : 'nws');
+        isCacheHit = currentWeather.isCacheHit ?? false;
+        loadTimeMs = currentWeather.loadTimeMs ?? 0;
+
+        try {
+          const lastFetchStr = await AsyncStorage.getItem('@northpaw/last_weather_fetch_time');
+          const lastFetch = lastFetchStr ? parseInt(lastFetchStr, 10) : 0;
+          const ageMs = now - lastFetch;
+          if (isCacheHit) {
+            weatherFreshness = ageMs > 30 * 60 * 1000 ? 'stale' : 'cached';
+          } else {
+            weatherFreshness = 'fresh';
+          }
+        } catch {
+          weatherFreshness = isCacheHit ? 'cached' : 'fresh';
+        }
+      } else {
+        // Fallback: check if we have cached data displayed in storage
+        try {
+          const cachedStr = await AsyncStorage.getItem('@northpaw/cached_weather_data');
+          if (cachedStr) {
+            const parsed = JSON.parse(cachedStr);
+            if (parsed && parsed.status === 'ok') {
+              tempF = parsed.tempF;
+              forecastShort = parsed.forecastShort;
+              providerUsed = 'cache';
+              isCacheHit = true;
+              weatherFreshness = 'stale';
+            }
+          }
+        } catch {}
+      }
+
+      // If truly no weather data is presentable (e.g. raw loading spinner or permission blocking card without cache), do not log
+      if (weatherFreshness === 'unavailable' && currentWeather.status !== 'ok') {
+        return;
+      }
+
+      lastPresentationTrackedRef.current = { timestamp: now, context };
+
+      // Calculate Time to Value (TTV)
+      let isFirst = false;
+      let timeToFirstMs: number | null = null;
+      try {
+        const alreadyTracked = await AsyncStorage.getItem('@northpaw/first_readiness_tracked');
+        if (!alreadyTracked) {
+          isFirst = true;
+          await AsyncStorage.setItem('@northpaw/first_readiness_tracked', 'true');
+          const completedAtStr = await AsyncStorage.getItem('@northpaw/onboarding_completed_at');
+          if (completedAtStr) {
+            const completedAt = parseInt(completedAtStr, 10);
+            if (completedAt) {
+              timeToFirstMs = now - completedAt;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Home] Failed to check AsyncStorage readiness flags', err);
+      }
+
+      const appVersion = Constants.expoConfig?.version || '1.0.0';
+      const activeProfile = currentProfile || dogProfile;
+
+      trackEvent('readiness_viewed', {
+        tempF: tempF ?? 0,
+        forecast: forecastShort ?? '',
+        is_first_readiness_view: isFirst,
+        time_to_first_readiness_ms: timeToFirstMs,
+        weather_load_time_ms: loadTimeMs,
+        weather_cache_hit: isCacheHit,
+        weather_provider_used: providerUsed,
+        weather_freshness: weatherFreshness,
+        presentation_context: context,
+        surface: selectedSurface,
+        dog_breed: activeProfile?.dogBreed || 'Unknown',
+        app_version: appVersion,
+      });
+
+      setUserProperties({
+        last_safety_check_timestamp: now,
+      });
+
+      incrementUserProperties({
+        total_safety_checks: 1,
+      });
+    },
+    [dogProfile, selectedSurface]
+  );
+
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       if (nextAppState !== 'active') {
@@ -828,10 +948,28 @@ export default function HomeScreen() {
                   JSON.stringify({ latitude: freshWeather.latitude, longitude: freshWeather.longitude })
                 );
               }
+              // Rule 2: Foreground resume with freshly fetched weather
+              await trackReadinessPresentation(freshWeather, 'foreground_resume');
+            } else {
+              // Rule 6: Track weather failure with bounded category, zero location coordinates
+              const appVersion = Constants.expoConfig?.version || '1.0.0';
+              const reason = freshWeather.status === 'permission_denied' ? 'permission_denied' : 'service_unavailable';
+              trackEvent('weather_load_failed', {
+                failure_reason: reason,
+                provider: freshWeather.providerUsed || 'none',
+                load_time_ms: freshWeather.loadTimeMs ?? 0,
+                app_version: appVersion,
+              });
+              // Rule 7: Still track presentation if cached weather is visible
+              await trackReadinessPresentation(weather, 'foreground_resume');
             }
+          } else {
+            // Weather is fresh (< 5 mins) — user resumed to already-focused Home and sees existing assessment
+            await trackReadinessPresentation(weather, 'foreground_resume');
           }
         } catch (err) {
           console.warn('[Home] Failed to auto-refresh weather on foreground', err);
+          await trackReadinessPresentation(weather, 'foreground_resume');
         }
       }
     };
@@ -840,12 +978,15 @@ export default function HomeScreen() {
     return () => {
       appStateSub.remove();
     };
-  }, [reconcileWidgetState]);
+  }, [reconcileWidgetState, trackReadinessPresentation, weather]);
 
   useFocusEffect(
     useCallback(() => {
       let gone = false;
       (async () => {
+        const presentationContext = hasMountedRef.current ? 'tab_switch' : 'cold_launch';
+        hasMountedRef.current = true;
+
         await reconcileWidgetState(gone);
 
         // 2. Fetch profile, weather, and disclaimers
@@ -899,55 +1040,28 @@ export default function HomeScreen() {
               weather_provider_used: providerUsed,
             });
 
-            // Calculate Time to Value (TTV)
-            let isFirst = false;
-            let timeToFirstMs: number | null = null;
-            try {
-              const alreadyTracked = await AsyncStorage.getItem('@northpaw/first_readiness_tracked');
-              if (!alreadyTracked) {
-                isFirst = true;
-                await AsyncStorage.setItem('@northpaw/first_readiness_tracked', 'true');
-                const completedAtStr = await AsyncStorage.getItem('@northpaw/onboarding_completed_at');
-                if (completedAtStr) {
-                  const completedAt = parseInt(completedAtStr, 10);
-                  if (completedAt) {
-                    timeToFirstMs = Date.now() - completedAt;
-                  }
-                }
-              }
-            } catch (err) {
-              console.warn('[Home] Failed to check AsyncStorage readiness flags', err);
-            }
-
+            // Rules 1 & 3: Cold launch or tab navigation presentation
+            await trackReadinessPresentation(result, presentationContext, profile);
+          } else {
+            // Rule 6: Track weather load failure with bounded category, zero location coordinates
             const appVersion = Constants.expoConfig?.version || '1.0.0';
-
-            trackEvent('readiness_viewed', {
-              tempF: result.tempF,
-              forecast: result.forecastShort,
-              is_first_readiness_view: isFirst,
-              time_to_first_readiness_ms: timeToFirstMs,
-              weather_load_time_ms: result.loadTimeMs ?? 0,
-              weather_cache_hit: result.isCacheHit ?? false,
-              weather_provider_used: providerUsed,
-              surface: selectedSurface,
-              dog_breed: profile.dogBreed || 'Unknown',
+            const reason = result.status === 'permission_denied' ? 'permission_denied' : 'service_unavailable';
+            trackEvent('weather_load_failed', {
+              failure_reason: reason,
+              provider: result.providerUsed || 'none',
+              load_time_ms: result.loadTimeMs ?? 0,
               app_version: appVersion,
             });
 
-            setUserProperties({
-              last_safety_check_timestamp: Date.now(),
-            });
-
-            incrementUserProperties({
-              total_safety_checks: 1,
-            });
+            // Rule 7: Still track presentation if cached weather is visible
+            await trackReadinessPresentation(result, presentationContext, profile);
           }
         }
       })();
       return () => {
         gone = true;
       };
-    }, [selectedSurface, reconcileWidgetState])
+    }, [selectedSurface, reconcileWidgetState, trackReadinessPresentation])
   );
 
   const openSuggestion = useCallback(

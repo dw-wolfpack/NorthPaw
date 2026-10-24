@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+*.ipa
+ml_intern/
+
+# python
+__pycache__/
+*.pyc
