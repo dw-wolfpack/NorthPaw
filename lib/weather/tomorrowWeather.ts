@@ -129,15 +129,38 @@ export async function fetchTomorrowWeatherAtCoordinates(
     const current = hourly[currentHourlyIndex] || hourly[0];
     const vals = current.values;
 
-    const hourlySamples = hourly.slice(0, 36).map((h: any) => ({
-      timeIso: h.time,
-      airTempF: Math.round(h.values.temperature),
-      windSpeedMph: Math.round(h.values.windSpeed),
-      isDaytime: h.values.cloudCover < 100, // TODO: Better daytime detection if needed
-      skyCover: h.values.cloudCover,
-      humidityPct: h.values.humidity,
-      solarGhi: h.values.solarGHI,
-    }));
+    const hourlySamples = hourly.slice(0, 36).map((h: any) => {
+      const weatherCode = h.values.weatherCode;
+      const conditionText = mapWeatherCode(weatherCode);
+      const precipProb = h.values.precipitationProbability != null ? Math.round(h.values.precipitationProbability) : null;
+      let precipType: 'none' | 'rain' | 'snow' | 'freezing_rain' | 'ice_pellets' | 'mixed' = 'none';
+      if ([5000, 5001, 5100, 5101].includes(weatherCode)) {
+        precipType = 'snow';
+      } else if ([6000, 6001, 6200, 6201].includes(weatherCode)) {
+        precipType = 'freezing_rain';
+      } else if ([7000, 7101, 7102].includes(weatherCode)) {
+        precipType = 'ice_pellets';
+      } else if ([4000, 4001, 4200, 4201].includes(weatherCode)) {
+        precipType = 'rain';
+      } else if (precipProb != null && precipProb >= 35) {
+        precipType = h.values.temperature <= 32 ? 'snow' : 'rain';
+      }
+
+      return {
+        timeIso: h.time,
+        airTempF: Math.round(h.values.temperature),
+        windSpeedMph: Math.round(h.values.windSpeed),
+        isDaytime: h.values.cloudCover < 100,
+        skyCover: h.values.cloudCover,
+        humidityPct: h.values.humidity,
+        solarGhi: h.values.solarGHI,
+        shortForecast: conditionText,
+        precipChance: precipProb,
+        precipType,
+        sourceType: 'forecast' as const,
+        confidence: 'high' as const,
+      };
+    });
 
     // We need to resolve sunset time (could use a library or simpler math)
     // For now, we'll use a placeholder or reuse NWS logic if possible.

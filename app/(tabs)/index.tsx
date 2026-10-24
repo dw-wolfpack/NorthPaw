@@ -66,7 +66,10 @@ import {
 import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundImages';
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
-import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand } from '@/lib/weather/roadTemp';
+import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand, type TimelineBarPoint } from '@/lib/weather/roadTemp';
+import { evaluateWinterForProfile } from '@/lib/weather/winterEngine';
+import type { WinterDecisionOutput } from '@/lib/weather/winterTypes';
+import { getPrimaryHazardCue } from '@/lib/weather/primaryHazardCue';
 import { useColorScheme } from '@/components/useColorScheme';
 import { ShareCard } from '@/components/ShareCard';
 import { ShareButton } from '@/components/ShareButton';
@@ -181,6 +184,34 @@ function roadBandLabel(band?: 'safe' | 'warm' | 'hot' | 'danger' | 'unavailable'
   return 'No Data Recorded';
 }
 
+function hourlyPointStatusBadge(point?: TimelineBarPoint | null): { label: string; color: string } {
+  if (!point) return { label: 'No Data', color: '#666666' };
+
+  if (point.hourlyDecision === 'hazard') {
+    if (point.primaryHazardDriver === 'cold') return { label: 'Extreme Cold', color: '#B5443A' };
+    if (point.primaryHazardDriver === 'traction') return { label: 'Ice Hazard', color: '#B5443A' };
+    return { label: 'Severe Burn Risk', color: '#B5443A' };
+  }
+
+  if (point.hourlyDecision === 'caution') {
+    if (point.primaryHazardDriver === 'cold') return { label: 'Cold Advisory', color: '#D4A017' };
+    if (point.primaryHazardDriver === 'traction') return { label: 'Possible Refreeze', color: '#D4A017' };
+    if (point.primaryHazardDriver === 'heat' && (point.roadBand === 'hot' || (point.roadTempF != null && point.roadTempF >= 100))) {
+      return { label: 'Scorching Pavement', color: '#C46A2D' };
+    }
+    return { label: 'Warm Surface', color: '#D4A017' };
+  }
+
+  // 'ready' decision
+  if (point.thermalZone === 'freezing' || point.thermalZone === 'chilly') {
+    return { label: 'Crisp & Clear', color: '#3A86C8' };
+  }
+  if (point.roadBand === 'warm') {
+    return { label: 'Warm Surface', color: '#D4A017' };
+  }
+  return { label: 'Paws Favorable', color: '#2D6A4F' };
+}
+
 function roadBandColor(band?: 'safe' | 'warm' | 'hot' | 'danger' | 'unavailable' | null): string {
   if (band === 'safe') return '#2D6A4F';
   if (band === 'warm') return '#D4A017';
@@ -257,10 +288,20 @@ type TacticalInstrumentRingProps = {
   size?: number;
   isDark: boolean;
   roadBand?: RoadTempBand | 'unavailable' | null;
+  winterDecision?: 'ready' | 'caution' | 'hazard' | null;
 };
 
-function TacticalInstrumentRing({ score, size = 180, isDark, roadBand }: TacticalInstrumentRingProps) {
+function TacticalInstrumentRing({ score, size = 180, isDark, roadBand, winterDecision }: TacticalInstrumentRingProps) {
   const band = useMemo(() => {
+    if (winterDecision) {
+      if (winterDecision === 'hazard') {
+        return { label: 'Danger' as const, color: '#B5443A', dimColor: 'rgba(181, 68, 58, 0.15)', pulseMs: 800, minPulse: 0.40 };
+      }
+      if (winterDecision === 'caution') {
+        return { label: 'Amber' as const, color: '#D4A017', dimColor: 'rgba(212, 160, 23, 0.15)', pulseMs: 1500, minPulse: 0.40 };
+      }
+      return { label: 'Green' as const, color: '#2D6A4F', dimColor: 'rgba(45, 106, 79, 0.15)', pulseMs: 2200, minPulse: 0.40 };
+    }
     if (roadBand === 'safe') {
       return { label: 'Green' as const, color: '#2D6A4F', dimColor: 'rgba(45, 106, 79, 0.15)', pulseMs: 2200, minPulse: 0.40 };
     }
@@ -277,7 +318,7 @@ function TacticalInstrumentRing({ score, size = 180, isDark, roadBand }: Tactica
       return { label: 'Green' as const, color: '#666666', dimColor: 'rgba(102, 102, 102, 0.15)', pulseMs: 3000, minPulse: 1.0 };
     }
     return riskBand(score);
-  }, [score, roadBand]);
+  }, [score, roadBand, winterDecision]);
 
   const pulse = useRef(new Animated.Value(band.minPulse)).current;
   const sweep = useRef(new Animated.Value(0)).current;
@@ -1012,6 +1053,7 @@ export default function HomeScreen() {
       riskWeightMultiplier,
       bestWindowReductionFraction,
       surfaceType: selectedSurface,
+      dogProfile,
     });
   }, [weatherOk, dogProfile, selectedSurface]);
   const timelineAxis = timelineBounds();
@@ -1020,10 +1062,25 @@ export default function HomeScreen() {
       return ['#2D6A4F', '#2D6A4F'] as [string, string, ...string[]];
     }
     const colors = timelineBars.points.map(p => {
-      if (p.roadBand === 'warm') return '#D4A017';
-      if (p.roadBand === 'hot') return '#C46A2D';
-      if (p.roadBand === 'danger') return '#B5443A';
-      return '#2D6A4F';
+      // 1. Safety severity dominates if Caution or Hazard
+      if (p.hourlyDecision === 'hazard') {
+        return '#B5443A'; // Crimson / Hazard
+      }
+      if (p.hourlyDecision === 'caution') {
+        if (p.primaryHazardDriver === 'heat' && (p.roadBand === 'hot' || (p.roadTempF != null && p.roadTempF >= 100))) {
+          return '#C46A2D'; // Ember / Hot
+        }
+        return '#D4A017'; // Amber / Caution
+      }
+
+      // 2. When hourlyDecision is 'ready', contextual thermal zone tints the track:
+      if (p.thermalZone === 'freezing' || p.thermalZone === 'chilly') {
+        return '#3A86C8'; // Muted Ice Blue (Contextual cold cue, yet Ready!)
+      }
+      if (p.roadBand === 'warm') {
+        return '#D4A017'; // Warm surface
+      }
+      return '#2D6A4F'; // Forest Green / Comfortable Safe
     });
     if (colors.length === 1) return [colors[0], colors[0]] as [string, string, ...string[]];
     return colors as [string, string, ...string[]];
@@ -1175,6 +1232,26 @@ export default function HomeScreen() {
 
   const currentRisk = npiScore != null ? riskBand(npiScore) : null;
 
+  const winterDecision = useMemo<WinterDecisionOutput | null>(() => {
+    if (!weatherOk) return null;
+    const blob = `${weatherOk.forecastShort}\n${weatherOk.summary}`.toLowerCase();
+    const isColdOrWinter =
+      weatherOk.tempF <= 45 ||
+      /snow|ice|slush|sleet|wintry|freezing/i.test(blob);
+    if (!isColdOrWinter) return null;
+    return evaluateWinterForProfile(weatherOk, dogProfile);
+  }, [weatherOk, dogProfile]);
+
+  const primaryHazardCue = useMemo(() => {
+    return getPrimaryHazardCue({
+      winterDecision,
+      heatContext: {
+        roadTempF: currentRoadPoint?.roadTempF ?? null,
+        npiScore,
+      },
+    });
+  }, [winterDecision, currentRoadPoint, npiScore]);
+
   const npiExplanation = useMemo(() => {
     if (!weatherOk) return null;
     const nearestHourly =
@@ -1218,21 +1295,25 @@ export default function HomeScreen() {
     const bestPmNpi = getPointNpi(optPm);
 
     let advisor = "Good to go right now.";
-    const airRisk = Math.max(0, (chsi - 89) / 11.5);
-    const sunRisk = solarLoad * 0.25;
-    const roadRisk = (currentRoadPoint?.roadTempF ?? 0) > 105 ? 2.0 : 0;
+    if (winterDecision) {
+      advisor = winterDecision.userFacingCopy.headline;
+    } else {
+      const airRisk = Math.max(0, (chsi - 89) / 11.5);
+      const sunRisk = solarLoad * 0.25;
+      const roadRisk = (currentRoadPoint?.roadTempF ?? 0) > 105 ? 2.0 : 0;
 
-    if ((npiScore ?? 0) >= 3.1) {
-      if (roadRisk > 0) {
-        advisor = "Hot pavement. Walk on grass or shade.";
-      } else if (sunRisk > airRisk && sunRisk > 1.5) {
-        advisor = "Direct sun heating coat. Seek shade.";
-      } else if (humidity > 65 && weatherOk.tempF > 60) {
-        advisor = "High humidity. Take frequent breaks.";
-      } else if (weatherOk.tempF > 75) {
-        advisor = "High ambient heat. Limit intense play.";
-      } else {
-        advisor = "Stress elevated. Keep outings short.";
+      if ((npiScore ?? 0) >= 3.1) {
+        if (roadRisk > 0) {
+          advisor = "Hot pavement. Walk on grass or shade.";
+        } else if (sunRisk > airRisk && sunRisk > 1.5) {
+          advisor = "Direct sun heating coat. Seek shade.";
+        } else if (humidity > 65 && weatherOk.tempF > 60) {
+          advisor = "High humidity. Take frequent breaks.";
+        } else if (weatherOk.tempF > 75) {
+          advisor = "High ambient heat. Limit intense play.";
+        } else {
+          advisor = "Stress elevated. Keep outings short.";
+        }
       }
     }
 
@@ -1244,12 +1325,13 @@ export default function HomeScreen() {
       coatAdj: dogProfile?.dogCoatType === 'Double' ? '+10%' : '0%',
       activityAdj: dogProfile?.dogActivityBaseline === 'high' ? '+8%' : '0%',
       advisor,
+      winterDecision,
       bestAmLabel,
       bestPmLabel,
       bestAmNpi,
       bestPmNpi,
     };
-  }, [weatherOk, currentRoadPoint, dogProfile, npiScore, timelineBars]);
+  }, [weatherOk, currentRoadPoint, dogProfile, npiScore, timelineBars, winterDecision]);
   const confidence = useMemo(() => confidenceBadge(weatherOk), [weatherOk]);
   const confidenceTone = useMemo(
     () => (confidence ? confidenceColors(confidence.label) : null),
@@ -1281,39 +1363,76 @@ export default function HomeScreen() {
     }
 
     const hourText = formatClockFromHour(selectedRoadDetailHour);
-    if (roadDetailPoint.roadBand === 'safe') {
+    const airTempF = roadDetailPoint.airTempF != null ? Math.round(roadDetailPoint.airTempF) : null;
+    const windMph = selectedHourSample?.windSpeedMph != null ? Math.round(selectedHourSample.windSpeedMph) : null;
+
+    if (roadDetailPoint.hourlyDecision === 'hazard') {
+      if (roadDetailPoint.primaryHazardDriver === 'cold') {
+        return {
+          title: 'Extreme cold exposure',
+          body: `${hourText}: Air is ${airTempF ?? '--'}°F${windMph ? ` with ${windMph} mph wind` : ''}. Keep outings strictly to brief relief.`,
+        };
+      }
+      if (roadDetailPoint.primaryHazardDriver === 'traction') {
+        return {
+          title: 'Ice & traction hazard',
+          body: `${hourText}: Slick conditions on surfaces. Exercise high caution and avoid icy runs.`,
+        };
+      }
+      const waitText = bestWindowLabel && bestWindowLabel !== 'None'
+        ? `Try again near ${bestWindowLabel} or choose a shaded grass area.`
+        : 'Avoid hot pavement today and stick to shaded grass areas.';
       return {
-        title: `${dogName} has a paw-friendly window`,
-        body: `${hourText} looks comfortable for pavement contact. Great moment for a longer sniff walk.`,
+        title: `${dogName} is better off waiting`,
+        body: `${hourText} is risky for paws. ${waitText}`,
       };
     }
-    if (roadDetailPoint.roadBand === 'warm') {
+
+    if (roadDetailPoint.hourlyDecision === 'caution') {
+      if (roadDetailPoint.primaryHazardDriver === 'cold') {
+        return {
+          title: `${dogName} needs a cold check`,
+          body: `${hourText} is brisk (${airTempF ?? '--'}°F). Keep moving and watch for shivering or paw lifting.`,
+        };
+      }
+      if (roadDetailPoint.primaryHazardDriver === 'traction') {
+        return {
+          title: 'Possible slick refreeze',
+          body: `${hourText}: Surfaces may be slick near freezing interface. Monitor footing on walkways.`,
+        };
+      }
+      if (roadDetailPoint.roadBand === 'hot') {
+        return {
+          title: `${dogName} needs a cooler surface`,
+          body: `${hourText} may feel hot on paws. Choose grass-first routes and quick potty breaks.`,
+        };
+      }
       return {
         title: `${dogName} can go with a heat check`,
         body: `${hourText} is warming up. Favor shade, carry water, and keep the route shorter on asphalt.`,
       };
     }
-    if (roadDetailPoint.roadBand === 'hot') {
+
+    // Ready decision
+    if (roadDetailPoint.thermalZone === 'freezing' || roadDetailPoint.thermalZone === 'chilly') {
       return {
-        title: `${dogName} needs a cooler surface`,
-        body: `${hourText} may feel hot on paws. Choose grass-first routes and quick potty breaks.`,
+        title: `${dogName} is ready for crisp air`,
+        body: `${hourText} is cold (${airTempF ?? '--'}°F) but conditions are favorable for an active walk.`,
       };
     }
-    const waitText = bestWindowLabel && bestWindowLabel !== 'None'
-      ? `Try again near ${bestWindowLabel} or choose a shaded grass area.`
-      : 'Avoid hot pavement today and stick to shaded grass areas.';
+
     return {
-      title: `${dogName} is better off waiting`,
-      body: `${hourText} is risky for paws. ${waitText}`,
+      title: `${dogName} has a comfortable window`,
+      body: `${hourText} looks favorable for outdoor time and pavement contact.`,
     };
-  }, [roadDetailPoint, dogName, selectedRoadDetailHour, bestWindowLabel]);
+  }, [roadDetailPoint, dogName, selectedRoadDetailHour, bestWindowLabel, selectedHourSample]);
   const dailyReadinessLine = useMemo(() => {
     if (!timelineBars) return `${dogName}'s timeline is loading.`;
     const nextBest = timelineBars.bestWindowSegments?.[0] ?? null;
     if (nextBest) {
       return `${dogName}'s optimal outdoor window runs until ${formatClockQuarterHour(nextBest.endHour)} today.`;
     }
-    return `${dogName} may need grass-first routes today with shorter outdoor time.`;
+    return 'No Ready window today — conditions remain elevated throughout the available forecast.';
   }, [timelineBars, dogName]);
   const hazardInfo = useMemo(() => {
     const alerts = weatherOk?.hazardAlerts ?? [];
@@ -1808,7 +1927,7 @@ export default function HomeScreen() {
                     }}
                     style={styles.hudCornerTr}
                     accessibilityRole="button"
-                    accessibilityLabel={`NPI score ${npiScore}. Tap for details.`}>
+                    accessibilityLabel={winterDecision ? `Outdoor decision: ${winterDecision.overallDecision}. Tap for details.` : `NPI score ${npiScore}. Tap for details.`}>
                     <BlurView
                       intensity={45}
                       tint={isDark ? "dark" : "light"}
@@ -1826,7 +1945,9 @@ export default function HomeScreen() {
                           { color: isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)", marginRight: 4 }
                         ]}
                       >
-                        NPI {npiScore}
+                        {winterDecision
+                          ? (winterDecision.overallDecision === 'hazard' ? 'HAZARD' : winterDecision.overallDecision === 'caution' ? 'CAUTION' : 'READY')
+                          : `NPI ${npiScore}`}
                       </Text>
                       <MaterialCommunityIcons
                         name="help-circle-outline"
@@ -1880,6 +2001,7 @@ export default function HomeScreen() {
                         size={avatarRingSize}
                         isDark={isDark}
                         roadBand={currentRoadPoint?.roadBand}
+                        winterDecision={winterDecision?.overallDecision}
                       />
                     )}
                     <Pressable
@@ -1910,6 +2032,29 @@ export default function HomeScreen() {
                         </View>
                       )}
                     </Pressable>
+                  </View>
+
+                  {/* Primary Hazard Explanation Cue */}
+                  <View 
+                    style={styles.hazardCueRow}
+                    accessible={true}
+                    accessibilityRole="text"
+                    accessibilityLabel={primaryHazardCue.accessibilityLabel}
+                  >
+                    <MaterialCommunityIcons
+                      name={primaryHazardCue.iconName as any}
+                      size={13}
+                      color={isDark ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 31, 24, 0.70)'}
+                      style={{ marginRight: 5 }}
+                    />
+                    <Text 
+                      style={[
+                        styles.hazardCueText, 
+                        { color: isDark ? 'rgba(255, 255, 255, 0.75)' : 'rgba(18, 31, 24, 0.72)' }
+                      ]}
+                    >
+                      {primaryHazardCue.label}
+                    </Text>
                   </View>
 
                   {/* Centered Primary Readiness Sentence */}
@@ -1971,10 +2116,10 @@ export default function HomeScreen() {
                     ]}>
                     <Text style={[styles.timelineScrubTime, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.92)' }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
                     <Text style={[styles.timelineScrubTemp, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
-                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {Math.round(scrubPoint.roadTempF ?? 0)}F
+                      Air {Math.round(scrubPoint.airTempF ?? 0)}° • {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {Math.round(scrubPoint.roadTempF ?? 0)}°
                     </Text>
-                    <Text style={[styles.timelineScrubBand, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
-                      {roadBandLabel(scrubPoint.roadBand)}
+                    <Text style={[styles.timelineScrubBand, { color: hourlyPointStatusBadge(scrubPoint).color }]}>
+                      {hourlyPointStatusBadge(scrubPoint).label}
                     </Text>
                   </BlurView>
                 ) : null}
@@ -1991,7 +2136,7 @@ export default function HomeScreen() {
   
                 <View 
                   accessible={true} 
-                  accessibilityLabel={`Timeline pavement temperature risk track for selected surface ${selectedSurface}`}
+                  accessibilityLabel={`Outdoor conditions today track for selected surface ${selectedSurface}`}
                   style={styles.barTrack}>
                   <LinearGradient
                     colors={timelineColors}
@@ -2203,21 +2348,55 @@ export default function HomeScreen() {
         onRequestClose={() => setNpiModalOpen(false)}>
         <SafeAreaView style={[styles.modalRoot, { backgroundColor: palette.background }]} edges={['top', 'left', 'right', 'bottom']}>
           <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
-            <Text style={[styles.modalTitle, { color: palette.text }]}>Why this NPI score?</Text>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>{winterDecision ? 'Outdoor Decision Factors' : 'Why this NPI score?'}</Text>
             <Pressable onPress={() => { hapticTap();  setNpiModalOpen(false); }} hitSlop={12}>
               <FontAwesome name="close" size={22} color={palette.textSecondary} />
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.modalScroll}>
             {npiExplanation ? (
-              <View style={[styles.npiExplainCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-                <Text style={[styles.npiExplainRow, { color: palette.text }]}>THI (canine-weighted): {npiExplanation.thi}</Text>
-                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Humidity driver: {npiExplanation.humidity}%</Text>
-                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Solar load (sky cover): {npiExplanation.solarLoad}</Text>
-                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Snout Adjustment: {npiExplanation.snoutAdj}</Text>
-                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Coat Adjustment: {npiExplanation.coatAdj}</Text>
-                <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Activity Adjustment: {npiExplanation.activityAdj}</Text>
-              </View>
+              npiExplanation.winterDecision ? (
+                <View style={[styles.npiExplainCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+                  <Text style={[styles.npiExplainRow, { color: palette.text, fontWeight: '700', fontSize: 16, marginBottom: 4 }]}>
+                    {npiExplanation.winterDecision.userFacingCopy.headline}
+                  </Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.textSecondary, marginBottom: 12 }]}>
+                    {npiExplanation.winterDecision.userFacingCopy.subtext}
+                  </Text>
+
+                  <View style={{ height: 1, backgroundColor: palette.border, marginVertical: 8 }} />
+
+                  <Text style={[styles.npiExplainRow, { color: palette.text }]}>
+                    Cold Exposure Lane: <Text style={{ fontWeight: '600' }}>{npiExplanation.winterDecision.coldExposure.severity.toUpperCase()}</Text> ({npiExplanation.winterDecision.ambientTempF}°F, {npiExplanation.winterDecision.coldExposure.vulnerabilityTier} vulnerability)
+                  </Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.text }]}>
+                    Surface Traction Lane: <Text style={{ fontWeight: '600' }}>{npiExplanation.winterDecision.tractionBiomechanics.severity.toUpperCase()}</Text> ({npiExplanation.winterDecision.tractionBiomechanics.condition === 'confirmed_ice' ? 'Confirmed ice' : npiExplanation.winterDecision.tractionBiomechanics.condition === 'possible_refreeze' ? 'Possible slick refreeze' : 'Normal friction'})
+                  </Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.text }]}>
+                    Chemical Deicer Lane: <Text style={{ fontWeight: '600' }}>{npiExplanation.winterDecision.chemicalExposure.severity.toUpperCase()}</Text> ({npiExplanation.winterDecision.chemicalExposure.presenceState === 'deicer_present' ? 'Reported on surfaces' : 'Treatment unmeasured'})
+                  </Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.tint, marginTop: 4 }]}>
+                    Primary Hazard Driver: <Text style={{ fontWeight: '700' }}>{npiExplanation.winterDecision.primaryHazardDriver.toUpperCase()}</Text>
+                  </Text>
+
+                  {npiExplanation.winterDecision.userFacingCopy.protectiveGearPrompt ? (
+                    <View style={{ marginTop: 10, padding: 10, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+                      <Text style={{ fontSize: 13, color: palette.textSecondary, lineHeight: 18 }}>
+                        {npiExplanation.winterDecision.userFacingCopy.protectiveGearPrompt}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : (
+                <View style={[styles.npiExplainCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+                  <Text style={[styles.npiExplainRow, { color: palette.text }]}>THI (canine-weighted): {npiExplanation.thi}</Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Humidity driver: {npiExplanation.humidity}%</Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Solar load (sky cover): {npiExplanation.solarLoad}</Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Snout Adjustment: {npiExplanation.snoutAdj}</Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Coat Adjustment: {npiExplanation.coatAdj}</Text>
+                  <Text style={[styles.npiExplainRow, { color: palette.textSecondary }]}>Activity Adjustment: {npiExplanation.activityAdj}</Text>
+                </View>
+              )
             ) : (
               <Text style={{ color: palette.textSecondary }}>NPI details unavailable until weather loads.</Text>
             )}
@@ -2227,26 +2406,53 @@ export default function HomeScreen() {
             <View style={styles.scienceSection}>
               <Text style={[styles.scienceTitle, { color: palette.text }]}>Science & Sources</Text>
               <Text style={[styles.scienceBody, { color: palette.textSecondary }]}>
-                NorthPaw's risk modeling is based on canine thermal physiology research and established safety guidelines:
+                {winterDecision
+                  ? "NorthPaw's Winter decision model is based on peer-reviewed canine thermal physiology and veterinary guidelines:"
+                  : "NorthPaw's risk modeling is based on canine thermal physiology research and established safety guidelines:"}
               </Text>
-              <View style={styles.scienceSourceRow}>
-                <MaterialCommunityIcons name="book-open-variant" size={16} color={palette.tint} />
-                <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
-                  <Text style={{ fontWeight: '700' }}>JAMA:</Text> Surface temperature thermodynamics and burn risk thresholds.
-                </Text>
-              </View>
-              <View style={styles.scienceSourceRow}>
-                <MaterialCommunityIcons name="dog" size={16} color={palette.tint} />
-                <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
-                  <Text style={{ fontWeight: '700' }}>AKC:</Text> "Hand-Test" physical ritual and brachycephalic heat sensitivity guidelines.
-                </Text>
-              </View>
-              <View style={styles.scienceSourceRow}>
-                <MaterialCommunityIcons name="weather-sunny" size={16} color={palette.tint} />
-                <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
-                  <Text style={{ fontWeight: '700' }}>NWS / THI:</Text> The Temperature-Humidity Index (THI) adjusted for canine panting efficiency.
-                </Text>
-              </View>
+              {winterDecision ? (
+                <>
+                  <View style={styles.scienceSourceRow}>
+                    <MaterialCommunityIcons name="book-open-variant" size={16} color={palette.tint} />
+                    <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                      <Text style={{ fontWeight: '700' }}>Sugano (1981) / Tufts TACC:</Text> Canine lower critical temperature (LCT) shifts and conservative veterinary cold monitoring.
+                    </Text>
+                  </View>
+                  <View style={styles.scienceSourceRow}>
+                    <MaterialCommunityIcons name="dog" size={16} color={palette.tint} />
+                    <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                      <Text style={{ fontWeight: '700' }}>McIntyre & Ederstrom (1958):</Text> Juvenile homeothermic development and heat conservation lag in puppies.
+                    </Text>
+                  </View>
+                  <View style={styles.scienceSourceRow}>
+                    <MaterialCommunityIcons name="weather-windy" size={16} color={palette.tint} />
+                    <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                      <Text style={{ fontWeight: '700' }}>Arkin et al. (1991) & VKM (2017):</Text> Convective boundary air layer stripping and wet-fur insulation loss.
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.scienceSourceRow}>
+                    <MaterialCommunityIcons name="book-open-variant" size={16} color={palette.tint} />
+                    <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                      <Text style={{ fontWeight: '700' }}>JAMA:</Text> Surface temperature thermodynamics and burn risk thresholds.
+                    </Text>
+                  </View>
+                  <View style={styles.scienceSourceRow}>
+                    <MaterialCommunityIcons name="dog" size={16} color={palette.tint} />
+                    <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                      <Text style={{ fontWeight: '700' }}>AKC:</Text> "Hand-Test" physical ritual and brachycephalic heat sensitivity guidelines.
+                    </Text>
+                  </View>
+                  <View style={styles.scienceSourceRow}>
+                    <MaterialCommunityIcons name="weather-sunny" size={16} color={palette.tint} />
+                    <Text style={[styles.scienceSourceText, { color: palette.textSecondary }]}>
+                      <Text style={{ fontWeight: '700' }}>NWS / THI:</Text> The Temperature-Humidity Index (THI) adjusted for canine panting efficiency.
+                    </Text>
+                  </View>
+                </>
+              )}
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -2579,12 +2785,12 @@ export default function HomeScreen() {
               <View style={styles.detailCardInner}>
                 <Text style={[styles.detailCardTitle, { color: palette.text }]}>Best window</Text>
                 <Text style={[styles.detailCardValue, { color: palette.text }]}>
-                  {bestWindowLabel && bestWindowLabel !== 'None' ? bestWindowLabel : 'No optimal window today'}
+                  {bestWindowLabel && bestWindowLabel !== 'None' ? bestWindowLabel : 'No Ready window today'}
                 </Text>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 2 }]}>
                   {bestWindowLabel === 'None'
-                    ? 'Pavement heat remains high during peak sun hours.'
-                    : 'Pavement temperatures stay below 77°F during this time.'}
+                    ? 'Outdoor conditions remain elevated throughout the available forecast.'
+                    : 'Favorable outdoor conditions for your dog during this time.'}
                 </Text>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 6, fontWeight: '600' }]}>
                   Daylight: {daylightStart != null && daylightEnd != null ? rangeLabel(daylightStart, daylightEnd) : '6:00 AM – 8:20 PM'}
@@ -2592,9 +2798,9 @@ export default function HomeScreen() {
 
                 <View style={[styles.detailDivider, { backgroundColor: palette.border }]} />
 
-                <Text style={[styles.detailCardTitle, { color: palette.text }]}>Time vs pavement temp</Text>
+                <Text style={[styles.detailCardTitle, { color: palette.text }]}>Outdoor conditions today</Text>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginBottom: 8, fontWeight: '700' }]}>
-                  Air Temp Estimation: {selectedHourSample ? `${Math.round(selectedHourSample.airTempF)}°F` : (weatherOk ? `${Math.round(weatherOk.tempF)}°F` : '—')}
+                  Air Temp: {selectedHourSample ? `${Math.round(selectedHourSample.airTempF)}°F` : (weatherOk ? `${Math.round(weatherOk.tempF)}°F` : '—')} • {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} Surface: {roadDetailPoint?.roadTempF != null ? `${Math.round(roadDetailPoint.roadTempF)}°F` : '—'}
                 </Text>
                 {roadDetailPoint ? (
                   <View style={styles.roadDetailSelected}>
@@ -2604,12 +2810,12 @@ export default function HomeScreen() {
                     <View
                       style={[
                         styles.roadDetailBadge,
-                        { backgroundColor: roadBandColor(roadDetailPoint.roadBand) },
+                        { backgroundColor: hourlyPointStatusBadge(roadDetailPoint).color },
                       ]}>
-                      <Text style={styles.roadDetailBadgeText}>{Math.round(roadDetailPoint.roadTempF ?? 0)}°F</Text>
+                      <Text style={styles.roadDetailBadgeText}>{hourlyPointStatusBadge(roadDetailPoint).label}</Text>
                     </View>
                     <Text style={[styles.roadDetailSelectedBand, { color: palette.textSecondary }]}>
-                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {roadBandLabel(roadDetailPoint.roadBand)}
+                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} Surface {Math.round(roadDetailPoint.roadTempF ?? 0)}°F
                     </Text>
                   </View>
                 ) : null}
@@ -3397,12 +3603,24 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase' as const,
     marginBottom: 3,
   },
+  hazardCueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  hazardCueText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
   readinessHeadline: {
     fontSize: 14,
     fontWeight: '500',
     color: 'rgba(234, 234, 234, 0.9)',
     textAlign: 'center',
-    marginTop: 16,
+    marginTop: 0,
     paddingHorizontal: 20,
     lineHeight: 20,
   },

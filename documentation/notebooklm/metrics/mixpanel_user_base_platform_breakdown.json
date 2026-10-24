@@ -1,0 +1,249 @@
+{
+  "analysis_timestamp": "2026-10-24T10:20:08.021538",
+  "total_unique_users": 367,
+  "total_events": 39179,
+  "platforms": {
+    "iOS": {
+      "platform": "iOS",
+      "user_count": 326,
+      "user_percentage": 88.83,
+      "total_events": 37888,
+      "avg_events_per_user": 116.2,
+      "active_7d": 27,
+      "active_7d_pct": 8.3,
+      "active_14d": 40,
+      "active_14d_pct": 12.3,
+      "active_30d": 57,
+      "active_30d_pct": 17.5,
+      "active_60d": 109,
+      "active_60d_pct": 33.4,
+      "active_90d": 198,
+      "active_90d_pct": 60.7,
+      "onboarding_started_users": 298,
+      "onboarding_completed_users": 209,
+      "onboarding_completion_rate_pct": 70.1,
+      "dogs_created_users": 209,
+      "readiness_viewed_users": 213,
+      "weather_loaded_users": 181,
+      "surface_changed_users": 123,
+      "hand_test_opened_users": 117,
+      "scan_interest_users": 115,
+      "top_os_versions": [
+        [
+          "26.5",
+          110
+        ],
+        [
+          "26.5.2",
+          68
+        ],
+        [
+          "26.6",
+          36
+        ],
+        [
+          "26.5.1",
+          33
+        ],
+        [
+          "Unknown",
+          16
+        ]
+      ],
+      "top_app_versions": [
+        [
+          "4.0.0",
+          83
+        ],
+        [
+          "5.4.2",
+          37
+        ],
+        [
+          "4.1.0",
+          29
+        ],
+        [
+          "5.2.0",
+          27
+        ],
+        [
+          "4.3.0",
+          25
+        ]
+      ]
+    },
+    "Android": {
+      "platform": "Android",
+      "user_count": 27,
+      "user_percentage": 7.36,
+      "total_events": 1262,
+      "avg_events_per_user": 46.7,
+      "active_7d": 0,
+      "active_7d_pct": 0.0,
+      "active_14d": 1,
+      "active_14d_pct": 3.7,
+      "active_30d": 3,
+      "active_30d_pct": 11.1,
+      "active_60d": 7,
+      "active_60d_pct": 25.9,
+      "active_90d": 19,
+      "active_90d_pct": 70.4,
+      "onboarding_started_users": 23,
+      "onboarding_completed_users": 14,
+      "onboarding_completion_rate_pct": 60.9,
+      "dogs_created_users": 14,
+      "readiness_viewed_users": 14,
+      "weather_loaded_users": 14,
+      "surface_changed_users": 5,
+      "hand_test_opened_users": 8,
+      "scan_interest_users": 8,
+      "top_os_versions": [
+        [
+          "36",
+          10
+        ],
+        [
+          "30",
+          8
+        ],
+        [
+          "Unknown",
+          4
+        ],
+        [
+          "37",
+          2
+        ],
+        [
+          "31",
+          1
+        ]
+      ],
+      "top_app_versions": [
+        [
+          "5.1.0",
+          23
+        ],
+        [
+          "Unknown",
+          4
+        ]
+      ]
+    },
+    "Mac OS X": {
+      "platform": "Mac OS X",
+      "user_count": 6,
+      "user_percentage": 1.63,
+      "total_events": 21,
+      "avg_events_per_user": 3.5,
+      "active_7d": 0,
+      "active_7d_pct": 0.0,
+      "active_14d": 2,
+      "active_14d_pct": 33.3,
+      "active_30d": 2,
+      "active_30d_pct": 33.3,
+      "active_60d": 2,
+      "active_60d_pct": 33.3,
+      "active_90d": 6,
+      "active_90d_pct": 100.0,
+      "onboarding_started_users": 0,
+      "onboarding_completed_users": 0,
+      "onboarding_completion_rate_pct": 0,
+      "dogs_created_users": 0,
+      "readiness_viewed_users": 0,
+      "weather_loaded_users": 0,
+      "surface_changed_users": 0,
+      "hand_test_opened_users": 0,
+      "scan_interest_users": 0,
+      "top_os_versions": [
+        [
+          "Unknown",
+          6
+        ]
+      ],
+      "top_app_versions": [
+        [
+          "Unknown",
+          6
+        ]
+      ]
+    },
+    "Windows": {
+      "platform": "Windows",
+      "user_count": 6,
+      "user_percentage": 1.63,
+      "total_events": 6,
+      "avg_events_per_user": 1.0,
+      "active_7d": 0,
+      "active_7d_pct": 0.0,
+      "active_14d": 0,
+      "active_14d_pct": 0.0,
+      "active_30d": 0,
+      "active_30d_pct": 0.0,
+      "active_60d": 0,
+      "active_60d_pct": 0.0,
+      "active_90d": 6,
+      "active_90d_pct": 100.0,
+      "onboarding_started_users": 0,
+      "onboarding_completed_users": 0,
+      "onboarding_completion_rate_pct": 0,
+      "dogs_created_users": 0,
+      "readiness_viewed_users": 0,
+      "weather_loaded_users": 0,
+      "surface_changed_users": 0,
+      "hand_test_opened_users": 0,
+      "scan_interest_users": 0,
+      "top_os_versions": [
+        [
+          "Unknown",
+          6
+        ]
+      ],
+      "top_app_versions": [
+        [
+          "Unknown",
+          6
+        ]
+      ]
+    },
+    "Unknown": {
+      "platform": "Unknown",
+      "user_count": 2,
+      "user_percentage": 0.54,
+      "total_events": 2,
+      "avg_events_per_user": 1.0,
+      "active_7d": 0,
+      "active_7d_pct": 0.0,
+      "active_14d": 0,
+      "active_14d_pct": 0.0,
+      "active_30d": 0,
+      "active_30d_pct": 0.0,
+      "active_60d": 0,
+      "active_60d_pct": 0.0,
+      "active_90d": 0,
+      "active_90d_pct": 0.0,
+      "onboarding_started_users": 0,
+      "onboarding_completed_users": 0,
+      "onboarding_completion_rate_pct": 0,
+      "dogs_created_users": 0,
+      "readiness_viewed_users": 0,
+      "weather_loaded_users": 0,
+      "surface_changed_users": 0,
+      "hand_test_opened_users": 0,
+      "scan_interest_users": 0,
+      "top_os_versions": [
+        [
+          "Unknown",
+          2
+        ]
+      ],
+      "top_app_versions": [
+        [
+          "Unknown",
+          2
+        ]
+      ]
+    }
+  }
+}

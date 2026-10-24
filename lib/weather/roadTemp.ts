@@ -1,11 +1,31 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isTrueDaytime, calculateSolarElevationDeg } from './solarPosition';
 import { roadBandForTemp, RoadTempBand } from '../readiness/thresholds';
+import type { DogProfile } from '@/lib/profile';
+import {
+  mapDogProfileToPhenotype,
+  type CaninePhenotypeInput,
+  type EnvironmentalTelemetryInput,
+  type MoistureCategory,
+  type TractionCondition,
+  type TractionProvenance,
+  type OverallWinterDecision,
+  type PrimaryHazardDriver,
+} from './winterTypes';
+import { runWinterDecisionEngine } from './winterEngine';
 
 export { roadBandForTemp, RoadTempBand };
 export type SurfaceType = 'asphalt' | 'concrete' | 'cobblestone' | 'sand' | 'turf';
 
 export type PointSourceType = 'observation' | 'provider_grid_forecast' | 'forecast' | 'cached_forecast' | 'interpolated' | 'extrapolated' | 'unavailable';
+
+/**
+ * PRESENTATION ONLY.
+ * Exclusively for thermal palette tinting (e.g. ice blue for cold/freezing hours).
+ * Epistemic & Behavioral Invariant:
+ * MUST NEVER affect hourlyDecision, primaryHazardDriver, Best Window selection, or safety arbitration.
+ */
+export type ThermalZone = 'freezing' | 'chilly' | 'comfortable' | 'warm' | 'hot' | 'extreme_heat';
 
 export type HourlyInput = {
   timeIso: string;
@@ -20,6 +40,12 @@ export type HourlyInput = {
   sourceType?: PointSourceType;
   confidence?: 'high' | 'medium' | 'low';
   stationDistanceMiles?: number | null;
+  /** Hourly forecast short description (e.g. "Chance Light Snow", "Sunny") */
+  shortForecast?: string;
+  /** Hourly precipitation probability (0–100) */
+  precipChance?: number | null;
+  /** Categorized precipitation type if determinable from provider */
+  precipType?: 'none' | 'rain' | 'snow' | 'freezing_rain' | 'ice_pellets' | 'mixed';
 };
 
 export type SurfaceTempEstimate = {
@@ -44,6 +70,22 @@ export type TimelineBarPoint = {
   timeIso?: string;
   dateStr?: string;
   stationDistanceMiles?: number | null;
+  shortForecast?: string;
+  precipChance?: number | null;
+  precipType?: 'none' | 'rain' | 'snow' | 'freezing_rain' | 'ice_pellets' | 'mixed';
+  /**
+   * Unified Outdoor Decision for this hour ('ready' | 'caution' | 'hazard').
+   * Evaluated via production Winter and Heat decision engines.
+   */
+  hourlyDecision?: 'ready' | 'caution' | 'hazard';
+  /** Primary hazard driver ('cold' | 'traction' | 'chemical' | 'heat' | 'visibility' | 'none') */
+  primaryHazardDriver?: 'cold' | 'traction' | 'chemical' | 'heat' | 'visibility' | 'none';
+  /**
+   * PRESENTATION ONLY.
+   * Exclusively for thermal palette tinting (e.g. blue for cold/freezing hours).
+   * Invariant: Never affects hourlyDecision, Best Window, or hazard arbitration.
+   */
+  thermalZone?: ThermalZone;
 };
 
 export type RangeSegment = {
@@ -325,6 +367,7 @@ export function buildTimelineBarsModel(input: {
   riskWeightMultiplier?: number;
   bestWindowReductionFraction?: number;
   surfaceType?: SurfaceType;
+  dogProfile?: DogProfile | null;
 }): TimelineBarsModel | null {
   if (!input.hourly.length) return null;
   const now = input.now ?? new Date();
@@ -370,6 +413,12 @@ export function buildTimelineBarsModel(input: {
         const interpSky = prevSample.skyCover != null && nextSample.skyCover != null
           ? Math.round(prevSample.skyCover + (nextSample.skyCover - prevSample.skyCover) * ratio)
           : prevSample.skyCover ?? nextSample.skyCover;
+        const interpPrecipChance =
+          prevSample.precipChance != null && nextSample.precipChance != null
+            ? Math.round(prevSample.precipChance + (nextSample.precipChance - prevSample.precipChance) * ratio)
+            : prevSample.precipChance ?? nextSample.precipChance;
+        const interpShort = ratio < 0.5 ? prevSample.shortForecast : nextSample.shortForecast;
+        const interpPrecipType = ratio < 0.5 ? prevSample.precipType : nextSample.precipType;
 
         const sampleDate = new Date(prevSample.timeIso);
         sampleDate.setHours(h, 0, 0, 0);
@@ -380,6 +429,9 @@ export function buildTimelineBarsModel(input: {
           windSpeedMph: interpWind,
           isDaytime: prevSample.isDaytime,
           skyCover: interpSky,
+          shortForecast: interpShort,
+          precipChance: interpPrecipChance,
+          precipType: interpPrecipType,
           sourceType: 'interpolated',
           confidence: 'medium',
         });
@@ -407,6 +459,7 @@ export function buildTimelineBarsModel(input: {
   const points: TimelineBarPoint[] = [];
   const daylightHours: number[] = [];
   const bestWindowHours: number[] = [];
+  const phenotype = mapDogProfileToPhenotype(input.dogProfile);
 
   for (let h = AXIS_START_HOUR; h <= AXIS_END_HOUR; h++) {
     const sample = todayHourMap.get(h);
@@ -431,7 +484,119 @@ export function buildTimelineBarsModel(input: {
     const roadTempF = estimateRoadTempF(sample, input.latitude, h, sampleDate, input.surfaceType, longitude);
     const effectiveRoadTemp = roadTempF * riskWeight;
     const daytime = isTrueDaytime(sampleDate, input.latitude, longitude);
-    const isBest = daytime && effectiveRoadTemp < 77;
+
+    // 1. Evaluate Summer/Heat Surface Paw Risk
+    let heatSeverity: 'ready' | 'caution' | 'hazard' = 'ready';
+    if (roadTempF >= 125) {
+      heatSeverity = 'hazard';
+    } else if (roadTempF >= 100 || effectiveRoadTemp >= 100 || roadTempF >= 77 || effectiveRoadTemp >= 77) {
+      heatSeverity = 'caution';
+    }
+
+    // 2. Evaluate Winter Engine if cold/winter conditions apply
+    const isColdOrWinter =
+      sample.airTempF <= 45 ||
+      /snow|ice|slush|sleet|wintry|freezing/i.test(sample.shortForecast || '') ||
+      sample.precipType === 'snow' ||
+      sample.precipType === 'freezing_rain' ||
+      sample.precipType === 'ice_pellets';
+
+    let winterRes = null;
+    if (isColdOrWinter) {
+      let moistureCategory: MoistureCategory = 'dry';
+      const hasMoisture =
+        (sample.precipChance != null && sample.precipChance >= 38) ||
+        /rain|shower|storm|drizzle|snow|slush|ice|wintry|sleet|refreeze|glaze/i.test(sample.shortForecast || '');
+
+      const hasActivePrecip =
+        (sample.precipChance != null && sample.precipChance >= 40) ||
+        /rain|shower|storm|drizzle|snow|slush|sleet/i.test(sample.shortForecast || '') ||
+        sample.precipType === 'rain' ||
+        sample.precipType === 'snow' ||
+        sample.precipType === 'freezing_rain';
+
+      if (hasActivePrecip) {
+        if (
+          sample.airTempF <= 35 &&
+          (/snow|slush|sleet|wintry|freezing/i.test(sample.shortForecast || '') ||
+            sample.precipType === 'snow' ||
+            sample.precipType === 'freezing_rain')
+        ) {
+          moistureCategory = 'wet_slush';
+        } else {
+          moistureCategory = 'wet_precip';
+        }
+      }
+
+      const isSnowOrIceActive =
+        /snow|ice|slush|sleet|wintry|freezing/i.test(sample.shortForecast || '') ||
+        sample.precipType === 'snow' ||
+        sample.precipType === 'freezing_rain' ||
+        sample.precipType === 'ice_pellets';
+
+      let tractionCondition: TractionCondition = 'dry';
+      let tractionProvenance: TractionProvenance = 'unmeasured';
+      if (isSnowOrIceActive || ((sample.airTempF <= 32 || roadTempF <= 32) && hasMoisture)) {
+        tractionCondition = 'possible_refreeze';
+        tractionProvenance = 'forecast_refreeze_proxy';
+      } else if (hasMoisture) {
+        tractionCondition = 'wet';
+        tractionProvenance = 'forecast_refreeze_proxy';
+      }
+
+      winterRes = runWinterDecisionEngine(
+        {
+          ambientTempF: sample.airTempF,
+          windSpeedMph: sample.windSpeedMph,
+          moistureCategory,
+          tractionCondition,
+          tractionProvenance,
+          chemicalProvenance: 'unmeasured',
+          isSnowOrIceActive,
+          isDaytime: daytime,
+        },
+        phenotype
+      );
+    }
+
+    // 3. Multi-Hazard Arbitration: Hazard > Caution > Ready
+    let hourlyDecision: 'ready' | 'caution' | 'hazard' = 'ready';
+    let primaryHazardDriver: 'cold' | 'traction' | 'chemical' | 'heat' | 'visibility' | 'none' = 'none';
+
+    if (isColdOrWinter && winterRes) {
+      if (winterRes.overallDecision === 'hazard' || heatSeverity === 'hazard') {
+        hourlyDecision = 'hazard';
+        primaryHazardDriver = winterRes.overallDecision === 'hazard' ? winterRes.primaryHazardDriver : 'heat';
+      } else if (winterRes.overallDecision === 'caution' || heatSeverity === 'caution') {
+        hourlyDecision = 'caution';
+        primaryHazardDriver = winterRes.overallDecision === 'caution' ? winterRes.primaryHazardDriver : 'heat';
+      } else {
+        hourlyDecision = 'ready';
+        primaryHazardDriver = 'none';
+      }
+    } else {
+      hourlyDecision = heatSeverity;
+      primaryHazardDriver = heatSeverity !== 'ready' ? 'heat' : 'none';
+    }
+
+    // 4. PRESENTATION ONLY Thermal Zone (Does NOT affect decision/best window)
+    let thermalZone: ThermalZone = 'comfortable';
+    if (sample.airTempF <= 32) {
+      thermalZone = 'freezing';
+    } else if (sample.airTempF <= 45) {
+      thermalZone = 'chilly';
+    } else if (roadTempF >= 125) {
+      thermalZone = 'extreme_heat';
+    } else if (roadTempF >= 100) {
+      thermalZone = 'hot';
+    } else if (roadTempF >= 77) {
+      thermalZone = 'warm';
+    } else {
+      thermalZone = 'comfortable';
+    }
+
+    // 5. Best Window Determination: isDaytime && hourlyDecision === 'ready'
+    const isBest = daytime && hourlyDecision === 'ready';
     if (daytime) daylightHours.push(h);
     if (isBest) bestWindowHours.push(h);
 
@@ -462,6 +627,12 @@ export function buildTimelineBarsModel(input: {
       timeIso: sample.timeIso,
       dateStr: sampleLoc.dateStr,
       stationDistanceMiles: sample.stationDistanceMiles,
+      shortForecast: sample.shortForecast,
+      precipChance: sample.precipChance,
+      precipType: sample.precipType,
+      hourlyDecision,
+      primaryHazardDriver,
+      thermalZone,
     });
   }
 

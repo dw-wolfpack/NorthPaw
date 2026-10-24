@@ -19,6 +19,11 @@ import {
   resetSessionGuard,
   handleLeaveAReview,
 } from '@/lib/reviewPrompt';
+import {
+  getActiveMockWeatherPreset,
+  setMockWeatherPreset,
+  type MockWeatherPreset,
+} from '@/lib/weather/weatherDispatcher';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -64,6 +69,30 @@ export default function SettingsScreen() {
     const next = !mixpanelEnabled;
     setMixpanelEnabled(next);
     await setAnalyticsEnabledInNonProd(next);
+  };
+
+  const [activeWeatherPreset, setActiveWeatherPreset] = useState<MockWeatherPreset>('live');
+
+  useFocusEffect(
+    useCallback(() => {
+      getActiveMockWeatherPreset().then(setActiveWeatherPreset);
+    }, [])
+  );
+
+  const handleSelectWeatherPreset = async (preset: MockWeatherPreset, label: string) => {
+    hapticTap();
+    await setMockWeatherPreset(preset);
+    setActiveWeatherPreset(preset);
+    Alert.alert(
+      `${label} Active`,
+      preset === 'live'
+        ? 'Simulation cleared. NorthPaw is now using live GPS weather.'
+        : `Simulated weather (${label}) is now active. Return to the Home screen to view how the decision engine and readiness cues respond.`,
+      [
+        { text: 'Go to Home Screen', onPress: () => router.replace('/(tabs)') },
+        { text: 'Stay Here', style: 'cancel' },
+      ]
+    );
   };
 
   useFocusEffect(
@@ -269,6 +298,84 @@ export default function SettingsScreen() {
 
       <DeveloperOnly>
         <Text style={[styles.h1, { marginTop: 28, color: palette.tint }]}>Developer Settings</Text>
+
+        <Text style={[styles.h1, { fontSize: 17, marginTop: 16, marginBottom: 4, color: palette.text }]}>
+          🌦️ Environmental Simulation
+        </Text>
+        <Text style={{ color: palette.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 17 }}>
+          Simulate weather conditions to test the decision engine, tactical ring, and explanation cues in the simulator.
+        </Text>
+
+        {([
+          {
+            preset: 'live' as const,
+            title: '🛰️ Live GPS Weather (Default)',
+            desc: 'Clears mock overrides and restores live device location forecasts.',
+          },
+          {
+            preset: 'mild' as const,
+            title: '🌤️ Mild Day (68°F · Mostly Green)',
+            desc: 'Mostly green conditions across daylight hours with a sensible mid-day Best Window.',
+          },
+          {
+            preset: 'hot' as const,
+            title: '☀️ Hot Afternoon (92°F · Asphalt 140°F)',
+            desc: 'Green morning/evening with Amber/Orange/Red peak and split early/late Best Windows.',
+          },
+          {
+            preset: 'cold_dry' as const,
+            title: '❄️ Very Cold but Dry (24°F → 39°F · Calm)',
+            desc: 'Sub-freezing morning Caution transitioning to crisp Ice Blue Ready window as sun warms air.',
+          },
+          {
+            preset: 'cold_wet_windy' as const,
+            title: '🌨️ Wet & Windy Cold (24°F · Snow · 24 mph)',
+            desc: 'Amber/Red cold exposure throughout 24h with zero Ready hours and no contradictory Best Window.',
+          },
+          {
+            preset: 'refreeze' as const,
+            title: '🧊 Forecast Refreeze (31°F · Freezing Drizzle)',
+            desc: 'Traction Caution with truthful "Possible slick refreeze" scrubber copy at freezing interface.',
+          },
+          {
+            preset: 'hazard_day' as const,
+            title: '⚠️ Entire Day Caution/Hazard (-2°F · Gale)',
+            desc: 'Entire day elevated hazard. Shows "No Ready window today" with zero green safe language.',
+          },
+        ]).map((item) => {
+          const isSelected = activeWeatherPreset === item.preset;
+          return (
+            <Pressable
+              key={item.preset}
+              onPress={() => handleSelectWeatherPreset(item.preset, item.title)}
+              style={({ pressed }) => [
+                styles.linkCard,
+                {
+                  borderColor: isSelected ? palette.tint : palette.border,
+                  backgroundColor: isSelected ? (colorScheme === 'dark' ? 'rgba(212, 175, 55, 0.12)' : 'rgba(212, 175, 55, 0.08)') : palette.surface,
+                  opacity: pressed ? 0.92 : 1,
+                  marginBottom: 8,
+                },
+              ]}
+            >
+              <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+                <Text style={{ color: palette.text, fontWeight: isSelected ? '800' : '700', fontSize: 15 }}>
+                  {item.title}
+                </Text>
+                <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 4, lineHeight: 16 }}>
+                  {item.desc}
+                </Text>
+              </View>
+              <FontAwesome
+                name={isSelected ? 'check-circle' : 'circle-o'}
+                size={16}
+                color={isSelected ? palette.tint : palette.textSecondary}
+              />
+            </Pressable>
+          );
+        })}
+
+        <View style={{ height: 1, backgroundColor: palette.border, marginVertical: 14 }} />
         <Pressable
           onPress={async () => {
             hapticTap();

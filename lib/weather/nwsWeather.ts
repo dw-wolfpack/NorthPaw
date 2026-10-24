@@ -66,6 +66,10 @@ export type HomeWeatherState =
         skyCover: number | null;
         humidityPct?: number | null;
         sourceType?: 'observation' | 'provider_grid_forecast' | 'forecast' | 'cached_forecast' | 'interpolated' | 'extrapolated' | 'unavailable';
+        confidence?: 'high' | 'medium' | 'low';
+        shortForecast?: string;
+        precipChance?: number | null;
+        precipType?: 'none' | 'rain' | 'snow' | 'freezing_rain' | 'ice_pellets' | 'mixed';
       }>;
       /** Zero-cost approximate sunset tracking */
       sunsetTimeIso: string | null;
@@ -607,6 +611,22 @@ export async function fetchUsWeatherAtCoordinates(
               : fallbackSkyCoverFromText(p.shortForecast || '', inferredDaytime);
           const humidityPct = key && humidityByHour.has(key) ? humidityByHour.get(key) ?? null : null;
 
+          const rawPrecip = (r as any)?.probabilityOfPrecipitation?.value;
+          const precipChance = typeof rawPrecip === 'number' ? Math.round(rawPrecip) : null;
+          const shortText = p.shortForecast || '';
+          let precipType: 'none' | 'rain' | 'snow' | 'freezing_rain' | 'ice_pellets' | 'mixed' = 'none';
+          if (/snow|flurr|blizzard/i.test(shortText)) {
+            precipType = 'snow';
+          } else if (/freezing (rain|drizzle)|ice storm/i.test(shortText)) {
+            precipType = 'freezing_rain';
+          } else if (/sleet|ice pellet|wintry/i.test(shortText)) {
+            precipType = 'ice_pellets';
+          } else if (/rain|shower|drizzle|thunderstorm/i.test(shortText)) {
+            precipType = 'rain';
+          } else if (precipChance != null && precipChance >= 35) {
+            precipType = airTempF <= 32 ? 'snow' : 'rain';
+          }
+
           const utcKey = new Date(p.startTime).toISOString();
           fullSamplesMap.set(utcKey, {
             timeIso: utcKey,
@@ -615,6 +635,9 @@ export async function fetchUsWeatherAtCoordinates(
             isDaytime: inferredDaytime,
             skyCover,
             humidityPct,
+            shortForecast: shortText,
+            precipChance,
+            precipType,
             sourceType: 'forecast',
             confidence: 'high',
           });

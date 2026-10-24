@@ -1,7 +1,7 @@
 # NorthPaw ML Intern — Research Experiments & Validation Report
 
 **Grounded in Paper:** *Winter Outdoor Risk for Dogs: Evidence, Public Data, and a Deterministic Local-First Model*
-**Execution Date:** 2026-09-19 15:26:47
+**Execution Date:** 2026-09-26 14:13:49
 **Overall Result:** ✅ PASS (All experiments verified)
 
 ## Experiment Results
@@ -13,7 +13,7 @@
 | Ice Evidence Hierarchy | ✅ PASS | Sensor > Glaze > Refreeze > Unknown |
 | De-icer Epistemic Restraint | ✅ PASS | Weather never substitutes for sensor telemetry |
 | Multi-Component State Arbitration | ✅ PASS | 5 reasons, 2 unknowns captured |
-| Large-Scale Dataset Throughput | ✅ PASS | 3.95 µs latency (253,282 evals/sec) |
+| Large-Scale Dataset Throughput | ✅ PASS | 4.58 µs latency (218,211 evals/sec) |
 
 ## Key Scientific Conclusions
 
