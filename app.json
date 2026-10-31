@@ -38,7 +38,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.northpaw.app",
-      "versionCode": 12,
+      "versionCode": 14,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
