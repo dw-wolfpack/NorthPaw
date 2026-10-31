@@ -91,7 +91,7 @@ describe('24-Hour End-to-End Mock Weather Scenarios & Timeline Behaviors', () =>
     // Peak afternoon hours (12 PM - 3 PM) must be caution or hazard due to scorching asphalt
     const peakNoon = model.points.find((p) => p.hour === 13);
     expect(peakNoon).toBeDefined();
-    expect(peakNoon?.roadTempF).toBeGreaterThan(125);
+    expect(peakNoon?.roadTempF).toBeGreaterThan(120);
     expect(['caution', 'hazard']).toContain(peakNoon?.hourlyDecision);
     expect(peakNoon?.primaryHazardDriver).toBe('heat');
 

@@ -51,6 +51,7 @@ struct SimpleEntry: TimelineEntry {
     let npiScore: Int
     let actionableTime: String
     let isOutingActive: Bool
+    let tempUnit: String
 }
 
 struct Provider: TimelineProvider {
@@ -64,7 +65,8 @@ struct Provider: TimelineProvider {
             surfaceType: "Asphalt",
             npiScore: 88,
             actionableTime: "Best window until 2:15 PM",
-            isOutingActive: false
+            isOutingActive: false,
+            tempUnit: "F"
         )
     }
 
@@ -84,6 +86,7 @@ struct Provider: TimelineProvider {
         let defaults = UserDefaults(suiteName: "group.com.northpaw.app")
         let dogName = defaults?.string(forKey: "dogName") ?? "Your pup"
         let rawStatusText = defaults?.string(forKey: "statusText") ?? "Safe to Walk"
+        let tempUnit = defaults?.string(forKey: "tempUnit") ?? "F"
         
         // React Native SharedGroupPreferences writes all values as Strings.
         let airTempStr = defaults?.string(forKey: "airTempF") ?? ""
@@ -92,8 +95,8 @@ struct Provider: TimelineProvider {
         let isOutingActive = (defaults?.string(forKey: "isOutingActive") ?? "false") == "true"
         
         let airTempF = Int(airTempStr) ?? defaults?.integer(forKey: "airTempF") ?? 74
-        let roadTempF = Int(roadTempStr) ?? defaults?.integer(forKey: "roadTempF") ?? 82
-        let npiScore = Int(npiScoreStr) ?? defaults?.integer(forKey: "npiScore") ?? 88
+        let roadTempF = Int(roadTempStr) ?? defaults?.integer(forKey: "roadTempF") ?? 77
+        let npiScore = Int(npiScoreStr) ?? defaults?.integer(forKey: "npiScore") ?? 20
         
         let surfaceType = defaults?.string(forKey: "surfaceType") ?? "Asphalt"
         let actionableTime = defaults?.string(forKey: "actionableTime") ?? "Next update ~15m"
@@ -111,26 +114,72 @@ struct Provider: TimelineProvider {
             dogName: dogName,
             statusText: rawStatusText.uppercased(),
             airTempF: airTempF > 0 ? airTempF : 74,
-            roadTempF: roadTempF > 0 ? roadTempF : 82,
+            roadTempF: roadTempF > 0 ? roadTempF : 77,
             surfaceType: surfaceType,
-            npiScore: npiScore > 0 ? npiScore : 88,
+            npiScore: max(0, min(100, npiScore)),
             actionableTime: resolvedTime,
-            isOutingActive: isOutingActive
+            isOutingActive: isOutingActive,
+            tempUnit: tempUnit
         )
     }
 }
 
 extension SimpleEntry {
+    var isCelsius: Bool {
+        return tempUnit.uppercased() == "C"
+    }
+
+    var displayRoadTempNum: Int {
+        if isCelsius {
+            return Int(round((Double(roadTempF) - 32.0) * 5.0 / 9.0))
+        }
+        return roadTempF
+    }
+
+    var displayAirTempNum: Int {
+        if isCelsius {
+            return Int(round((Double(airTempF) - 32.0) * 5.0 / 9.0))
+        }
+        return airTempF
+    }
+
+    var tempUnitSymbol: String {
+        return isCelsius ? "°C" : "°F"
+    }
+
+    var roadTempDisplayWithUnit: String {
+        return "\(displayRoadTempNum)\(tempUnitSymbol)"
+    }
+
+    var airTempDisplayWithUnit: String {
+        return "\(displayAirTempNum)\(tempUnitSymbol)"
+    }
+
+    var roadTempDegreesOnly: String {
+        return "\(displayRoadTempNum)°"
+    }
+
+    // Canonical NorthPaw Semantic Color Tokens matching SEMANTIC_SAFETY_COLORS:
+    // safe: RGB(45, 106, 79) -> #2D6A4F
+    // warm: RGB(212, 175, 55) -> #D4AF37
+    // hot: RGB(230, 126, 34) -> #E67E22
+    // danger: RGB(192, 57, 43) -> #C0392B
+    // unavailable: RGB(85, 85, 85) -> #555555
+    // active_outing: RGB(41, 128, 185) -> #2980B9
     var statusColor: Color {
         if isOutingActive {
-            return Color(red: 0.16, green: 0.50, blue: 0.72) // Active Outing Blue
+            return Color(red: 41/255.0, green: 128/255.0, blue: 185/255.0) // Active Outing Blue
         }
-        if roadTempF >= 105 || npiScore > 66 {
-            return Color(red: 0.90, green: 0.22, blue: 0.21) // Red (Danger)
-        } else if roadTempF >= 85 || npiScore > 33 {
-            return Color(red: 0.95, green: 0.55, blue: 0.08) // Amber (Caution)
+        if statusText.contains("DANGER") || roadTempF >= 125 || npiScore > 66 {
+            return Color(red: 192/255.0, green: 57/255.0, blue: 43/255.0) // Danger Crimson
+        } else if statusText == "HOT" || (roadTempF >= 100 && roadTempF < 125) {
+            return Color(red: 230/255.0, green: 126/255.0, blue: 34/255.0) // Hot Orange
+        } else if statusText.contains("CAUTION") || statusText == "WARM" || (roadTempF >= 77 && roadTempF < 100) || npiScore > 33 {
+            return Color(red: 212/255.0, green: 175/255.0, blue: 55/255.0) // Warm Amber
+        } else if statusText.contains("UNAVAILABLE") {
+            return Color(red: 85/255.0, green: 85/255.0, blue: 85/255.0) // Unavailable Gray
         } else {
-            return Color(red: 0.16, green: 0.65, blue: 0.38) // Emerald Green (Safe)
+            return Color(red: 45/255.0, green: 106/255.0, blue: 79/255.0) // Safe Green
         }
     }
 
@@ -138,10 +187,14 @@ extension SimpleEntry {
         if isOutingActive {
             return "figure.walk"
         }
-        if roadTempF >= 105 || npiScore > 66 {
+        if statusText.contains("DANGER") || roadTempF >= 125 || npiScore > 66 {
             return "exclamationmark.circle.fill"
-        } else if roadTempF >= 85 || npiScore > 33 {
+        } else if statusText == "HOT" || (roadTempF >= 100 && roadTempF < 125) {
+            return "flame.fill"
+        } else if statusText.contains("CAUTION") || statusText == "WARM" || (roadTempF >= 77 && roadTempF < 100) || npiScore > 33 {
             return "exclamationmark.triangle.fill"
+        } else if statusText.contains("UNAVAILABLE") {
+            return "questionmark.circle.fill"
         } else {
             return "checkmark.circle.fill"
         }
@@ -152,10 +205,15 @@ extension SimpleEntry {
         if isOutingActive {
             return "🐾 Outing Active"
         }
-        if roadTempF >= 105 || npiScore > 66 {
-            return "⚠️ Next safe: 6:30 PM"
-        } else if roadTempF >= 85 || npiScore > 33 {
-            return "☀️ Safe until 11:30 AM"
+        let timeStr = actionableTime.isEmpty ? "Later" : actionableTime
+        if statusText.contains("DANGER") || roadTempF >= 125 || npiScore > 66 {
+            return "⚠️ Next safe: \(timeStr)"
+        } else if statusText == "HOT" || (roadTempF >= 100 && roadTempF < 125) {
+            return "🔥 Hot pavement: \(timeStr)"
+        } else if statusText.contains("CAUTION") || statusText == "WARM" || (roadTempF >= 77 && roadTempF < 100) || npiScore > 33 {
+            return "☀️ Safe until \(timeStr)"
+        } else if statusText.contains("UNAVAILABLE") {
+            return "⏳ Weather updating..."
         } else {
             return "✅ Safe to walk now"
         }
@@ -215,7 +273,7 @@ struct NorthPawWidgetEntryView : View {
                     Image(systemName: entry.statusDotIcon)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(entry.statusColor)
-                    Text("\(entry.roadTempF)°")
+                    Text(entry.roadTempDegreesOnly)
                         .font(.system(size: 15, weight: .heavy, design: .rounded))
                         .minimumScaleFactor(0.7)
                 }
@@ -228,8 +286,8 @@ struct NorthPawWidgetEntryView : View {
         case .accessoryInline:
             // Lock Screen Text Line
             ViewThatFits {
-                Label("🐾 \(entry.isOutingActive ? "Exploring Now" : entry.statusText) • Road \(entry.roadTempF)° (\(entry.dogName))", systemImage: "pawprint.fill")
-                Label("🐾 \(entry.statusText) • \(entry.roadTempF)°", systemImage: "pawprint.fill")
+                Label("🐾 \(entry.isOutingActive ? "Exploring Now" : entry.statusText) • Road \(entry.roadTempDegreesOnly) (\(entry.dogName))", systemImage: "pawprint.fill")
+                Label("🐾 \(entry.statusText) • \(entry.roadTempDegreesOnly)", systemImage: "pawprint.fill")
             }
             .containerBackground(for: .widget) {
                 Color.clear
@@ -251,7 +309,7 @@ struct NorthPawWidgetEntryView : View {
                                 .lineLimit(1)
                         }
                         
-                        Text("Road \(entry.roadTempF)°F")
+                        Text("Road \(entry.roadTempDisplayWithUnit)")
                             .font(.system(size: 14, weight: .heavy, design: .rounded))
                             .widgetAccentable()
                         
@@ -306,7 +364,7 @@ struct NorthPawWidgetEntryView : View {
                         Image(systemName: entry.statusDotIcon)
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(entry.statusColor)
-                        Text("\(entry.roadTempF)°")
+                        Text(entry.roadTempDegreesOnly)
                             .font(.system(size: 18, weight: .heavy, design: .rounded))
                             .foregroundColor(.primary)
                         Text(entry.surfaceType.uppercased())
@@ -415,7 +473,7 @@ struct NorthPawWidgetEntryView : View {
                         .padding(.vertical, 2)
                     
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(entry.roadTempF)°F")
+                        Text(entry.roadTempDisplayWithUnit)
                             .font(.system(size: 20, weight: .black, design: .rounded))
                             .foregroundColor(.primary)
                         Text(" Pavement (\(entry.surfaceType))")
@@ -423,7 +481,7 @@ struct NorthPawWidgetEntryView : View {
                             .foregroundColor(.secondary)
                     }
                     
-                    Text("Air Temp: \(entry.airTempF)°F")
+                    Text("Air Temp: \(entry.airTempDisplayWithUnit)")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary)
 
@@ -483,7 +541,7 @@ struct NorthPawGlanceWidgetEntryView: View {
                 Spacer()
 
                 // 3. Compact Pavement Temp
-                Text("\(entry.roadTempF)°F Pavement")
+                Text("\(entry.roadTempDisplayWithUnit) Pavement")
                     .font(.system(size: 18, weight: .black, design: .rounded))
                     .foregroundColor(.primary)
             }

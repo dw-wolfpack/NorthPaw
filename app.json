@@ -2,7 +2,7 @@
   "expo": {
     "name": "NorthPaw",
     "slug": "northpaw",
-    "version": "6.0.0",
+    "version": "6.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "northpaw",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.northpaw.app",
-      "buildNumber": "6",
+      "buildNumber": "20",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
@@ -38,7 +38,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.northpaw.app",
-      "versionCode": 11,
+      "versionCode": 14,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",

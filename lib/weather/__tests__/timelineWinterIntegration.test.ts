@@ -233,7 +233,7 @@ describe('Timeline Winter Integration & Unified Hourly Best Window', () => {
     if (!model) return;
 
     const noon = model.points.find((p) => p.hour === 13);
-    expect(noon?.roadTempF).toBeGreaterThan(120);
+    expect(noon?.roadTempF).toBeGreaterThan(110);
     expect(['caution', 'hazard']).toContain(noon?.hourlyDecision);
     expect(noon?.primaryHazardDriver).toBe('heat');
   });

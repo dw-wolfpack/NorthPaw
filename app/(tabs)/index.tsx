@@ -66,17 +66,25 @@ import {
 import { weatherCardBackgroundImage } from '@/lib/weather/weatherCardBackgroundImages';
 import { weatherConditionKind } from '@/lib/weather/weatherConditionKind';
 import { buildWeatherSuggestions } from '@/lib/weather/weatherSuggestions';
-import { buildTimelineBarsModel, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand, type TimelineBarPoint } from '@/lib/weather/roadTemp';
+import { buildTimelineBarsModel, mergeAndSaveDailyHourlySamples, timelineBounds, timelineHourRatio, type SurfaceType, estimateRoadTempF, roadBandForTemp, type RangeSegment, type RoadTempBand, type TimelineBarPoint } from '@/lib/weather/roadTemp';
 import { evaluateWinterForProfile } from '@/lib/weather/winterEngine';
 import type { WinterDecisionOutput } from '@/lib/weather/winterTypes';
 import { getPrimaryHazardCue } from '@/lib/weather/primaryHazardCue';
+import { SEMANTIC_SAFETY_COLORS, getSemanticSafetyColor, type SafetySemanticBand, formatTemp } from '@/lib/readiness/thresholds';
 import { useColorScheme } from '@/components/useColorScheme';
 import { ShareCard } from '@/components/ShareCard';
 import { ShareButton } from '@/components/ShareButton';
 import { useShareCard } from '@/hooks/useShareCard';
 import { getActiveOuting, startOuting, cancelActiveOuting, extendActiveOuting, type ActiveOuting } from '@/lib/outings';
 import * as Notifications from 'expo-notifications';
-import { syncWidgetData } from '@/lib/widgetSync';
+import {
+  syncWidgetData,
+  getWidgetIntroVersion,
+  setWidgetIntroVersion,
+  shouldShowWidgetUpgrade,
+  CURRENT_WIDGET_INTRO_VERSION,
+} from '@/lib/widgetSync';
+import { WidgetUpgradeModal } from '@/components/WidgetUpgradeModal';
 import SharedGroupPreferences from 'react-native-shared-group-preferences';
 import * as ExpoLinking from 'expo-linking';
 
@@ -212,12 +220,8 @@ function hourlyPointStatusBadge(point?: TimelineBarPoint | null): { label: strin
   return { label: 'Paws Favorable', color: '#2D6A4F' };
 }
 
-function roadBandColor(band?: 'safe' | 'warm' | 'hot' | 'danger' | 'unavailable' | null): string {
-  if (band === 'safe') return '#2D6A4F';
-  if (band === 'warm') return '#D4A017';
-  if (band === 'hot') return '#C46A2D';
-  if (band === 'danger') return '#B5443A';
-  return '#666666';
+function roadBandColor(band?: SafetySemanticBand | null): string {
+  return getSemanticSafetyColor(band);
 }
 
 function clampNum(val: number, min: number, max: number): number {
@@ -606,7 +610,14 @@ export default function HomeScreen() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [activeOuting, setActiveOuting] = useState<ActiveOuting | null>(null);
   const [durationModalOpen, setDurationModalOpen] = useState(false);
+  const [widgetUpgradeVisible, setWidgetUpgradeVisible] = useState(false);
+  const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
   const reconciliationCompletedRef = useRef(false);
+
+  const handleDismissWidgetUpgrade = useCallback(async () => {
+    setWidgetUpgradeVisible(false);
+    await setWidgetIntroVersion(CURRENT_WIDGET_INTRO_VERSION);
+  }, []);
 
   const { viewRef, isSharing, shareCard } = useShareCard();
   const shareRef = useRef<View>(null);
@@ -630,6 +641,11 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Ready (Home)' });
+      AsyncStorage.getItem('@northpaw_temp_unit')
+        .then((val) => {
+          if (val === 'C' || val === 'F') setTempUnit(val as 'F' | 'C');
+        })
+        .catch(() => {});
       getDogProfile().then(setDogProfile).catch(() => {});
       getActiveOuting().then(setActiveOuting).catch(() => {});
 
@@ -777,6 +793,12 @@ export default function HomeScreen() {
 
   const reconcileWidgetState = useCallback(async (gone = false) => {
     try {
+      if (!SharedGroupPreferences || typeof SharedGroupPreferences.getItem !== 'function') {
+        const localActive = await getActiveOuting();
+        if (!gone) setActiveOuting(localActive);
+        reconciliationCompletedRef.current = true;
+        return;
+      }
       const [widgetActiveVal, needsReviewVal] = await Promise.all([
         SharedGroupPreferences.getItem('isOutingActive', 'group.com.northpaw.app').catch(() => 'false'),
         SharedGroupPreferences.getItem('needsPostWalkReview', 'group.com.northpaw.app').catch(() => 'false'),
@@ -823,6 +845,126 @@ export default function HomeScreen() {
     }
   }, [selectedSurface]);
 
+  const lastPresentationTrackedRef = useRef<{ timestamp: number; context: string } | null>(null);
+  const hasMountedRef = useRef(false);
+
+  const trackReadinessPresentation = useCallback(
+    async (
+      currentWeather: HomeWeatherState,
+      context: 'cold_launch' | 'foreground_resume' | 'tab_switch',
+      currentProfile?: DogProfile | null
+    ) => {
+      const now = Date.now();
+
+      // Rule 4: Deduplication guard: ignore presentations within 5 seconds unless context changed
+      if (
+        lastPresentationTrackedRef.current &&
+        now - lastPresentationTrackedRef.current.timestamp < 5000 &&
+        lastPresentationTrackedRef.current.context === context
+      ) {
+        return;
+      }
+
+      // Rule 5: Determine presentation weather quality / degraded status
+      let weatherFreshness: 'fresh' | 'cached' | 'stale' | 'unavailable' = 'unavailable';
+      let tempF: number | undefined = undefined;
+      let forecastShort: string | undefined = undefined;
+      let providerUsed = 'none';
+      let isCacheHit = false;
+      let loadTimeMs = 0;
+
+      if (currentWeather.status === 'ok') {
+        tempF = currentWeather.tempF;
+        forecastShort = currentWeather.forecastShort;
+        providerUsed = currentWeather.providerUsed || (currentWeather.isCacheHit ? 'cache' : 'nws');
+        isCacheHit = currentWeather.isCacheHit ?? false;
+        loadTimeMs = currentWeather.loadTimeMs ?? 0;
+
+        try {
+          const lastFetchStr = await AsyncStorage.getItem('@northpaw/last_weather_fetch_time');
+          const lastFetch = lastFetchStr ? parseInt(lastFetchStr, 10) : 0;
+          const ageMs = now - lastFetch;
+          if (isCacheHit) {
+            weatherFreshness = ageMs > 30 * 60 * 1000 ? 'stale' : 'cached';
+          } else {
+            weatherFreshness = 'fresh';
+          }
+        } catch {
+          weatherFreshness = isCacheHit ? 'cached' : 'fresh';
+        }
+      } else {
+        // Fallback: check if we have cached data displayed in storage
+        try {
+          const cachedStr = await AsyncStorage.getItem('@northpaw/cached_weather_data');
+          if (cachedStr) {
+            const parsed = JSON.parse(cachedStr);
+            if (parsed && parsed.status === 'ok') {
+              tempF = parsed.tempF;
+              forecastShort = parsed.forecastShort;
+              providerUsed = 'cache';
+              isCacheHit = true;
+              weatherFreshness = 'stale';
+            }
+          }
+        } catch {}
+      }
+
+      // If truly no weather data is presentable (e.g. raw loading spinner or permission blocking card without cache), do not log
+      if (weatherFreshness === 'unavailable' && currentWeather.status !== 'ok') {
+        return;
+      }
+
+      lastPresentationTrackedRef.current = { timestamp: now, context };
+
+      // Calculate Time to Value (TTV)
+      let isFirst = false;
+      let timeToFirstMs: number | null = null;
+      try {
+        const alreadyTracked = await AsyncStorage.getItem('@northpaw/first_readiness_tracked');
+        if (!alreadyTracked) {
+          isFirst = true;
+          await AsyncStorage.setItem('@northpaw/first_readiness_tracked', 'true');
+          const completedAtStr = await AsyncStorage.getItem('@northpaw/onboarding_completed_at');
+          if (completedAtStr) {
+            const completedAt = parseInt(completedAtStr, 10);
+            if (completedAt) {
+              timeToFirstMs = now - completedAt;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Home] Failed to check AsyncStorage readiness flags', err);
+      }
+
+      const appVersion = Constants.expoConfig?.version || '1.0.0';
+      const activeProfile = currentProfile || dogProfile;
+
+      trackEvent('readiness_viewed', {
+        tempF: tempF ?? 0,
+        forecast: forecastShort ?? '',
+        is_first_readiness_view: isFirst,
+        time_to_first_readiness_ms: timeToFirstMs,
+        weather_load_time_ms: loadTimeMs,
+        weather_cache_hit: isCacheHit,
+        weather_provider_used: providerUsed,
+        weather_freshness: weatherFreshness,
+        presentation_context: context,
+        surface: selectedSurface,
+        dog_breed: activeProfile?.dogBreed || 'Unknown',
+        app_version: appVersion,
+      });
+
+      setUserProperties({
+        last_safety_check_timestamp: now,
+      });
+
+      incrementUserProperties({
+        total_safety_checks: 1,
+      });
+    },
+    [dogProfile, selectedSurface]
+  );
+
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       if (nextAppState !== 'active') {
@@ -847,10 +989,28 @@ export default function HomeScreen() {
                   JSON.stringify({ latitude: freshWeather.latitude, longitude: freshWeather.longitude })
                 );
               }
+              // Rule 2: Foreground resume with freshly fetched weather
+              await trackReadinessPresentation(freshWeather, 'foreground_resume');
+            } else {
+              // Rule 6: Track weather failure with bounded category, zero location coordinates
+              const appVersion = Constants.expoConfig?.version || '1.0.0';
+              const reason = freshWeather.status === 'permission_denied' ? 'permission_denied' : 'service_unavailable';
+              trackEvent('weather_load_failed', {
+                failure_reason: reason,
+                provider: freshWeather.providerUsed || 'none',
+                load_time_ms: freshWeather.loadTimeMs ?? 0,
+                app_version: appVersion,
+              });
+              // Rule 7: Still track presentation if cached weather is visible
+              await trackReadinessPresentation(weather, 'foreground_resume');
             }
+          } else {
+            // Weather is fresh (< 5 mins) — user resumed to already-focused Home and sees existing assessment
+            await trackReadinessPresentation(weather, 'foreground_resume');
           }
         } catch (err) {
           console.warn('[Home] Failed to auto-refresh weather on foreground', err);
+          await trackReadinessPresentation(weather, 'foreground_resume');
         }
       }
     };
@@ -859,12 +1019,15 @@ export default function HomeScreen() {
     return () => {
       appStateSub.remove();
     };
-  }, [reconcileWidgetState]);
+  }, [reconcileWidgetState, trackReadinessPresentation, weather]);
 
   useFocusEffect(
     useCallback(() => {
       let gone = false;
       (async () => {
+        const presentationContext = hasMountedRef.current ? 'tab_switch' : 'cold_launch';
+        hasMountedRef.current = true;
+
         await reconcileWidgetState(gone);
 
         // 2. Fetch profile, weather, and disclaimers
@@ -877,11 +1040,25 @@ export default function HomeScreen() {
         if (!gone) {
           setDogProfile(profile);
           setWeather(result);
-          if (profile && profile.onboardingDone && acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
-            setShowUpgradeTermsModal(true);
+          if (profile && profile.onboardingDone) {
+            if (acceptedVer !== REQUIRED_DISCLAIMER_VERSION) {
+              setShowUpgradeTermsModal(true);
+            } else {
+              const introVer = await getWidgetIntroVersion();
+              if (shouldShowWidgetUpgrade(introVer)) {
+                setWidgetUpgradeVisible(true);
+              }
+            }
           }
 
           if (result.status === 'ok') {
+            try {
+              if (result.hourlySamples && result.hourlySamples.length > 0) {
+                const mergedHourly = await mergeAndSaveDailyHourlySamples(result.hourlySamples, 'home');
+                result.hourlySamples = mergedHourly;
+                setWeather({ ...result });
+              }
+            } catch {}
             // Cache fresh weather in AsyncStorage
             try {
               await AsyncStorage.setItem('@northpaw/cached_weather_data', JSON.stringify(result));
@@ -904,55 +1081,28 @@ export default function HomeScreen() {
               weather_provider_used: providerUsed,
             });
 
-            // Calculate Time to Value (TTV)
-            let isFirst = false;
-            let timeToFirstMs: number | null = null;
-            try {
-              const alreadyTracked = await AsyncStorage.getItem('@northpaw/first_readiness_tracked');
-              if (!alreadyTracked) {
-                isFirst = true;
-                await AsyncStorage.setItem('@northpaw/first_readiness_tracked', 'true');
-                const completedAtStr = await AsyncStorage.getItem('@northpaw/onboarding_completed_at');
-                if (completedAtStr) {
-                  const completedAt = parseInt(completedAtStr, 10);
-                  if (completedAt) {
-                    timeToFirstMs = Date.now() - completedAt;
-                  }
-                }
-              }
-            } catch (err) {
-              console.warn('[Home] Failed to check AsyncStorage readiness flags', err);
-            }
-
+            // Rules 1 & 3: Cold launch or tab navigation presentation
+            await trackReadinessPresentation(result, presentationContext, profile);
+          } else {
+            // Rule 6: Track weather load failure with bounded category, zero location coordinates
             const appVersion = Constants.expoConfig?.version || '1.0.0';
-
-            trackEvent('readiness_viewed', {
-              tempF: result.tempF,
-              forecast: result.forecastShort,
-              is_first_readiness_view: isFirst,
-              time_to_first_readiness_ms: timeToFirstMs,
-              weather_load_time_ms: result.loadTimeMs ?? 0,
-              weather_cache_hit: result.isCacheHit ?? false,
-              weather_provider_used: providerUsed,
-              surface: selectedSurface,
-              dog_breed: profile.dogBreed || 'Unknown',
+            const reason = result.status === 'permission_denied' ? 'permission_denied' : 'service_unavailable';
+            trackEvent('weather_load_failed', {
+              failure_reason: reason,
+              provider: result.providerUsed || 'none',
+              load_time_ms: result.loadTimeMs ?? 0,
               app_version: appVersion,
             });
 
-            setUserProperties({
-              last_safety_check_timestamp: Date.now(),
-            });
-
-            incrementUserProperties({
-              total_safety_checks: 1,
-            });
+            // Rule 7: Still track presentation if cached weather is visible
+            await trackReadinessPresentation(result, presentationContext, profile);
           }
         }
       })();
       return () => {
         gone = true;
       };
-    }, [selectedSurface, reconcileWidgetState])
+    }, [selectedSurface, reconcileWidgetState, trackReadinessPresentation])
   );
 
   const openSuggestion = useCallback(
@@ -1054,12 +1204,13 @@ export default function HomeScreen() {
       bestWindowReductionFraction,
       surfaceType: selectedSurface,
       dogProfile,
+      fill24HourBlock: true,
     });
   }, [weatherOk, dogProfile, selectedSurface]);
   const timelineAxis = timelineBounds();
   const timelineColors = useMemo(() => {
     if (!timelineBars || !timelineBars.points.length) {
-      return ['#2D6A4F', '#2D6A4F'] as [string, string, ...string[]];
+      return [SEMANTIC_SAFETY_COLORS.safe.hex, SEMANTIC_SAFETY_COLORS.safe.hex] as [string, string, ...string[]];
     }
     const colors = timelineBars.points.map(p => {
       // 1. Safety severity dominates if Caution or Hazard
@@ -1756,11 +1907,41 @@ export default function HomeScreen() {
         npiScore: Math.round(npiScore * 10), // Store as integer [0..100] for WidgetKit
         actionableTime,
         isOutingActive: activeOuting !== null,
+        tempUnit,
       }).catch((err) => {
         console.warn('[Home] Widget sync failed', err);
       });
     }
-  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting]);
+  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting, tempUnit]);
+
+  // Periodic widget sync at a set cadence (15 minutes) while app is active
+  useEffect(() => {
+    const WIDGET_PERIODIC_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+    const intervalId = setInterval(() => {
+      if (!reconciliationCompletedRef.current) return;
+      if (dogProfile && weatherOk && npiScore != null) {
+        const calcRoadTemp = currentRoadPoint?.roadTempF ?? 77;
+        const bestWindowsList = bestWindows;
+        const actionableTime = bestWindowsList[0] || '7:00 AM';
+
+        syncWidgetData({
+          dogName: dogProfile.dogName || 'Your Pup',
+          statusText: statusBadge.label,
+          airTempF: weatherOk.tempF,
+          roadTempF: calcRoadTemp,
+          surfaceType: selectedSurface,
+          npiScore: Math.round(npiScore * 10),
+          actionableTime,
+          isOutingActive: activeOuting !== null,
+          tempUnit,
+        }, { force: true }).catch((err) => {
+          console.warn('[Home] Periodic widget sync failed', err);
+        });
+      }
+    }, WIDGET_PERIODIC_SYNC_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [dogProfile, weatherOk, npiScore, currentRoadPoint, selectedSurface, statusBadge, bestWindows, activeOuting, tempUnit]);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
@@ -1914,7 +2095,7 @@ export default function HomeScreen() {
                           { color: isDark ? "rgba(255, 255, 255, 0.75)" : "rgba(18, 31, 24, 0.72)" }
                         ]}
                       >
-                        {(weather as any).tempF}°F
+                        {(weather as any).tempF != null ? formatTemp((weather as any).tempF, tempUnit) : '--°'}
                       </Text>
                     </BlurView>
                   </Pressable>
@@ -2093,7 +2274,7 @@ export default function HomeScreen() {
                   style={[StyleSheet.absoluteFillObject, { borderRadius: 24, overflow: 'hidden' }]}
                 />
                 <View style={styles.timelineBarsHeader}>
-                  <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline</Text>
+                  <Text style={[styles.timelineBarsTitle, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.78)' }]}>Today&apos;s timeline (12:00 AM – 12:00 AM)</Text>
                 </View>
                 <View
                   style={styles.timelineBarsWrap}
@@ -2116,7 +2297,7 @@ export default function HomeScreen() {
                     ]}>
                     <Text style={[styles.timelineScrubTime, { color: isDark ? '#EAEAEA' : 'rgba(18, 31, 24, 0.92)' }]}>{formatClockFromHour(scrubPoint.hour)}</Text>
                     <Text style={[styles.timelineScrubTemp, { color: isDark ? 'rgba(234, 234, 234, 0.7)' : 'rgba(18, 31, 24, 0.68)' }]}>
-                      Air {Math.round(scrubPoint.airTempF ?? 0)}° • {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {Math.round(scrubPoint.roadTempF ?? 0)}°
+                      Air {scrubPoint.airTempF != null ? formatTemp(scrubPoint.airTempF, tempUnit) : '--'} • {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} {scrubPoint.roadTempF != null ? formatTemp(scrubPoint.roadTempF, tempUnit) : 'Data unavailable'}
                     </Text>
                     <Text style={[styles.timelineScrubBand, { color: hourlyPointStatusBadge(scrubPoint).color }]}>
                       {hourlyPointStatusBadge(scrubPoint).label}
@@ -2148,15 +2329,22 @@ export default function HomeScreen() {
                 </View>
   
                 <View style={styles.timelineRulerTicks}>
-                  {[5, 7, 9, 11, 13, 15, 17, 19, 21, 22].map((hour) => {
-                    const left = `${timelineHourRatio(hour) * 100}%`;
-                    const isMajor = hour % 3 === 0 || hour === 12 || hour === 22 || hour === 5;
+                  {[0, 3, 6, 9, 12, 15, 18, 21, 24].map((hour) => {
+                    const ratio = hour === 24 ? 1 : timelineHourRatio(hour);
+                    const left = `${ratio * 100}%`;
+                    const isMajor = hour % 3 === 0;
+                    const alignStyle =
+                      hour === 0
+                        ? { marginLeft: 0, alignItems: 'flex-start' as const }
+                        : hour === 24
+                        ? { marginLeft: -24, alignItems: 'flex-end' as const }
+                        : { marginLeft: -15, alignItems: 'center' as const };
                     return (
-                      <View key={`tick-${hour}`} style={[styles.rulerTickContainer, { left: left as any }]}>
+                      <View key={`tick-${hour}`} style={[styles.rulerTickContainer, { left: left as any }, alignStyle]}>
                         <View style={[styles.rulerTickLine, { height: isMajor ? 8 : 4, backgroundColor: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }]} />
                         {isMajor && (
                           <Text style={[styles.rulerTickLabel, { color: textColors.tertiary }]}>
-                            {hour === 12 ? '12p' : hour > 12 ? `${hour-12}p` : `${hour}a`}
+                            {hour === 12 ? '12p' : (hour === 0 || hour === 24) ? '12a' : hour > 12 ? `${hour-12}p` : `${hour}a`}
                           </Text>
                         )}
                       </View>
@@ -2584,7 +2772,7 @@ export default function HomeScreen() {
                           styles.weatherCardTextShadow,
                           { color: weatherCardTint.tempColor },
                         ]}>
-                        {weatherOk.tempF}°
+                        {weatherOk ? formatTemp(weatherOk.tempF, tempUnit) : '--°'}
                       </Text>
                       <Text
                         style={[
@@ -2643,7 +2831,7 @@ export default function HomeScreen() {
                               styles.timelineTitle,
                               { color: palette.textSecondary, fontSize: 20, letterSpacing: -0.3 },
                             ]}>
-                            {w.tempF}°
+                            {formatTemp(w.tempF, tempUnit)}
                           </Text>
                           <Text style={[styles.timelineDetail, { color: palette.tint }]} numberOfLines={4}>
                             {w.shortForecast}
@@ -2800,7 +2988,7 @@ export default function HomeScreen() {
 
                 <Text style={[styles.detailCardTitle, { color: palette.text }]}>Outdoor conditions today</Text>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginBottom: 8, fontWeight: '700' }]}>
-                  Air Temp: {selectedHourSample ? `${Math.round(selectedHourSample.airTempF)}°F` : (weatherOk ? `${Math.round(weatherOk.tempF)}°F` : '—')} • {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} Surface: {roadDetailPoint?.roadTempF != null ? `${Math.round(roadDetailPoint.roadTempF)}°F` : '—'}
+                  Air Temp: {selectedHourSample ? formatTemp(selectedHourSample.airTempF, tempUnit) : (weatherOk ? formatTemp(weatherOk.tempF, tempUnit) : '—')} • {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} Surface: {roadDetailPoint?.roadTempF != null ? formatTemp(roadDetailPoint.roadTempF, tempUnit) : '—'}
                 </Text>
                 {roadDetailPoint ? (
                   <View style={styles.roadDetailSelected}>
@@ -2815,7 +3003,7 @@ export default function HomeScreen() {
                       <Text style={styles.roadDetailBadgeText}>{hourlyPointStatusBadge(roadDetailPoint).label}</Text>
                     </View>
                     <Text style={[styles.roadDetailSelectedBand, { color: palette.textSecondary }]}>
-                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} Surface {Math.round(roadDetailPoint.roadTempF ?? 0)}°F
+                      {selectedSurface.charAt(0).toUpperCase() + selectedSurface.slice(1)} Surface {formatTemp(roadDetailPoint.roadTempF ?? 0, tempUnit)}
                     </Text>
                   </View>
                 ) : null}
@@ -2843,7 +3031,7 @@ export default function HomeScreen() {
                         ]}
                       >
                         <Text style={[styles.compareLabel, { color: palette.text, fontWeight: '700' }]}>{st.toUpperCase()}</Text>
-                        <Text style={[styles.compareValue, { color: roadBandColor(band) }]}>{Math.round(temp)}°F</Text>
+                        <Text style={[styles.compareValue, { color: roadBandColor(band) }]}>{formatTemp(temp, tempUnit)}</Text>
                         <Text style={[styles.compareBand, { color: palette.textSecondary }]}>{roadBandLabel(band)}</Text>
                       </Pressable>
                     );
@@ -2911,7 +3099,7 @@ export default function HomeScreen() {
                   })}
                 </ScrollView>
                 <Text style={[styles.detailCardSub, { color: palette.textSecondary, marginTop: 8 }]}>
-                  Spinner includes all day hours (00 to 23). Timeline estimates are anchored to 5AM to 10PM forecast samples.
+                  Today&apos;s calendar-day forecast (12:00 AM to 11:00 PM). All 24 hours (00 to 23) are selectable.
                 </Text>
 
                 <View style={[styles.detailDivider, { backgroundColor: palette.border }]} />
@@ -3325,6 +3513,10 @@ export default function HomeScreen() {
                   try {
                     await AsyncStorage.setItem('@northpaw/disclaimer_accepted_version', REQUIRED_DISCLAIMER_VERSION);
                     setShowUpgradeTermsModal(false);
+                    const introVer = await getWidgetIntroVersion();
+                    if (shouldShowWidgetUpgrade(introVer)) {
+                      setWidgetUpgradeVisible(true);
+                    }
                   } catch (err) {
                     console.warn('[Home] Failed to save disclaimer version to AsyncStorage', err);
                   }
@@ -3349,6 +3541,17 @@ export default function HomeScreen() {
           </BlurView>
         </View>
       </Modal>
+      <WidgetUpgradeModal
+        visible={widgetUpgradeVisible}
+        onDismiss={handleDismissWidgetUpgrade}
+        dogName={dogProfile?.dogName}
+        statusText={statusBadge?.label}
+        airTempF={weatherOk?.tempF ?? null}
+        roadTempF={currentRoadPoint?.roadTempF ?? null}
+        surfaceType={selectedSurface}
+        actionableTime={bestWindows?.[0]}
+        source="upgrade"
+      />
       {/* Off-screen capture container for image generation */}
       <View style={styles.shareCardHiddenWrapper}>
         <ShareCard

@@ -1,37 +1,37 @@
 {
-  "analysis_timestamp": "2026-10-24T10:20:08.021538",
-  "total_unique_users": 367,
-  "total_events": 39179,
+  "analysis_timestamp": "2026-10-31T11:32:26.321785",
+  "total_unique_users": 378,
+  "total_events": 40627,
   "platforms": {
     "iOS": {
       "platform": "iOS",
-      "user_count": 326,
-      "user_percentage": 88.83,
-      "total_events": 37888,
-      "avg_events_per_user": 116.2,
-      "active_7d": 27,
-      "active_7d_pct": 8.3,
-      "active_14d": 40,
-      "active_14d_pct": 12.3,
-      "active_30d": 57,
-      "active_30d_pct": 17.5,
-      "active_60d": 109,
-      "active_60d_pct": 33.4,
-      "active_90d": 198,
-      "active_90d_pct": 60.7,
-      "onboarding_started_users": 298,
-      "onboarding_completed_users": 209,
+      "user_count": 332,
+      "user_percentage": 87.83,
+      "total_events": 38653,
+      "avg_events_per_user": 116.4,
+      "active_7d": 19,
+      "active_7d_pct": 5.7,
+      "active_14d": 34,
+      "active_14d_pct": 10.2,
+      "active_30d": 52,
+      "active_30d_pct": 15.7,
+      "active_60d": 98,
+      "active_60d_pct": 29.5,
+      "active_90d": 173,
+      "active_90d_pct": 52.1,
+      "onboarding_started_users": 304,
+      "onboarding_completed_users": 213,
       "onboarding_completion_rate_pct": 70.1,
-      "dogs_created_users": 209,
-      "readiness_viewed_users": 213,
+      "dogs_created_users": 211,
+      "readiness_viewed_users": 214,
       "weather_loaded_users": 181,
-      "surface_changed_users": 123,
-      "hand_test_opened_users": 117,
-      "scan_interest_users": 115,
+      "surface_changed_users": 124,
+      "hand_test_opened_users": 118,
+      "scan_interest_users": 120,
       "top_os_versions": [
         [
           "26.5",
-          110
+          114
         ],
         [
           "26.5.2",
@@ -57,7 +57,7 @@
         ],
         [
           "5.4.2",
-          37
+          36
         ],
         [
           "4.1.0",
@@ -75,37 +75,37 @@
     },
     "Android": {
       "platform": "Android",
-      "user_count": 27,
-      "user_percentage": 7.36,
-      "total_events": 1262,
-      "avg_events_per_user": 46.7,
-      "active_7d": 0,
-      "active_7d_pct": 0.0,
-      "active_14d": 1,
-      "active_14d_pct": 3.7,
-      "active_30d": 3,
-      "active_30d_pct": 11.1,
-      "active_60d": 7,
-      "active_60d_pct": 25.9,
-      "active_90d": 19,
-      "active_90d_pct": 70.4,
-      "onboarding_started_users": 23,
-      "onboarding_completed_users": 14,
-      "onboarding_completion_rate_pct": 60.9,
-      "dogs_created_users": 14,
-      "readiness_viewed_users": 14,
-      "weather_loaded_users": 14,
+      "user_count": 31,
+      "user_percentage": 8.2,
+      "total_events": 1944,
+      "avg_events_per_user": 62.7,
+      "active_7d": 5,
+      "active_7d_pct": 16.1,
+      "active_14d": 5,
+      "active_14d_pct": 16.1,
+      "active_30d": 7,
+      "active_30d_pct": 22.6,
+      "active_60d": 10,
+      "active_60d_pct": 32.3,
+      "active_90d": 18,
+      "active_90d_pct": 58.1,
+      "onboarding_started_users": 27,
+      "onboarding_completed_users": 15,
+      "onboarding_completion_rate_pct": 55.6,
+      "dogs_created_users": 15,
+      "readiness_viewed_users": 15,
+      "weather_loaded_users": 15,
       "surface_changed_users": 5,
-      "hand_test_opened_users": 8,
-      "scan_interest_users": 8,
+      "hand_test_opened_users": 9,
+      "scan_interest_users": 9,
       "top_os_versions": [
+        [
+          "30",
+          12
+        ],
         [
           "36",
           10
-        ],
-        [
-          "30",
-          8
         ],
         [
           "Unknown",
@@ -116,7 +116,7 @@
           2
         ],
         [
-          "31",
+          "32",
           1
         ]
       ],
@@ -128,19 +128,61 @@
         [
           "Unknown",
           4
+        ],
+        [
+          "6.0.1",
+          4
+        ]
+      ]
+    },
+    "Windows": {
+      "platform": "Windows",
+      "user_count": 6,
+      "user_percentage": 1.59,
+      "total_events": 6,
+      "avg_events_per_user": 1.0,
+      "active_7d": 0,
+      "active_7d_pct": 0.0,
+      "active_14d": 0,
+      "active_14d_pct": 0.0,
+      "active_30d": 0,
+      "active_30d_pct": 0.0,
+      "active_60d": 0,
+      "active_60d_pct": 0.0,
+      "active_90d": 5,
+      "active_90d_pct": 83.3,
+      "onboarding_started_users": 0,
+      "onboarding_completed_users": 0,
+      "onboarding_completion_rate_pct": 0,
+      "dogs_created_users": 0,
+      "readiness_viewed_users": 0,
+      "weather_loaded_users": 0,
+      "surface_changed_users": 0,
+      "hand_test_opened_users": 0,
+      "scan_interest_users": 0,
+      "top_os_versions": [
+        [
+          "Unknown",
+          6
+        ]
+      ],
+      "top_app_versions": [
+        [
+          "Unknown",
+          6
         ]
       ]
     },
     "Mac OS X": {
       "platform": "Mac OS X",
       "user_count": 6,
-      "user_percentage": 1.63,
+      "user_percentage": 1.59,
       "total_events": 21,
       "avg_events_per_user": 3.5,
       "active_7d": 0,
       "active_7d_pct": 0.0,
-      "active_14d": 2,
-      "active_14d_pct": 33.3,
+      "active_14d": 0,
+      "active_14d_pct": 0.0,
       "active_30d": 2,
       "active_30d_pct": 33.3,
       "active_60d": 2,
@@ -169,49 +211,11 @@
         ]
       ]
     },
-    "Windows": {
-      "platform": "Windows",
-      "user_count": 6,
-      "user_percentage": 1.63,
-      "total_events": 6,
-      "avg_events_per_user": 1.0,
-      "active_7d": 0,
-      "active_7d_pct": 0.0,
-      "active_14d": 0,
-      "active_14d_pct": 0.0,
-      "active_30d": 0,
-      "active_30d_pct": 0.0,
-      "active_60d": 0,
-      "active_60d_pct": 0.0,
-      "active_90d": 6,
-      "active_90d_pct": 100.0,
-      "onboarding_started_users": 0,
-      "onboarding_completed_users": 0,
-      "onboarding_completion_rate_pct": 0,
-      "dogs_created_users": 0,
-      "readiness_viewed_users": 0,
-      "weather_loaded_users": 0,
-      "surface_changed_users": 0,
-      "hand_test_opened_users": 0,
-      "scan_interest_users": 0,
-      "top_os_versions": [
-        [
-          "Unknown",
-          6
-        ]
-      ],
-      "top_app_versions": [
-        [
-          "Unknown",
-          6
-        ]
-      ]
-    },
     "Unknown": {
       "platform": "Unknown",
-      "user_count": 2,
-      "user_percentage": 0.54,
-      "total_events": 2,
+      "user_count": 3,
+      "user_percentage": 0.79,
+      "total_events": 3,
       "avg_events_per_user": 1.0,
       "active_7d": 0,
       "active_7d_pct": 0.0,
@@ -235,13 +239,13 @@
       "top_os_versions": [
         [
           "Unknown",
-          2
+          3
         ]
       ],
       "top_app_versions": [
         [
           "Unknown",
-          2
+          3
         ]
       ]
     }

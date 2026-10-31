@@ -40,7 +40,11 @@ import { useColorScheme } from '@/components/useColorScheme';
 import * as FileSystem from 'expo-file-system/legacy';
 import { FeedbackModal, type FeedbackType } from '@/components/FeedbackModal';
 import { ReviewPromptModal } from '@/components/ReviewPromptModal';
+import { WidgetUpgradeModal } from '@/components/WidgetUpgradeModal';
+import { type DogProfile } from '@/lib/profile';
+import { syncWidgetData, getLastSyncedWidgetData } from '@/lib/widgetSync';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const hapticTap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -49,21 +53,55 @@ import { getTabScrollPadding } from '@/lib/layout';
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
   const palette = Colors[colorScheme];
   const { isPro, configured, expoGo, loading, error } = useSubscription();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [widgetModalOpen, setWidgetModalOpen] = useState(false);
+  const [dogProfile, setDogProfile] = useState<DogProfile | null>(null);
   const [feedbackInitialType, setFeedbackInitialType] = useState<FeedbackType>('general_feedback');
   const [mixpanelEnabled, setMixpanelEnabled] = useState(false);
+  const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
 
   // Load initial Mixpanel setting for non-prod
   useFocusEffect(
     useCallback(() => {
       isAnalyticsEnabledInNonProd().then((val) => setMixpanelEnabled(val));
+      AsyncStorage.getItem('@northpaw_temp_unit')
+        .then((val) => {
+          if (val === 'C' || val === 'F') setTempUnit(val as 'F' | 'C');
+        })
+        .catch(() => {});
     }, [])
   );
+
+  const toggleTempUnit = async (newUnit: 'F' | 'C') => {
+    hapticTap();
+    setTempUnit(newUnit);
+    await AsyncStorage.setItem('@northpaw_temp_unit', newUnit);
+    trackEvent('temp_unit_changed', { unit: newUnit });
+    try {
+      const lastData = await getLastSyncedWidgetData();
+      if (lastData) {
+        await syncWidgetData({ ...lastData, tempUnit: newUnit }, { force: true });
+      } else {
+        await syncWidgetData({
+          dogName: dogProfile?.dogName || 'Pup',
+          statusText: 'Ready',
+          airTempF: 72,
+          roadTempF: 77,
+          surfaceType: 'asphalt',
+          npiScore: 20,
+          tempUnit: newUnit,
+        }, { force: true });
+      }
+    } catch (e) {
+      console.warn('[Settings] Failed to sync widget on temp unit change', e);
+    }
+  };
 
   const toggleMixpanel = async () => {
     const next = !mixpanelEnabled;
@@ -98,11 +136,86 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       trackEvent('screen_viewed', { screenName: 'Settings' });
+      getDogProfile().then(setDogProfile).catch(() => {});
     }, [])
   );
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.background }} contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: getTabScrollPadding(insets.bottom) }]}>
+      <Text style={styles.h1}>Preferences</Text>
+      <View
+        style={[
+          styles.linkCard,
+          {
+            borderColor: palette.border,
+            backgroundColor: palette.surface,
+            marginBottom: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          },
+        ]}
+      >
+        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Temperature Unit</Text>
+          <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 4, lineHeight: 16 }}>
+            Display weather &amp; surface heat in °F or °C
+          </Text>
+        </View>
+        <View
+          style={{
+            flexDirection: 'row',
+            backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+            borderRadius: 8,
+            padding: 3,
+            gap: 4,
+          }}
+        >
+          <Pressable
+            onPress={() => toggleTempUnit('F')}
+            accessibilityRole="button"
+            accessibilityLabel="Set temperature unit to Fahrenheit"
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 6,
+              backgroundColor: tempUnit === 'F' ? palette.tint : 'transparent',
+            }}
+          >
+            <Text
+              style={{
+                fontWeight: '800',
+                fontSize: 14,
+                color: tempUnit === 'F' ? '#0A1A12' : palette.text,
+              }}
+            >
+              °F
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => toggleTempUnit('C')}
+            accessibilityRole="button"
+            accessibilityLabel="Set temperature unit to Celsius"
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 6,
+              backgroundColor: tempUnit === 'C' ? palette.tint : 'transparent',
+            }}
+          >
+            <Text
+              style={{
+                fontWeight: '800',
+                fontSize: 14,
+                color: tempUnit === 'C' ? '#0A1A12' : palette.text,
+              }}
+            >
+              °C
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
       <Text style={styles.h1}>Your dog</Text>
       <Pressable
         onPress={() => { hapticTap();  router.push('/dog-profile'); }}
@@ -139,6 +252,33 @@ export default function SettingsScreen() {
           <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
             Heartworm and flea & tick alerts on your device. Custom schedules with Pro. Alerts are scheduled
             locally with no server required.
+          </Text>
+        </View>
+        <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
+      </Pressable>
+
+      <Pressable
+        onPress={() => {
+          hapticTap();
+          setWidgetModalOpen(true);
+        }}
+        style={({ pressed }) => [
+          styles.linkCard,
+          {
+            borderColor: palette.border,
+            backgroundColor: palette.surface,
+            opacity: pressed ? 0.92 : 1,
+            marginBottom: 8,
+          },
+          { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Home Screen Widgets"
+      >
+        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>Home Screen Widgets</Text>
+          <Text style={{ color: palette.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+            Check your dog&apos;s outdoor readiness at a glance.
           </Text>
         </View>
         <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
@@ -540,6 +680,13 @@ export default function SettingsScreen() {
         visible={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
         initialType={feedbackInitialType}
+      />
+
+      <WidgetUpgradeModal
+        visible={widgetModalOpen}
+        onDismiss={() => setWidgetModalOpen(false)}
+        dogName={dogProfile?.dogName}
+        source="settings"
       />
     </ScrollView>
   );
